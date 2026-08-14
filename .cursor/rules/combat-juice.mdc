@@ -1,0 +1,6 @@
+---
+description: 改战斗表现前先读打击标准。命中停顿、火花、曳光不得改伤害或射程。
+globs: src/combat-fx.ts,src/combat-juice.ts,src/combat.ts,src/main.ts
+---
+
+改近战/远程/魔法表现、命中停顿或技能特效时，先读 `.cursor/skills/evolution-arena-juice/SKILL.md`。数字只用 `COMBAT_JUICE`。表现层不得改判定。

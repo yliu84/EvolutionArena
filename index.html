@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#030c0a" />
+    <meta name="description" content="在战争迷雾中探索、猎杀并吸收怪物基因的动作进化游戏原型" />
+    <title>进化竞技场 Lite · 黑暗探索原型</title>
+  </head>
+  <body>
+    <main id="app">
+      <section class="game-shell" aria-label="进化竞技场游戏原型">
+        <header class="topbar">
+          <div class="brand">进化竞技场 LITE</div>
+            <div class="prototype-badge">Phase 3 · Hunt Evolution</div>
+        </header>
+        <div id="game-container" aria-label="游戏画布">
+          <section id="starter-overlay" class="starter-overlay is-open" aria-labelledby="starter-title" aria-hidden="false">
+            <div class="starter-atmosphere" aria-hidden="true"></div>
+            <div class="starter-panel">
+              <header class="starter-intro">
+                <p>原始基因库 / RUN ORIGIN</p>
+                <h1 id="starter-title">选择最初的形态</h1>
+                <span>这决定你如何开始，不决定你最终成为谁。</span>
+              </header>
+              <div class="starter-choices" role="list" aria-label="初始物种">
+                <button class="starter-choice starter-claw" type="button" data-starter="claw-hunter" role="listitem">
+                  <span class="starter-key">1</span>
+                  <span class="starter-specimen" aria-hidden="true"><i></i></span>
+                  <span class="starter-role">近战 · 坚韧</span>
+                  <strong>利爪猎兽</strong>
+                  <span class="starter-copy">承受冲击，贴近猎物完成撕裂。</span>
+                  <span class="starter-stats"><b>115生命</b><b>12%防御</b><b>近战+25%</b></span>
+                </button>
+                <button class="starter-choice starter-spine" type="button" data-starter="spine-stalker" role="listitem">
+                  <span class="starter-key">2</span>
+                  <span class="starter-specimen" aria-hidden="true"><i></i></span>
+                  <span class="starter-role">远程 · 机动</span>
+                  <strong>骨刺游猎者</strong>
+                  <span class="starter-copy">控制距离，以稳定骨刺持续猎杀。</span>
+                  <span class="starter-stats"><b>300移速</b><b>480ms射击</b><b>5%防御</b></span>
+                </button>
+                <button class="starter-choice starter-rift" type="button" data-starter="rift-larva" role="listitem">
+                  <span class="starter-key">3</span>
+                  <span class="starter-specimen" aria-hidden="true"><i></i></span>
+                  <span class="starter-role">魔法 · 范围</span>
+                  <strong>裂隙幼体</strong>
+                  <span class="starter-copy">扭曲空间，让脉冲吞没成群敌人。</span>
+                  <span class="starter-stats"><b>范围+12%</b><b>冷却-15%</b><b>8%防御</b></span>
+                </button>
+              </div>
+              <button id="random-starter" class="random-starter" type="button">随机唤醒一个物种</button>
+            </div>
+          </section>
+          <section id="evolution-hud" class="evolution-hud" aria-live="polite">
+            <div id="lean-bars" class="lean-bars"></div>
+            <p id="lean-reason">猎杀将塑造你的身体</p>
+            <p id="form-preview">原始形态 · 0/6</p>
+            <p id="derived-stats">力量 0 · 敏捷 0 · 精神 0 · 虫群 0 · 毒素 0 · 魔法 0</p>
+            <p id="orb-buff" hidden></p>
+            <button id="resist-evolution" type="button" hidden>抗拒这次生长 · R</button>
+          </section>
+          <section id="result-overlay" class="result-overlay" aria-labelledby="result-title" aria-hidden="true">
+            <div class="result-panel">
+              <p class="result-kicker">猎杀完成 / RUN COMPLETE</p>
+              <h1 id="result-title">裂隙守望者已倒下</h1>
+              <p class="result-lead">黑暗退去了一瞬。你的进化形态被记录下来。</p>
+              <div id="result-stats" class="result-stats"></div>
+              <p id="result-mutations" class="result-mutations"></p>
+              <button id="restart-run" type="button">开始新的探索</button>
+            </div>
+          </section>
+          <section id="bestiary-overlay" class="bestiary-overlay" aria-labelledby="bestiary-title" aria-hidden="true">
+            <div class="bestiary-panel">
+              <header class="bestiary-header">
+                <div>
+                  <p>进化图鉴 / EVOLUTION BOOK</p>
+                  <h1 id="bestiary-title">猎物档案</h1>
+                  <span id="bestiary-progress">已发现 0 / 24</span>
+                </div>
+                <button id="bestiary-close" type="button" aria-label="关闭怪物图鉴">关闭 · B</button>
+              </header>
+              <p class="bestiary-lead">首次猎杀会永久记录物种。未发现的猎物仍潜伏在战争迷雾中。</p>
+              <div id="bestiary-grid" class="bestiary-grid" role="list" aria-label="怪物物种图鉴"></div>
+            </div>
+          </section>
+        </div>
+        <footer class="helpbar">
+          <span><strong>WASD / 点击地面</strong> 移动</span>
+          <span class="divider">/</span>
+          <span><strong>Shift</strong> 闪避</span>
+          <span class="divider">/</span>
+          <span><strong>1 近战 · 2 远程 · 3 魔法</strong></span>
+          <span class="divider">/</span>
+          <span><strong>无锁定时受击补锁 · 点击切换 · 空格</strong> 攻击</span>
+          <span class="divider">/</span>
+          <span><strong>R</strong> 抗拒生长</span>
+          <span class="divider">/</span>
+          <span><strong>E</strong> 互动</span>
+          <span class="divider">/</span>
+          <span><strong>B</strong> 图鉴</span>
+          <span class="optional">猎杀决定进化 · 第6次后可打可留 · 留下则世界更险 · 林地白球后期变少</span>
+        </footer>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
