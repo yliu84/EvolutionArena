@@ -1,5 +1,5 @@
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Avenir Next", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif;
   color: #d9efe5;
   background: #030c0a;
   font-synthesis: none;
@@ -413,12 +413,210 @@ body {
 .helpbar strong { color: #d9efe5; font-weight: 700; }
 .divider { color: #315145; }
 
+.maplab-stage-button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(132, 198, 165, .24);
+  border-radius: 999px;
+  color: #91ad9f;
+  background: rgba(8, 24, 18, .7);
+  font: inherit;
+  cursor: pointer;
+}
+
+.maplab-stage-button:hover,
+.maplab-stage-button:focus-visible { border-color: #d9bd72; color: #f2f0d5; outline: none; }
+.maplab-stage-button.is-active { border-color: #d9bd72; color: #f2f0d5; background: rgba(104, 77, 25, .28); }
+.maplab-stage-button.is-active strong { color: #ffc857; }
+
+.combat-feedback-panel {
+  position: absolute;
+  right: 18px;
+  bottom: 16px;
+  z-index: 160;
+  width: min(250px, calc(100% - 32px));
+  padding: 14px;
+  border: 1px solid rgba(217, 189, 114, .44);
+  border-radius: 16px;
+  background: rgba(3, 12, 10, .94);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, .48);
+  backdrop-filter: blur(16px);
+}
+
+.combat-feedback-panel[hidden] { display: none; }
+.combat-feedback-panel header { display: grid; gap: 3px; margin-bottom: 11px; }
+.combat-feedback-panel header strong { color: #f2f0d5; font-size: 13px; }
+.combat-feedback-panel header span { color: #789789; font-size: 10px; }
+.combat-feedback-panel button {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 7px;
+  border: 1px solid rgba(132, 198, 165, .24);
+  border-radius: 10px;
+  color: #d9efe5;
+  background: rgba(19, 50, 39, .72);
+  font: inherit;
+  cursor: pointer;
+}
+.combat-feedback-panel button:hover,
+.combat-feedback-panel button:focus-visible { border-color: #d9bd72; outline: none; }
+
+body.is-quality3d #game-container {
+  position: relative;
+  overflow: hidden;
+  background: #07120e;
+}
+
+.quality3d-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.quality3d-evolution-panel {
+  position: absolute;
+  z-index: 135;
+  top: 18px;
+  right: 18px;
+  width: min(390px, calc(100% - 36px));
+  padding: 15px;
+  border: 1px solid rgba(222, 194, 111, .36);
+  border-radius: 16px;
+  color: #e8f4ec;
+  background:
+    radial-gradient(circle at 82% 0%, rgba(186, 142, 57, .2), transparent 42%),
+    linear-gradient(155deg, rgba(5, 20, 17, .94), rgba(8, 30, 27, .84));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .36), inset 0 1px rgba(255, 255, 255, .05);
+  backdrop-filter: blur(14px);
+  pointer-events: auto;
+}
+
+.quality3d-evolution-panel header { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: end; }
+.quality3d-evolution-panel header > span {
+  grid-column: 1 / -1;
+  color: #d7bd72;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+.quality3d-evolution-panel header strong { font-size: 21px; letter-spacing: .04em; }
+.quality3d-evolution-panel header small { color: #91c7ae; font-size: 11px; }
+.quality3d-evolution-panel > p { min-height: 34px; margin: 8px 0 9px; color: #b9d0c3; font-size: 12px; line-height: 1.45; }
+.quality3d-evolution-progress { height: 3px; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .09); }
+.quality3d-evolution-progress i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #62e6c5, #f1cf70);
+  box-shadow: 0 0 12px rgba(98, 230, 197, .7);
+  transition: width 80ms linear;
+}
+.quality3d-evolution-panel[data-state="transforming"] { border-color: rgba(105, 243, 255, .7); box-shadow: 0 18px 52px rgba(0, 0, 0, .4), 0 0 34px rgba(98, 230, 197, .16); }
+.quality3d-evolution-stages { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; margin-top: 11px; }
+.quality3d-evolution-stages button {
+  min-width: 0;
+  min-height: 48px;
+  padding: 5px 2px;
+  border: 1px solid rgba(147, 187, 167, .18);
+  border-radius: 9px;
+  color: #9eb8aa;
+  background: rgba(2, 12, 10, .48);
+  cursor: pointer;
+}
+.quality3d-evolution-stages button b { display: block; color: #d4b866; font-size: 12px; }
+.quality3d-evolution-stages button span { display: block; overflow: hidden; font-size: 8px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.quality3d-evolution-stages button:hover,
+.quality3d-evolution-stages button:focus-visible { border-color: #d7bd72; outline: none; color: #fff; }
+.quality3d-evolution-stages button.is-active { border-color: #6fe5ca; color: #edfff8; background: rgba(31, 103, 84, .46); box-shadow: inset 0 0 16px rgba(101, 231, 201, .12); }
+.quality3d-evolution-panel footer { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-top: 10px; }
+.quality3d-evolution-panel footer > span { color: #d7bd72; font-size: 10px; }
+.quality3d-evolution-auto {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(215, 189, 114, .42);
+  border-radius: 999px;
+  color: #f3e4b6;
+  background: rgba(107, 77, 24, .34);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.quality3d-evolution-auto:hover,
+.quality3d-evolution-auto:focus-visible { border-color: #f0d486; outline: none; background: rgba(133, 94, 28, .52); }
+
+body.is-quality3d .topbar,
+body.is-quality3d .helpbar {
+  position: relative;
+  z-index: 140;
+  background: rgba(3, 12, 10, .9);
+  backdrop-filter: blur(12px);
+}
+
 @media (max-width: 680px), (max-height: 500px) {
   .game-shell { grid-template-rows: 46px minmax(0, 1fr) 38px; }
   .brand { font-size: 12px; }
   .prototype-badge { font-size: 9px; }
   .helpbar { gap: 10px; font-size: 10px; }
   .helpbar .optional { display: none; }
+  body.is-maplab .game-shell { grid-template-rows: 46px minmax(0, 1fr) 50px; }
+  body.is-maplab .helpbar { gap: 7px; padding: 0 10px; }
+  body.is-maplab .maplab-camera-help,
+  body.is-maplab .helpbar .divider { display: none; }
+  body.is-quality-slice .game-shell { grid-template-rows: minmax(0, 1fr); }
+  body.is-quality-slice .topbar {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 140;
+    height: 46px;
+    background: linear-gradient(180deg, rgba(3, 12, 10, .92), rgba(3, 12, 10, .58));
+  }
+  body.is-quality-slice #game-container { grid-row: 1; height: 100dvh; }
+  body.is-quality-slice .helpbar {
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 140;
+    min-height: 50px;
+    background: linear-gradient(0deg, rgba(3, 12, 10, .94), rgba(3, 12, 10, .62));
+  }
+  body.is-quality3d .game-shell { grid-template-rows: minmax(0, 1fr); }
+  body.is-quality3d .topbar {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 46px;
+    background: linear-gradient(180deg, rgba(3, 12, 10, .94), rgba(3, 12, 10, .42));
+  }
+  body.is-quality3d #game-container { grid-row: 1; height: 100dvh; }
+  body.is-quality3d .helpbar {
+    position: absolute;
+    inset: auto 0 0;
+    min-height: 50px;
+    justify-content: center;
+    background: linear-gradient(0deg, rgba(3, 12, 10, .95), rgba(3, 12, 10, .48));
+  }
+  .quality3d-evolution-panel {
+    inset: 50px 8px auto;
+    width: auto;
+    padding: 8px 10px 9px;
+    border-radius: 13px;
+  }
+  .quality3d-evolution-panel header { display: block; padding-right: 122px; }
+  .quality3d-evolution-panel header > span,
+  .quality3d-evolution-panel > p { display: none; }
+  .quality3d-evolution-panel header strong { font-size: 14px; }
+  .quality3d-evolution-panel header small { display: none; }
+  .quality3d-evolution-progress { margin-top: 6px; }
+  .quality3d-evolution-stages { margin-top: 7px; }
+  .quality3d-evolution-stages button { min-height: 44px; }
+  .quality3d-evolution-stages button span { display: none; }
+  .quality3d-evolution-panel footer { position: absolute; top: 6px; right: 8px; margin: 0; }
+  .quality3d-evolution-panel footer > span { display: none; }
+  .quality3d-evolution-auto { min-height: 28px; padding: 0 10px; }
+  .maplab-stage-button { min-height: 44px; padding: 0 15px; }
+  .combat-feedback-panel { right: 10px; bottom: 8px; width: 220px; padding: 10px; }
+  .combat-feedback-panel header { margin-bottom: 6px; }
   .starter-overlay { padding: 5px 18px; }
   .starter-panel { width: min(720px, 100%); }
   .starter-intro p { margin-bottom: 2px; font-size: 7px; }
@@ -466,7 +664,7 @@ body {
 
 body.is-maplab .starter-overlay,
 body.is-maplab .evolution-hud,
-body.is-maplab .result-overlay,
+body.is-maplab:not(.is-v4-live) .result-overlay,
 body.is-maplab .bestiary-overlay,
 .starter-overlay[hidden],
 .evolution-hud[hidden],

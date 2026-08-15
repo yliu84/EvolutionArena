@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RIFT_WARDEN, bossCooldown, bossPatternForTurn, bossPhase } from '../src/boss'
+import { RIFT_WARDEN, bossCooldown, bossFailureOutcome, bossPatternForTurn, bossPhase } from '../src/boss'
 
 describe('rift warden boss', () => {
   it('telegraphs every damaging pattern for at least 650ms', () => {
@@ -27,5 +27,9 @@ describe('rift warden boss', () => {
 
   it('accelerates in phase two without removing telegraphs', () => {
     expect(bossCooldown(2)).toBeLessThan(bossCooldown(1))
+  })
+
+  it('ends the run when the player dies during the boss fight', () => {
+    expect(bossFailureOutcome()).toBe('death')
   })
 })

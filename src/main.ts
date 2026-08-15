@@ -1,7 +1,34 @@
+import './style.css'
 import { MapLabScene, isMapLabRequested } from './map-lab'
+import { MapLabV2Scene } from './map-lab-v2'
+import { MAP_LAB_V2, isMapLabV2Requested, type MapLabV2Stage } from './map-lab-v2-config'
+import { GloamwoodSpaceLabScene } from './map-lab-space'
+import { GLOAMWOOD_SPACE_LAYOUT, isGloamwoodSpaceLabRequested } from './gloamwood-space-layout'
+import { GloamwoodExplorationLabScene } from './map-lab-exploration'
+import { GLOAMWOOD_EXPLORATION_LAYOUT, isGloamwoodExplorationLabRequested } from './gloamwood-exploration-layout'
+import { QualitySliceScene } from './quality-slice-scene'
+import { QUALITY_SLICE, isQualitySliceRequested } from './quality-slice-layout'
+import { isQuality3DRequested } from './quality-3d-layout'
+import {
+  MONSTER_NEST_LAB,
+  canDamageNestCore,
+  isMonsterNestLabRequested,
+  type MonsterNestPhase,
+} from './monster-nest'
+import {
+  GLOAMWOOD_HUNT_SLICE,
+  GLOAMWOOD_SLICE_PROPS,
+  GLOAMWOOD_SLICE_PROP_ASSETS,
+  isGloamwoodHuntSliceRequested,
+  pointInsideWorldRect,
+  shouldFadeSliceProp,
+  slicePropCollisionCenter,
+  type GloamwoodSliceProp,
+} from './gloamwood-hunt-slice'
 import {
   RIFT_WARDEN,
   bossCooldown,
+  bossFailureOutcome,
   bossPatternForTurn,
   bossPhase,
   type BossPattern,
@@ -84,6 +111,8 @@ import {
   type MutationRanks,
   type MutationStatState,
 } from './evolution'
+import { EVOLUTION_STAGE_NAMES, evolutionVisualFamily, playerEvolutionAppearance } from './player-evolution-visual'
+import { playerAnimationPose, type PlayerAnimationPose } from './player-animation'
 import {
   STAGE_THREAT_CONFIG,
   biomeThreatCopy,
@@ -199,7 +228,7 @@ import {
   type FogCell,
 } from './world'
 import { createWorldPropTextures, paintRunWorld } from './world-art'
-import { FX_DEPTH, UNIT_ORIGIN, worldDepth } from './iso'
+import { FX_DEPTH, GROUND_DEPTH, UNIT_ORIGIN, worldDepth } from './iso'
 
 const FOG_REFRESH_MS = 120
 const LANDMARK_DISCOVERY_RADIUS = 310
@@ -244,14 +273,22 @@ interface ToxicBurst {
 }
 
 class PrototypeScene extends Phaser.Scene {
+  private readonly huntSliceEnabled = isGloamwoodHuntSliceRequested()
+  private readonly nestLabEnabled = isMonsterNestLabRequested()
   private starter = selectedStarter
-  private runSeed = new URLSearchParams(window.location.search).get('seed') ?? String(Date.now())
+  private runSeed = new URLSearchParams(window.location.search).get('seed')
+    ?? (this.huntSliceEnabled ? GLOAMWOOD_HUNT_SLICE.validationSeed : String(Date.now()))
   private runMap = createRunMap(this.runSeed)
   private player!: Phaser.Physics.Arcade.Image
   private enemies!: Phaser.Physics.Arcade.Group
   private bullets!: Phaser.Physics.Arcade.Group
   private enemyProjectiles!: Phaser.Physics.Arcade.Group
   private biomass!: Phaser.Physics.Arcade.Group
+  private huntSliceCollisionBodies?: Phaser.Physics.Arcade.StaticGroup
+  private huntSlicePropImages: Array<{ definition: GloamwoodSliceProp; image: Phaser.GameObjects.Image }> = []
+  private fadedSlicePropIds = new Set<string>()
+  private sliceCollisionContactIds = new Set<string>()
+  private lastSliceCollisionId: string | null = null
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
   private keys!: Record<'W' | 'A' | 'S' | 'D' | 'E' | 'B' | 'R' | 'SPACE' | 'TAB', Phaser.Input.Keyboard.Key>
   private combatKeys!: Record<'ONE' | 'TWO' | 'THREE', Phaser.Input.Keyboard.Key>
@@ -341,6 +378,8 @@ class PrototypeScene extends Phaser.Scene {
   private eliteAffixGraphics!: Phaser.GameObjects.Graphics
   private playerStatusGraphics!: Phaser.GameObjects.Graphics
   private playerEvolutionGraphics!: Phaser.GameObjects.Graphics
+  private evolutionBurstUntil = 0
+  private lastConsumeAt = -10000
   private combatTelegraph!: Phaser.GameObjects.Graphics
   private combatEffect!: Phaser.GameObjects.Graphics
   private combatHud!: Phaser.GameObjects.Graphics
@@ -350,6 +389,14 @@ class PrototypeScene extends Phaser.Scene {
   private moveMarker!: Phaser.GameObjects.Graphics
   private moveTarget?: WorldPoint
   private selectedTarget?: Phaser.Physics.Arcade.Image
+  private nestCore?: Phaser.Physics.Arcade.Image
+  private nestAura?: Phaser.GameObjects.Graphics
+  private nestLabel?: Phaser.GameObjects.Text
+  private nestPhase: MonsterNestPhase = 'dormant'
+  private nestCoreHealth: number = MONSTER_NEST_LAB.coreMaxHealth
+  private nestIntermissionUntil = 0
+  private nestFogRevealCount = 0
+  private nestRewardGranted = false
   private lastAutoLockAt = 0
   private lastAutoLockedId: string | null = null
   private visibleEnemyHealthBars = 0
@@ -375,10 +422,18 @@ class PrototypeScene extends Phaser.Scene {
   private bossPhaseValue: 1 | 2 = 1
   private bossActive = false
   private bossDefeated = false
-  private bossRetries = 0
 
   constructor() {
     super('prototype')
+  }
+
+  preload() {
+    if (this.huntSliceEnabled) {
+      this.load.image(GLOAMWOOD_HUNT_SLICE.assetKey, GLOAMWOOD_HUNT_SLICE.assetPath)
+      for (const asset of Object.values(GLOAMWOOD_SLICE_PROP_ASSETS)) {
+        this.load.image(asset.assetKey, asset.assetPath)
+      }
+    }
   }
 
   create() {
@@ -390,7 +445,7 @@ class PrototypeScene extends Phaser.Scene {
 
     this.player = this.physics.add.image(START_POSITION.x, START_POSITION.y, 'player')
     this.player.setOrigin(UNIT_ORIGIN.x, UNIT_ORIGIN.y)
-    this.player.setCollideWorldBounds(true).setCircle(EVOLUTION_CONFIG.baseCollisionRadius)
+    this.player.setCollideWorldBounds(true).setCircle(EVOLUTION_CONFIG.baseCollisionRadius).setAlpha(0)
     this.syncPlayerSpeedCap()
     this.runStartedAt = this.time.now
     this.syncPlayerBodyScale()
@@ -403,6 +458,7 @@ class PrototypeScene extends Phaser.Scene {
     this.boss = this.physics.add.image(this.runMap.bossPosition.x, this.runMap.bossPosition.y, 'boss-rift-warden')
     this.boss.setOrigin(UNIT_ORIGIN.x, UNIT_ORIGIN.y)
     this.boss.setCircle(54).disableBody(true, true)
+    if (this.nestLabEnabled) this.createMonsterNestCore()
     this.bossWarning = this.add.graphics().setDepth(FX_DEPTH - 1)
     this.combatTelegraph = this.add.graphics().setDepth(FX_DEPTH)
     this.combatEffect = this.add.graphics().setDepth(FX_DEPTH + 0.2).setBlendMode(Phaser.BlendModes.ADD)
@@ -433,22 +489,35 @@ class PrototypeScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.enemyProjectiles, this.damagePlayerFromProjectile, undefined, this)
     this.physics.add.overlap(this.player, this.biomass, this.collectBiomass, undefined, this)
     this.physics.add.overlap(this.bullets, this.boss, this.hitBoss, undefined, this)
+    if (this.nestCore) this.physics.add.overlap(this.bullets, this.nestCore, this.hitNestCore, undefined, this)
     this.physics.add.overlap(this.player, this.boss, this.damagePlayerFromBoss, undefined, this)
+    if (this.huntSliceCollisionBodies) {
+      this.physics.add.collider(this.player, this.huntSliceCollisionBodies, (_player, obstacle) => {
+        const id = (obstacle as Phaser.Physics.Arcade.Image).getData('slicePropId') as string
+        this.sliceCollisionContactIds.add(id)
+        this.lastSliceCollisionId = id
+      })
+      this.physics.add.collider(this.enemies, this.huntSliceCollisionBodies)
+    }
 
     this.applyCameraProfile()
     this.scale.on(Phaser.Scale.Events.RESIZE, this.applyCameraProfile, this)
 
     this.createFogOfWar()
     this.createHud()
-    this.runMap.encounters.forEach((encounter) => this.spawnEnemy(
-      encounter.id,
-      encounter.monsterType,
-      encounter.x,
-      encounter.y,
-      encounter.biome,
-    ))
+    if (!this.nestLabEnabled) {
+      this.runMap.encounters.forEach((encounter) => this.spawnEnemy(
+        encounter.id,
+        encounter.monsterType,
+        encounter.x,
+        encounter.y,
+        encounter.biome,
+      ))
+    }
     this.refreshExploration()
-    this.flashMessage(`${this.runMap.archetypeName} · ${this.runMap.layoutName}`)
+    this.flashMessage(this.nestLabEnabled
+      ? `${MONSTER_NEST_LAB.name} · 进入警戒圈触发守卫`
+      : this.huntSliceEnabled ? '幽影林地 · 战斗可读性切片' : `${this.runMap.archetypeName} · ${this.runMap.layoutName}`)
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handlePrimaryPointer(pointer))
   }
@@ -530,6 +599,7 @@ class PrototypeScene extends Phaser.Scene {
     if (this.keys.SPACE.isDown) {
       this.attackSelectedOrPoint(pointer.worldX, pointer.worldY)
     }
+    this.trackPendingAttackTarget()
     this.updatePendingAttack(time)
     this.updateAttackBuffer(time)
 
@@ -538,6 +608,7 @@ class PrototypeScene extends Phaser.Scene {
       if (enemy.active) this.updateEnemy(enemy, time)
       return true
     })
+    if (this.nestLabEnabled) this.updateMonsterNest(time)
 
     this.bullets.children.iterate((child) => {
       const bullet = child as Phaser.Physics.Arcade.Image
@@ -581,6 +652,7 @@ class PrototypeScene extends Phaser.Scene {
       return true
     })
     if (this.boss.active) this.boss.setDepth(worldDepth(this.boss.y, 0.4))
+    if (this.nestCore?.active) this.nestCore.setDepth(worldDepth(this.nestCore.y, 0.35))
     this.biomass.children.iterate((child) => {
       const orb = child as Phaser.Physics.Arcade.Image
       if (orb.active) orb.setDepth(worldDepth(orb.y, -0.2))
@@ -598,6 +670,12 @@ class PrototypeScene extends Phaser.Scene {
     })
     for (const cache of this.rewardObjects.values()) cache.setDepth(worldDepth(cache.y))
     for (const marker of this.eventObjects.values()) marker.setDepth(worldDepth(marker.y, -0.1))
+    this.fadedSlicePropIds.clear()
+    for (const { definition, image } of this.huntSlicePropImages) {
+      const faded = shouldFadeSliceProp(this.player.x, this.player.y, definition)
+      image.setDepth(worldDepth(definition.y, 0.15)).setAlpha(faded ? 0.52 : 1)
+      if (faded) this.fadedSlicePropIds.add(definition.id)
+    }
   }
 
   getDebugState() {
@@ -689,6 +767,7 @@ class PrototypeScene extends Phaser.Scene {
         scale: evolutionScaleForStage(this.evolutionStage),
         recentHunts: [...this.recentHunts],
         dominantGene: dominantGene(this.genes, this.recentHunts),
+        visualFamily: this.currentEvolutionVisualFamily(),
         lean: geneLean(this.genes, this.recentHunts),
         formName: currentFormName(this.mutationRanks, this.genes, this.recentHunts),
         pending: this.pendingEvolutionAt > 0,
@@ -701,6 +780,16 @@ class PrototypeScene extends Phaser.Scene {
           MUTATIONS.filter((mutation) => mutation.family === family)
             .reduce((sum, mutation) => sum + (this.mutationRanks[mutation.id] ?? 0), 0),
         ])),
+        appearance: (() => {
+          const route = this.currentEvolutionVisualFamily()
+          const appearance = playerEvolutionAppearance(this.evolutionStage, route, this.mutationRanks)
+          return {
+            ...appearance,
+            stageName: EVOLUTION_STAGE_NAMES[appearance.stage],
+            visibleTraits: [...appearance.visibleTraits],
+          }
+        })(),
+        animation: this.currentPlayerAnimation(this.time.now),
       },
       kills: this.kills,
       genes: { ...this.genes },
@@ -763,6 +852,18 @@ class PrototypeScene extends Phaser.Scene {
         percent: Math.round(this.fogCells.filter((cell) => cell.explored).length / this.fogCells.length * 1000) / 10,
         discoveredLandmarks: [...this.discoveredLandmarks],
       },
+      monsterNest: {
+        enabled: this.nestLabEnabled,
+        id: this.nestLabEnabled ? MONSTER_NEST_LAB.id : null,
+        phase: this.nestPhase,
+        activeWaveEnemies: this.nestLabEnabled ? this.activeNestEnemies().length : 0,
+        coreHealth: this.nestCoreHealth,
+        coreMaxHealth: MONSTER_NEST_LAB.coreMaxHealth,
+        coreVulnerable: canDamageNestCore(this.nestPhase),
+        rewardGranted: this.nestRewardGranted,
+        fogRevealCount: this.nestFogRevealCount,
+        reward: { ...MONSTER_NEST_LAB.reward },
+      },
       rewards: {
         sites: this.runMap.rewardSites.map((site) => ({ id: site.id, state: this.rewardStates.get(site.id) })),
         triggeredEvents: [...this.triggeredEvents],
@@ -806,7 +907,6 @@ class PrototypeScene extends Phaser.Scene {
         health: this.bossHealth,
         maxHealth: this.bossMaxHealth,
         phase: this.bossPhaseValue,
-        retries: this.bossRetries,
         x: Math.round(this.boss.x),
         y: Math.round(this.boss.y),
       },
@@ -825,6 +925,38 @@ class PrototypeScene extends Phaser.Scene {
         this.biomass.getLength(),
       fps: Math.round(this.game.loop.actualFps),
       art: {
+        huntSlice: {
+          enabled: this.huntSliceEnabled,
+          id: this.huntSliceEnabled ? GLOAMWOOD_HUNT_SLICE.id : null,
+          asset: this.huntSliceEnabled ? GLOAMWOOD_HUNT_SLICE.assetPath : null,
+          region: this.huntSliceEnabled ? { ...GLOAMWOOD_HUNT_SLICE.region } : null,
+          activeEnemiesInside: this.huntSliceEnabled
+            ? enemies.filter((enemy) => pointInsideWorldRect(enemy.x, enemy.y, GLOAMWOOD_HUNT_SLICE.region)).length
+            : 0,
+          expectedEncounterIds: this.huntSliceEnabled ? [...GLOAMWOOD_HUNT_SLICE.expectedEncounterIds] : [],
+          props: this.huntSlicePropImages.map(({ definition, image }) => ({
+            id: definition.id,
+            kind: definition.kind,
+            x: definition.x,
+            y: definition.y,
+            depth: Math.round(image.depth * 1000) / 1000,
+            alpha: Math.round(image.alpha * 100) / 100,
+            collision: {
+              width: definition.collisionWidth,
+              height: definition.collisionHeight,
+              center: slicePropCollisionCenter(definition),
+              actual: (() => {
+                const collider = this.huntSliceCollisionBodies?.getChildren()
+                  .find((child) => (child as Phaser.Physics.Arcade.Image).getData('slicePropId') === definition.id) as Phaser.Physics.Arcade.Image | undefined
+                const body = collider?.body as Phaser.Physics.Arcade.StaticBody | undefined
+                return body ? { x: Math.round(body.x), y: Math.round(body.y), width: body.width, height: body.height } : null
+              })(),
+            },
+          })),
+          fadedPropIds: [...this.fadedSlicePropIds],
+          collisionContactIds: [...this.sliceCollisionContactIds],
+          lastCollisionId: this.lastSliceCollisionId,
+        },
         player: {
           texture: this.player.texture.key,
           width: this.player.width,
@@ -876,8 +1008,50 @@ class PrototypeScene extends Phaser.Scene {
 
   applyDebugStage(stage: number) {
     this.evolutionStage = Math.max(0, Math.floor(stage))
+    this.syncPlayerBodyScale()
     this.refreshWorldThreat(false)
     this.renderHud()
+  }
+
+  applyDebugEvolutionRoute(family: GeneFamily, stage: number) {
+    if (!GENE_FAMILIES.includes(family)) return
+    this.evolutionStage = Math.max(0, Math.min(EVOLUTION_CONFIG.maxStages, Math.floor(stage)))
+    this.genes = emptyGenes()
+    this.genes[family] = 24
+    this.recentHunts = Array.from({ length: 6 }, () => family)
+    this.mutationRanks = {}
+    const familyMutations = MUTATIONS.filter((mutation) => mutation.family === family)
+    let ranksToAssign = Math.min(4, this.evolutionStage)
+    for (const mutation of familyMutations) {
+      const rank = Math.min(mutation.maxRank, ranksToAssign)
+      if (rank > 0) this.mutationRanks[mutation.id] = rank
+      ranksToAssign -= rank
+    }
+    this.evolutionBurstUntil = this.time.now + 900
+    this.syncPlayerBodyScale()
+    this.renderHud()
+  }
+
+  advanceDebugNest() {
+    if (!this.nestLabEnabled) return
+    if (this.nestPhase === 'dormant') {
+      this.startMonsterNestWave(1)
+      return
+    }
+    if (this.nestPhase === 'wave-1' || this.nestPhase === 'wave-2') {
+      for (const enemy of this.activeNestEnemies()) {
+        enemy.setData('eliteShield', 0)
+        this.applyDamageToEnemy(enemy, 9999)
+      }
+      this.updateMonsterNest(this.time.now)
+      return
+    }
+    if (this.nestPhase === 'intermission-1') {
+      this.nestIntermissionUntil = 0
+      this.updateMonsterNest(this.time.now)
+      return
+    }
+    if (this.nestPhase === 'core-vulnerable') this.applyDamageToNestCore(9999)
   }
 
   grantDebugSigils() {
@@ -904,6 +1078,16 @@ class PrototypeScene extends Phaser.Scene {
     }
   }
 
+  private monsterNestObjectiveCopy() {
+    const alive = this.activeNestEnemies().length
+    if (this.nestPhase === 'dormant') return `目标：进入${MONSTER_NEST_LAB.name}警戒圈`
+    if (this.nestPhase === 'wave-1') return `目标：清除第一波守卫 · 剩余 ${alive}`
+    if (this.nestPhase === 'intermission-1') return '目标：准备迎战第二波守卫'
+    if (this.nestPhase === 'wave-2') return `目标：清除第二波守卫 · 剩余 ${alive}`
+    if (this.nestPhase === 'core-vulnerable') return `目标：摧毁暴露核心 · ${Math.ceil(this.nestCoreHealth)}/${MONSTER_NEST_LAB.coreMaxHealth}`
+    return `已清理：猎牙基因 +${MONSTER_NEST_LAB.reward.fangGenes} · 揭开 ${this.nestFogRevealCount} 格迷雾`
+  }
+
   private createTextures() {
     const g = this.add.graphics({ x: 0, y: 0 }).setVisible(false)
     paintPlayerTexture(g, this.starter)
@@ -927,6 +1111,21 @@ class PrototypeScene extends Phaser.Scene {
     g.fillStyle(SOUL_ORB_CONFIG.common.visual.fill).fillCircle(8, 8, 7)
     g.lineStyle(2, SOUL_ORB_CONFIG.common.visual.stroke, 0.85).strokeCircle(8, 8, 7)
     g.generateTexture('biomass', 16, 16).clear()
+    g.fillStyle(0xffffff, 1).fillRect(0, 0, 4, 4)
+    g.generateTexture('slice-collision-marker', 4, 4).clear()
+    g.fillStyle(0x160b0b, 1).fillCircle(56, 56, 48)
+    g.lineStyle(7, 0x74382c, 0.95).strokeCircle(56, 56, 44)
+    for (let index = 0; index < 10; index += 1) {
+      const angle = index / 10 * Math.PI * 2
+      const innerX = 56 + Math.cos(angle) * 30
+      const innerY = 56 + Math.sin(angle) * 30
+      const outerX = 56 + Math.cos(angle) * 53
+      const outerY = 56 + Math.sin(angle) * 53
+      g.lineStyle(8, 0x9b5941, 0.92).lineBetween(innerX, innerY, outerX, outerY)
+    }
+    g.fillStyle(0xd55b42, 0.95).fillCircle(56, 56, 23)
+    g.fillStyle(0xffbd67, 0.9).fillCircle(49, 48, 8)
+    g.generateTexture('nest-core-thorn', 112, 112).clear()
     paintCombatProjectiles(g)
     paintWorldObjectTextures(g)
     createWorldPropTextures(g)
@@ -936,7 +1135,36 @@ class PrototypeScene extends Phaser.Scene {
 
   private drawWorld() {
     const graphics = this.add.graphics()
-    paintRunWorld(this, this.runMap, graphics)
+    paintRunWorld(this, this.runMap, graphics, this.huntSliceEnabled
+      ? { excludePropsInside: GLOAMWOOD_HUNT_SLICE.region }
+      : undefined)
+    if (this.nestLabEnabled) {
+      const { x, y } = MONSTER_NEST_LAB.center
+      graphics.fillStyle(0x140b08, 0.78).fillEllipse(x, y + 18, 560, 350)
+      graphics.lineStyle(18, 0x43271b, 0.9).strokeEllipse(x, y + 18, 510, 315)
+      graphics.lineStyle(5, 0xb86b3c, 0.55).strokeCircle(x, y, MONSTER_NEST_LAB.triggerRadius)
+      for (let index = 0; index < 12; index += 1) {
+        const angle = index / 12 * Math.PI * 2
+        const radius = 185 + (index % 3) * 34
+        graphics.fillStyle(index % 2 === 0 ? 0x5f3322 : 0x321c15, 0.95)
+        graphics.fillTriangle(
+          x + Math.cos(angle) * radius,
+          y + Math.sin(angle) * radius,
+          x + Math.cos(angle - 0.1) * (radius + 55),
+          y + Math.sin(angle - 0.1) * (radius + 55),
+          x + Math.cos(angle + 0.1) * (radius + 55),
+          y + Math.sin(angle + 0.1) * (radius + 55),
+        )
+      }
+    }
+    if (this.huntSliceEnabled) {
+      const region = GLOAMWOOD_HUNT_SLICE.region
+      this.add.image(region.x, region.y, GLOAMWOOD_HUNT_SLICE.assetKey)
+        .setOrigin(0)
+        .setDisplaySize(region.width, region.height)
+        .setDepth(GROUND_DEPTH + 0.35)
+      this.createHuntSliceProps()
+    }
 
     for (const landmark of this.runMap.landmarks) {
       const marker = this.add.graphics().setDepth(worldDepth(landmark.y, -0.3))
@@ -971,6 +1199,42 @@ class PrototypeScene extends Phaser.Scene {
       this.add.text(event.x, event.y + 62, event.name, {
         fontFamily: 'Arial, sans-serif', fontSize: '14px', color: '#a7d9bd',
       }).setOrigin(0.5).setDepth(worldDepth(event.y, 2)).setAlpha(0.75)
+    }
+  }
+
+  private createHuntSliceProps() {
+    this.huntSliceCollisionBodies = this.physics.add.staticGroup()
+    for (const definition of GLOAMWOOD_SLICE_PROPS) {
+      const asset = GLOAMWOOD_SLICE_PROP_ASSETS[definition.kind]
+      const texture = this.textures.get(asset.assetKey).getSourceImage() as { width: number; height: number }
+      const displayWidth = definition.displayHeight * texture.width / texture.height
+      this.add.ellipse(
+        definition.x,
+        definition.y - 8,
+        definition.collisionWidth * 1.9,
+        definition.collisionHeight * 0.72,
+        0x020604,
+        0.42,
+      ).setDepth(GROUND_DEPTH + 0.5)
+      const image = this.add.image(definition.x, definition.y, asset.assetKey)
+        .setOrigin(0.5, 0.96)
+        .setDisplaySize(displayWidth, definition.displayHeight)
+        .setDepth(worldDepth(definition.y, 0.15))
+        .setData('slicePropId', definition.id)
+      this.huntSlicePropImages.push({ definition, image })
+
+      const center = slicePropCollisionCenter(definition)
+      const collider = this.huntSliceCollisionBodies.create(
+        center.x,
+        center.y,
+        'slice-collision-marker',
+      ) as Phaser.Physics.Arcade.Image
+      collider
+        .setDisplaySize(definition.collisionWidth, definition.collisionHeight)
+        .setVisible(false)
+        .setData('slicePropId', definition.id)
+      const body = collider.body as Phaser.Physics.Arcade.StaticBody
+      body.updateFromGameObject().setSize(definition.collisionWidth, definition.collisionHeight, true)
     }
   }
 
@@ -1085,7 +1349,7 @@ class PrototypeScene extends Phaser.Scene {
     )
     const biome = getBiomeAt(this.player.x, this.player.y)
     this.biomeText.setText(`${this.runMap.archetypeName} · ${this.runMap.layoutName}  /  ${biome.name} · ${biomeThreatCopy(biome.id, this.evolutionStage)}`)
-    this.objectiveText.setText(huntObjectiveCopy(this.huntObjectiveState()))
+    this.objectiveText.setText(this.nestLabEnabled ? this.monsterNestObjectiveCopy() : huntObjectiveCopy(this.huntObjectiveState()))
     this.renderBossHud()
     this.renderMinimap()
     this.renderCombatHud()
@@ -1227,9 +1491,139 @@ class PrototypeScene extends Phaser.Scene {
     else this.dodgeText.setColor('#b8ffe0').setText('Shift 闪避 · 就绪')
   }
 
+  private createMonsterNestCore() {
+    const { x, y } = MONSTER_NEST_LAB.center
+    this.nestAura = this.add.graphics().setDepth(worldDepth(y, -0.3))
+    this.nestCore = this.physics.add.image(x, y, 'nest-core-thorn')
+      .setOrigin(0.5)
+      .setCircle(48)
+      .setTint(0x6f6259)
+      .setAlpha(0.9)
+    this.nestCore.setData('nestId', MONSTER_NEST_LAB.id)
+    this.nestLabel = this.add.text(x, y + 104, `${MONSTER_NEST_LAB.name} · 核心封闭`, {
+      fontFamily: 'Arial, sans-serif', fontSize: '17px', color: '#e7b98d', fontStyle: 'bold',
+      backgroundColor: '#120a07dd', padding: { x: 10, y: 6 },
+    }).setOrigin(0.5).setDepth(worldDepth(y, 2))
+  }
+
+  private activeNestEnemies() {
+    return this.enemies.getChildren()
+      .map((child) => child as Phaser.Physics.Arcade.Image)
+      .filter((enemy) => enemy.active && String(enemy.getData('encounterId')).startsWith(`${MONSTER_NEST_LAB.id}-w`))
+  }
+
+  private startMonsterNestWave(wave: 1 | 2) {
+    this.nestPhase = wave === 1 ? 'wave-1' : 'wave-2'
+    for (const spawn of MONSTER_NEST_LAB.waves[wave - 1]) {
+      this.spawnEnemy(
+        spawn.id,
+        spawn.type,
+        MONSTER_NEST_LAB.center.x + spawn.offsetX,
+        MONSTER_NEST_LAB.center.y + spawn.offsetY,
+        'gloamwood',
+        { elite: 'elite' in spawn ? spawn.elite : false, healthScale: wave === 2 ? 1.18 : 1 },
+      )
+    }
+    this.nestLabel?.setText(`${MONSTER_NEST_LAB.name} · 守卫 ${wave}/2`)
+    this.flashMessage(`${MONSTER_NEST_LAB.name} · 第 ${wave} 波守卫苏醒`)
+  }
+
+  private updateMonsterNest(time: number) {
+    const distance = Phaser.Math.Distance.Between(
+      this.player.x,
+      this.player.y,
+      MONSTER_NEST_LAB.center.x,
+      MONSTER_NEST_LAB.center.y,
+    )
+    if (this.nestPhase === 'dormant' && distance <= MONSTER_NEST_LAB.triggerRadius) {
+      this.startMonsterNestWave(1)
+    } else if (this.nestPhase === 'wave-1' && this.activeNestEnemies().length === 0) {
+      this.nestPhase = 'intermission-1'
+      this.nestIntermissionUntil = time + MONSTER_NEST_LAB.intermissionMs
+      this.nestLabel?.setText(`${MONSTER_NEST_LAB.name} · 地穴震动`)
+      this.flashMessage('第一波清除 · 地穴深处正在苏醒')
+    } else if (this.nestPhase === 'intermission-1' && time >= this.nestIntermissionUntil) {
+      this.startMonsterNestWave(2)
+    } else if (this.nestPhase === 'wave-2' && this.activeNestEnemies().length === 0) {
+      this.nestPhase = 'core-vulnerable'
+      this.nestCore?.clearTint().setAlpha(1)
+      this.nestLabel?.setText(`${MONSTER_NEST_LAB.name} · 核心暴露`)
+      this.flashMessage('守卫全灭 · 点击核心并用任意战斗方式摧毁')
+    }
+    this.renderMonsterNestAura(time)
+  }
+
+  private renderMonsterNestAura(time: number) {
+    if (!this.nestAura || this.nestPhase === 'cleared') return
+    const { x, y } = MONSTER_NEST_LAB.center
+    const pulse = 1 + Math.sin(time / 180) * 0.08
+    this.nestAura.clear()
+    this.nestAura.lineStyle(
+      canDamageNestCore(this.nestPhase) ? 8 : 4,
+      canDamageNestCore(this.nestPhase) ? 0xff8a54 : 0x9f5a3a,
+      canDamageNestCore(this.nestPhase) ? 0.72 : 0.38,
+    ).strokeCircle(x, y, 74 * pulse)
+    this.nestAura.fillStyle(0xff673d, canDamageNestCore(this.nestPhase) ? 0.12 : 0.05).fillCircle(x, y, 64 * pulse)
+  }
+
+  private hitNestCore(firstObject: unknown, secondObject: unknown) {
+    const first = firstObject as Phaser.Physics.Arcade.Image
+    const second = secondObject as Phaser.Physics.Arcade.Image
+    const bullet = first.texture.key === 'bullet' ? first : second
+    if (!bullet.active) return
+    bullet.disableBody(true, true)
+    if (!canDamageNestCore(this.nestPhase)) {
+      this.flashMessage('核心仍被守卫的血肉封锁')
+      return
+    }
+    this.applyRangedConnectJuice(MONSTER_NEST_LAB.center.x, MONSTER_NEST_LAB.center.y)
+    this.applyDamageToNestCore((bullet.getData('damage') as number) || this.bulletDamage)
+  }
+
+  private applyDamageToNestCore(damage: number) {
+    if (!this.nestCore?.active || !canDamageNestCore(this.nestPhase)) return
+    this.nestCoreHealth = Math.max(0, this.nestCoreHealth - damage)
+    this.showFloatingDamage(this.nestCore.x, this.nestCore.y, damage, '#ffbd67')
+    this.nestCore.setTintFill(0xffffff)
+    this.time.delayedCall(65, () => {
+      if (this.nestCore?.active) this.nestCore.clearTint()
+    })
+    this.nestLabel?.setText(`${MONSTER_NEST_LAB.name} · 核心 ${Math.ceil(this.nestCoreHealth)}/${MONSTER_NEST_LAB.coreMaxHealth}`)
+    if (this.nestCoreHealth <= 0) this.clearMonsterNest()
+  }
+
+  private clearMonsterNest() {
+    if (this.nestRewardGranted) return
+    this.nestPhase = 'cleared'
+    this.nestRewardGranted = true
+    this.selectedTarget = undefined
+    this.nestCore?.disableBody(true, true)
+    this.nestAura?.clear().lineStyle(5, 0x74d89b, 0.7).strokeCircle(
+      MONSTER_NEST_LAB.center.x,
+      MONSTER_NEST_LAB.center.y,
+      86,
+    )
+    this.nestLabel?.setColor('#9af0b8').setText(`${MONSTER_NEST_LAB.name} · 已清理`)
+    this.genes = { ...this.genes, fang: this.genes.fang + MONSTER_NEST_LAB.reward.fangGenes }
+    this.recentHunts = [...this.recentHunts, ...Array<GeneFamily>(3).fill('fang')].slice(-8)
+    this.addEvolution(MONSTER_NEST_LAB.reward.evolution)
+    this.nestFogRevealCount = revealFogCells(
+      this.fogCells,
+      MONSTER_NEST_LAB.center.x,
+      MONSTER_NEST_LAB.center.y,
+      MONSTER_NEST_LAB.revealRadius,
+    )
+    this.refreshExploration()
+    this.cameras.main.flash(280, 130, 242, 164, false)
+    this.cameras.main.shake(260, 0.008)
+    this.flashMessage(`窝点清理 · 猎牙基因 +${MONSTER_NEST_LAB.reward.fangGenes} · 周边迷雾揭开`)
+    this.renderHud()
+  }
+
   private getTargetId(target?: Phaser.Physics.Arcade.Image) {
     if (!target) return undefined
     if (target === this.boss) return 'rift-warden'
+    if (target === this.nestCore) return MONSTER_NEST_LAB.id
     return target.getData('encounterId') as string | undefined
   }
 
@@ -1239,6 +1633,10 @@ class PrototypeScene extends Phaser.Scene {
       if (!this.bossActive || this.bossDefeated) return false
       return this.cameras.main.worldView.contains(target.x, target.y)
     }
+    if (target === this.nestCore) {
+      return canDamageNestCore(this.nestPhase)
+        && Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y) <= TARGET_LOCK_RADIUS
+    }
     return Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y) <= TARGET_LOCK_RADIUS
   }
 
@@ -1247,6 +1645,7 @@ class PrototypeScene extends Phaser.Scene {
       .map((child) => child as Phaser.Physics.Arcade.Image)
       .filter((enemy) => this.isTargetVisible(enemy))
     if (this.isTargetVisible(this.boss)) targets.push(this.boss)
+    if (this.nestCore && this.isTargetVisible(this.nestCore)) targets.push(this.nestCore)
     return targets.sort((a, b) => {
       const distanceA = Phaser.Math.Distance.Squared(this.player.x, this.player.y, a.x, a.y)
       const distanceB = Phaser.Math.Distance.Squared(this.player.x, this.player.y, b.x, b.y)
@@ -1350,8 +1749,25 @@ class PrototypeScene extends Phaser.Scene {
     this.attackSelectedOrPoint(buffered.fallbackX, buffered.fallbackY, false)
   }
 
+  private trackPendingAttackTarget() {
+    const attack = this.pendingAttack
+    if (!attack || !this.isTargetVisible(attack.target)) return
+    const target = attack.target!
+    const aim = clampAttackPoint(
+      this.player.x,
+      this.player.y,
+      target.x,
+      target.y,
+      COMBAT_STYLES[attack.style].range,
+    )
+    attack.aimX = aim.x
+    attack.aimY = aim.y
+    attack.aimAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, aim.x, aim.y)
+  }
+
   private getTargetName(target: Phaser.Physics.Arcade.Image) {
     if (target === this.boss) return RIFT_WARDEN.name
+    if (target === this.nestCore) return `${MONSTER_NEST_LAB.name}核心`
     const name = MONSTERS[target.getData('type') as MonsterType].name
     const affix = (target.getData('eliteAffix') as EliteAffixId | null) ?? null
     return affix ? `【${ELITE_AFFIXES[affix].name}】${name}` : name
@@ -1379,9 +1795,9 @@ class PrototypeScene extends Phaser.Scene {
         target.y - pulseRadius - 20,
       )
     }
-    const hp = target === this.boss ? this.bossHealth : target.getData('hp') as number
-    const maxHp = target === this.boss ? this.bossMaxHealth : target.getData('maxHp') as number
-    const eliteShield = target === this.boss ? 0 : target.getData('eliteShield') as number
+    const hp = target === this.boss ? this.bossHealth : target === this.nestCore ? this.nestCoreHealth : target.getData('hp') as number
+    const maxHp = target === this.boss ? this.bossMaxHealth : target === this.nestCore ? MONSTER_NEST_LAB.coreMaxHealth : target.getData('maxHp') as number
+    const eliteShield = target === this.boss || target === this.nestCore ? 0 : target.getData('eliteShield') as number
     const shieldStatus = eliteShield > 0 ? ` · 护盾 ${Math.ceil(eliteShield)}` : ''
     const distance = Math.round(Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y))
     const range = COMBAT_STYLES[this.combatStyle].range
@@ -1586,6 +2002,7 @@ class PrototypeScene extends Phaser.Scene {
       .map((child) => child as Phaser.Physics.Arcade.Image)
       .filter((enemy) => enemy.active)
     if (this.bossActive && !this.bossDefeated && this.boss.active) targets.push(this.boss)
+    if (this.nestCore?.active && canDamageNestCore(this.nestPhase)) targets.push(this.nestCore)
     return targets
   }
 
@@ -1611,6 +2028,7 @@ class PrototypeScene extends Phaser.Scene {
 
   private applyDamageToTarget(target: Phaser.Physics.Arcade.Image, damage: number) {
     if (target === this.boss) this.applyDamageToBoss(damage)
+    else if (target === this.nestCore) this.applyDamageToNestCore(damage)
     else this.applyDamageToEnemy(target, damage)
   }
 
@@ -2045,22 +2463,9 @@ class PrototypeScene extends Phaser.Scene {
     if (damageDealt > 0) this.autoLockAttacker(boss)
   }
 
-  private resetBossAttempt() {
+  private endRunFromBossDeath() {
     this.resetPlayerCombatState()
-    this.bossRetries += 1
-    this.health = this.maxHealth
-    this.player.setPosition(this.runMap.bossPosition.x - 550, this.runMap.bossPosition.y).setVelocity(0)
-    this.bossHealth = this.bossMaxHealth
-    this.bossPhaseValue = 1
-    this.bossState = 'recover'
-    this.bossStateUntil = this.time.now + 1500
-    this.bossTurn = 0
-    this.boss.setPosition(this.runMap.bossPosition.x, this.runMap.bossPosition.y).setVelocity(0).clearTint().setScale(1)
-    this.bossWarning.clear()
-    this.enemyProjectiles.getChildren().forEach((child) => (child as Phaser.Physics.Arcade.Image).disableBody(true, true))
-    this.invulnerableUntil = this.time.now + 1800
-    this.flashMessage('挑战失败 · 守望者恢复了力量')
-    this.renderHud()
+    this.endRun(bossFailureOutcome())
   }
 
   private completeBossFight() {
@@ -2132,6 +2537,7 @@ class PrototypeScene extends Phaser.Scene {
       .setData('baseHealth', definition.health)
       .setData('healthScale', healthScale)
     enemy.setData('encounterId', encounterId).setData('biome', biome).setData('homeX', x).setData('homeY', y)
+    enemy.setData('nestDamageScale', encounterId.startsWith(`${MONSTER_NEST_LAB.id}-w`) ? 0.55 : 1)
     enemy.setData('threatLevel', difficulty.threatLevel)
       .setData('stageThreat', threat.healthMultiplier)
       .setData('speedMultiplier', difficulty.speedMultiplier * threat.speedMultiplier)
@@ -2528,7 +2934,9 @@ class PrototypeScene extends Phaser.Scene {
       projectile.enableBody(true, enemy.x, enemy.y, true, true)
       projectile.setTexture('enemy-projectile').setData('born', this.time.now)
         .setData('damage', Math.max(1, Math.round(
-          scaledEnemyDamage(definition.projectileDamage ?? 10, biome, this.evolutionStage) * eliteDamageMultiplier(eliteAffix, hp, maxHp),
+          scaledEnemyDamage(definition.projectileDamage ?? 10, biome, this.evolutionStage)
+            * eliteDamageMultiplier(eliteAffix, hp, maxHp)
+            * ((enemy.getData('nestDamageScale') as number) || 1),
         )))
         .setData('source', source)
         .setData('lineage', definition.lineage)
@@ -2660,6 +3068,7 @@ class PrototypeScene extends Phaser.Scene {
     if (!canDealContactDamage(definition.attackKind, state)) return
     const biome = enemy.getData('biome') as BiomeId
     const baseDamage = scaledEnemyDamage(definition.contactDamage, biome, this.evolutionStage)
+      * ((enemy.getData('nestDamageScale') as number) || 1)
     const eliteAffix = (enemy.getData('eliteAffix') as EliteAffixId | null) ?? null
     const affixDamage = Math.max(1, Math.round(
       baseDamage * eliteDamageMultiplier(eliteAffix, enemy.getData('hp') as number, enemy.getData('maxHp') as number),
@@ -2759,7 +3168,7 @@ class PrototypeScene extends Phaser.Scene {
     if (this.health === 0) {
       this.resetPlayerCombatState()
       if (this.bossActive) {
-        this.resetBossAttempt()
+        this.endRunFromBossDeath()
         return
       }
       this.endRun('death')
@@ -2781,7 +3190,7 @@ class PrototypeScene extends Phaser.Scene {
     this.combatTelegraph.clear()
     const knockback = new Phaser.Math.Vector2(this.player.x - sourceX, this.player.y - sourceY).normalize().scale(340)
     ;(this.player.body as Phaser.Physics.Arcade.Body).setMaxSpeed(340)
-    this.player.setAlpha(1).setVelocity(knockback.x, knockback.y).setTintFill(0xffd5ce)
+    this.player.setAlpha(0).setVelocity(knockback.x, knockback.y).setTintFill(0xffd5ce)
     this.time.delayedCall(110, () => {
       if (this.movementState === 'hitstun') this.player.clearTint()
     })
@@ -2790,7 +3199,7 @@ class PrototypeScene extends Phaser.Scene {
     if (this.health === 0) {
       this.resetPlayerCombatState()
       if (this.bossActive) {
-        this.resetBossAttempt()
+        this.endRunFromBossDeath()
         return mitigatedDamage
       }
       this.endRun('death')
@@ -2807,7 +3216,7 @@ class PrototypeScene extends Phaser.Scene {
     this.poisonedUntil = 0
     this.nextPoisonTick = 0
     this.syncPlayerSpeedCap()
-    this.player.setAlpha(1).clearTint()
+    this.player.setAlpha(0).clearTint()
     this.juiceBurst = undefined
     this.clearHitstop()
     this.combatTelegraph?.clear()
@@ -2872,6 +3281,7 @@ class PrototypeScene extends Phaser.Scene {
     if (result.goldOrbSummary) this.goldOrbSummary = result.goldOrbSummary
     this.collectedOrbCounts[drop.tier] += 1
     this.lastOrbMessage = result.message
+    this.lastConsumeAt = this.time.now
     this.addEvolution(result.biomassGranted)
     this.syncPlayerBodyScale()
     this.syncPlayerSpeedCap()
@@ -2991,6 +3401,7 @@ class PrototypeScene extends Phaser.Scene {
       kills: this.kills,
     })
     this.invulnerableUntil = this.time.now + 900
+    this.evolutionBurstUntil = this.time.now + 1100
     this.syncPlayerBodyScale()
     const form = currentFormName(this.mutationRanks, this.genes, this.recentHunts)
     this.flashMessage(`${resolved.mutation.name} · ${form}`)
@@ -3033,6 +3444,7 @@ class PrototypeScene extends Phaser.Scene {
     this.runOver = true
     this.pendingEvolutionAt = 0
     this.player.setVelocity(0)
+    this.renderPlayerEvolutionAppearance(this.time.now)
     this.physics.world.pause()
     this.time.paused = true
     const formName = currentFormName(this.mutationRanks, this.genes, this.recentHunts)
@@ -3044,7 +3456,6 @@ class PrototypeScene extends Phaser.Scene {
       outcome,
       formName,
       elapsedSeconds: Math.max(1, Math.round((this.time.now - this.runStartedAt) / 1000)),
-      retries: this.bossRetries,
       kills: this.kills + (outcome === 'victory' ? 1 : 0),
       exploredPercent: Math.round(this.fogCells.filter((cell) => cell.explored).length / this.fogCells.length * 100),
       mutations,
@@ -3055,92 +3466,339 @@ class PrototypeScene extends Phaser.Scene {
     })
   }
 
+  private currentPlayerAnimation(time: number): PlayerAnimationPose {
+    const velocity = this.player?.body as Phaser.Physics.Arcade.Body | undefined
+    const attackStyle = this.pendingAttack || time < this.recoverUntil
+      ? this.pendingAttack?.style ?? this.combatStyle
+      : null
+    return playerAnimationPose({
+      now: time,
+      runOver: this.runOver,
+      health: this.health,
+      movementState: this.movementState,
+      movementRemainingMs: Math.max(0, this.movementStateUntil - time),
+      speed: velocity?.velocity.length() ?? 0,
+      attackStyle,
+      attackWindupRemainingMs: Math.max(0, (this.pendingAttack?.impactAt ?? time) - time),
+      attackRecoverRemainingMs: Math.max(0, this.recoverUntil - time),
+      consumeRemainingMs: Math.max(0, this.lastConsumeAt + 460 - time),
+    })
+  }
+
+  private currentEvolutionVisualFamily(): GeneFamily | null {
+    return evolutionVisualFamily(this.evolutionChain, this.genes, this.recentHunts)
+  }
+
   private renderPlayerEvolutionAppearance(time: number) {
     const graphics = this.playerEvolutionGraphics
     graphics.clear()
     if (!this.player) return
+    const pose = this.currentPlayerAnimation(time)
+    graphics.setAlpha(pose.alpha)
     const x = this.player.x
     const y = this.player.y
     const angle = this.player.rotation
     const visual = evolutionScaleForStage(this.evolutionStage)
-    const pulse = 1 + Math.sin(time / 180) * 0.03
     const ranks = this.mutationRanks
     const lean = geneLean(this.genes, this.recentHunts)
-    const dominant = dominantGene(this.genes, this.recentHunts)
+    const dominant = this.currentEvolutionVisualFamily()
+    const appearance = playerEvolutionAppearance(this.evolutionStage, dominant, ranks)
+    const pulse = 1 + Math.sin(time / 180) * (appearance.apex ? 0.045 : 0.025)
     const bodyColor = dominant ? GENE_COLORS[dominant] : this.starter.primaryColor
-    const bodyY = y - 30 * visual
-    const radius = 22 * visual * pulse
+    const undersideColor = this.starter.secondaryColor
+    const poseX = x + Math.cos(angle) * pose.forwardOffset * visual
+    const bodyY = y - 30 * visual + Math.sin(angle) * pose.forwardOffset * visual + pose.bob * visual
+    const point = (forward: number, side: number) => ({
+      x: poseX + Math.cos(angle) * forward * pose.forwardScale * visual + Math.cos(angle + Math.PI / 2) * side * pose.sideScale * visual,
+      y: bodyY + Math.sin(angle) * forward * pose.forwardScale * visual + Math.sin(angle + Math.PI / 2) * side * pose.sideScale * visual,
+    })
+    const bodyLength = appearance.bodyLength * pulse
+    const bodyWidth = appearance.bodyWidth * pulse
 
-    graphics.fillStyle(0x000000, 0.38)
-    graphics.fillEllipse(x, y + 6, 38 * visual, 13 * visual)
-    graphics.lineStyle(2, bodyColor, 0.4)
-    graphics.strokeEllipse(x, bodyY, 30 * visual, 38 * visual)
+    graphics.fillStyle(0x000000, 0.42)
+    graphics.fillEllipse(x + 4, y + 8, bodyLength * 1.28 * visual, bodyWidth * 0.54 * visual)
 
-    const drawArm = (offset: number, color: number, length: number, width: number) => {
-      const tipX = x + Math.cos(angle + offset) * length
-      const tipY = bodyY + Math.sin(angle + offset) * length
-      graphics.lineStyle(width, color, 0.92)
-      graphics.lineBetween(x + Math.cos(angle) * 8, bodyY + Math.sin(angle) * 8, tipX, tipY)
+    const tailBase = point(-bodyLength * 0.38, 0)
+    const tailTip = point(-bodyLength * 0.5 - appearance.tailLength, 0)
+    graphics.lineStyle(Math.max(5, appearance.limbThickness * 1.35) * visual, undersideColor, 0.96)
+    graphics.lineBetween(tailBase.x, tailBase.y, tailTip.x, tailTip.y)
+    graphics.fillStyle(bodyColor, 0.95).fillCircle(tailTip.x, tailTip.y, Math.max(3, appearance.limbThickness * 0.76) * visual)
+
+    const drawLeg = (forward: number, side: number, reachScale = 1) => {
+      const root = point(forward, side * bodyWidth * 0.32)
+      const stride = pose.limbSweep * 8 * side
+      const elbow = point(forward - 2 + stride * 0.45, side * (bodyWidth * 0.54 + appearance.limbReach * 0.32))
+      const tip = point(forward + appearance.limbReach * 0.18 + stride, side * (bodyWidth * 0.56 + appearance.limbReach * 0.62 * reachScale))
+      graphics.lineStyle(appearance.limbThickness * visual, undersideColor, 1)
+      graphics.lineBetween(root.x, root.y, elbow.x, elbow.y)
+      graphics.lineStyle(Math.max(2, appearance.limbThickness * 0.62) * visual, bodyColor, 1)
+      graphics.lineBetween(elbow.x, elbow.y, tip.x, tip.y)
+    }
+    for (const forward of [-bodyLength * 0.24, bodyLength * 0.12]) {
+      drawLeg(forward, -1, forward > 0 ? 1.12 : 0.88)
+      drawLeg(forward, 1, forward > 0 ? 1.12 : 0.88)
     }
 
-    if ((ranks['serrated-claws'] ?? 0) + (ranks['execution-fangs'] ?? 0) > 0) {
-      drawArm(-0.45, GENE_COLORS.fang, 28 * visual, 6)
-      drawArm(0.45, GENE_COLORS.fang, 28 * visual, 6)
+    const nose = point(bodyLength * 0.54, 0)
+    const right = point(1, bodyWidth * 0.5)
+    const rear = point(-bodyLength * 0.5, 0)
+    const left = point(1, -bodyWidth * 0.5)
+    const undersideOffset = point(-2, 2)
+    graphics.fillStyle(undersideColor, 1).fillPoints([
+      { x: nose.x + 4, y: nose.y + 5 },
+      { x: right.x + 4, y: right.y + 5 },
+      { x: rear.x + 4, y: rear.y + 5 },
+      { x: left.x + 4, y: left.y + 5 },
+    ], true)
+    graphics.fillStyle(bodyColor, 1).fillPoints([nose, right, rear, left], true)
+    const abdomen = point(-bodyLength * 0.18, 0)
+    const thorax = point(bodyLength * 0.2, 0)
+    graphics.fillStyle(undersideColor, 0.96).fillCircle(abdomen.x + 3, abdomen.y + 4, bodyWidth * 0.47 * visual)
+    graphics.fillStyle(bodyColor, 1).fillCircle(abdomen.x, abdomen.y, bodyWidth * 0.47 * visual)
+    graphics.fillStyle(undersideColor, 0.96).fillCircle(thorax.x + 3, thorax.y + 4, bodyWidth * 0.36 * visual)
+    graphics.fillStyle(bodyColor, 1).fillCircle(thorax.x, thorax.y, bodyWidth * 0.36 * visual)
+    graphics.fillStyle(0xffffff, 0.16).fillEllipse(
+      undersideOffset.x + Math.cos(angle) * 7 * visual,
+      undersideOffset.y + Math.sin(angle) * 7 * visual,
+      bodyLength * 0.42 * visual,
+      bodyWidth * 0.28 * visual,
+    )
+
+    for (let index = 0; index < appearance.dorsalSpikes; index += 1) {
+      const progress = appearance.dorsalSpikes <= 1 ? 0.5 : index / (appearance.dorsalSpikes - 1)
+      const forward = -bodyLength * 0.32 + bodyLength * 0.58 * progress
+      const root = point(forward, -bodyWidth * 0.38)
+      const rootBack = point(forward - 5, -bodyWidth * 0.33)
+      const tip = point(forward - 1, -bodyWidth * (0.62 + this.evolutionStage * 0.025))
+      graphics.fillStyle(dominant === 'fang' ? 0xffdf8b : bodyColor, 0.94).fillTriangle(
+        rootBack.x, rootBack.y, root.x, root.y, tip.x, tip.y,
+      )
+    }
+
+    const head = point(bodyLength * 0.47 - pose.headDip, 0)
+    graphics.fillStyle(undersideColor, 1).fillCircle(head.x + 3, head.y + 4, appearance.headRadius * visual)
+    graphics.fillStyle(bodyColor, 1).fillCircle(head.x, head.y, appearance.headRadius * visual)
+    const eye = point(bodyLength * 0.54, -appearance.headRadius * 0.42)
+    graphics.fillStyle(0xfff1b5, 1).fillCircle(eye.x, eye.y, Math.max(2.4, 2.4 + this.evolutionStage * 0.18) * visual)
+    graphics.fillStyle(0x08100c, 0.95).fillCircle(eye.x + Math.cos(angle) * visual, eye.y + Math.sin(angle) * visual, 1.2 * visual)
+
+    if (dominant === 'fang' || (ranks['serrated-claws'] ?? 0) + (ranks['execution-fangs'] ?? 0) > 0) {
+      for (const side of [-1, 1]) {
+        const clawRoot = point(bodyLength * 0.18, side * bodyWidth * 0.34)
+        const clawJoint = point(bodyLength * 0.28, side * (bodyWidth * 0.55 + appearance.limbReach * 0.3))
+        const clawTip = point(bodyLength * 0.62 + appearance.limbReach * 0.45, side * (bodyWidth * 0.5 + appearance.limbReach * 0.48))
+        graphics.lineStyle((appearance.limbThickness + 1.5) * visual, 0xb86a35, 1)
+        graphics.lineBetween(clawRoot.x, clawRoot.y, clawJoint.x, clawJoint.y)
+        graphics.lineStyle(Math.max(3, appearance.limbThickness * 0.66) * visual, 0xffd37a, 1)
+        graphics.lineBetween(clawJoint.x, clawJoint.y, clawTip.x, clawTip.y)
+        const bladeBase = point(bodyLength * 0.49 + appearance.limbReach * 0.18, side * (bodyWidth * 0.45 + appearance.limbReach * 0.34))
+        graphics.fillStyle(0xffd37a, 0.98).fillTriangle(
+          clawJoint.x, clawJoint.y,
+          clawTip.x, clawTip.y,
+          bladeBase.x, bladeBase.y,
+        )
+        const fangRoot = point(bodyLength * 0.53, side * appearance.headRadius * 0.48)
+        const fangTip = point(bodyLength * 0.57 + appearance.fangLength, side * appearance.headRadius * 0.62)
+        graphics.lineStyle(Math.max(2, appearance.fangLength * 0.3) * visual, 0xffedbf, 1)
+        graphics.lineBetween(fangRoot.x, fangRoot.y, fangTip.x, fangTip.y)
+      }
     }
     if ((ranks['swift-nerves'] ?? 0) + (ranks['wind-sacs'] ?? 0) > 0) {
-      graphics.fillStyle(GENE_COLORS.wing, 0.45)
-      graphics.fillTriangle(
-        x, bodyY,
-        x + Math.cos(angle + 1.7) * 34 * visual,
-        bodyY + Math.sin(angle + 1.7) * 34 * visual,
-        x + Math.cos(angle + 2.4) * 18 * visual,
-        bodyY + Math.sin(angle + 2.4) * 18 * visual,
-      )
-      graphics.fillTriangle(
-        x, bodyY,
-        x + Math.cos(angle - 1.7) * 34 * visual,
-        bodyY + Math.sin(angle - 1.7) * 34 * visual,
-        x + Math.cos(angle - 2.4) * 18 * visual,
-        bodyY + Math.sin(angle - 2.4) * 18 * visual,
-      )
+      for (let pair = 0; pair < appearance.wingPairCount; pair += 1) {
+        const pairScale = 1 - pair * 0.24
+        const forward = 5 - pair * 12
+        for (const side of [-1, 1]) {
+          const root = point(forward, side * bodyWidth * 0.28)
+          const tip = point(forward - 3, side * (bodyWidth * 0.48 + appearance.wingSpan * pairScale))
+          const trailing = point(-bodyLength * (0.34 + pair * 0.08), side * (bodyWidth * 0.42 + appearance.wingSpan * 0.5 * pairScale))
+          graphics.fillStyle(pair === 0 ? 0x79f2a1 : 0xbfffd7, pair === 0 ? 0.5 : 0.34)
+            .fillTriangle(root.x, root.y, tip.x, tip.y, trailing.x, trailing.y)
+          graphics.lineStyle(1.5 * visual, 0xd9ffe8, 0.58)
+            .lineBetween(root.x, root.y, tip.x, tip.y)
+            .lineBetween(root.x, root.y, trailing.x, trailing.y)
+        }
+      }
+      if (appearance.stage >= 4) {
+        for (const side of [-1, 0, 1]) {
+          const trailStart = point(-bodyLength * 0.46, side * 5)
+          const trailEnd = point(-bodyLength * 0.8 - appearance.stage * 2, side * (8 + Math.abs(side) * 5))
+          graphics.lineStyle((2.6 - Math.abs(side) * 0.5) * visual, 0x79f2a1, 0.28)
+            .lineBetween(trailStart.x, trailStart.y, trailEnd.x, trailEnd.y)
+        }
+      }
     }
     if ((ranks['reactive-shell'] ?? 0) + (ranks['mirror-carapace'] ?? 0) > 0) {
-      graphics.lineStyle(5, GENE_COLORS.carapace, 0.8)
-      graphics.strokeEllipse(x, bodyY, (radius + 7 * visual) * 1.15, radius + 10 * visual)
+      for (let index = 0; index < appearance.armorPlateCount; index += 1) {
+        const progress = (index + 1) / (appearance.armorPlateCount + 1)
+        const forward = -bodyLength * 0.4 + bodyLength * 0.78 * progress
+        const halfWidth = bodyWidth * (0.48 - Math.abs(progress - 0.5) * 0.16) * appearance.armorBulk
+        const frontLeft = point(forward + 4.5, -halfWidth)
+        const frontRight = point(forward + 4.5, halfWidth)
+        const backRight = point(forward - 5.5, halfWidth * 0.9)
+        const backLeft = point(forward - 5.5, -halfWidth * 0.9)
+        graphics.fillStyle(index % 2 === 0 ? 0x4d82bd : 0x315f98, 0.96)
+        graphics.fillPoints([frontLeft, frontRight, backRight, backLeft], true)
+        graphics.lineStyle(1.5 * visual, 0xa9dcff, 0.72)
+        graphics.lineBetween(frontLeft.x, frontLeft.y, frontRight.x, frontRight.y)
+      }
+      if (appearance.stage >= 4) {
+        for (const side of [-1, 1]) {
+          const inner = point(bodyLength * 0.2, side * bodyWidth * 0.42)
+          const outer = point(bodyLength * 0.24, side * bodyWidth * appearance.armorBulk * 0.78)
+          const rearShield = point(-bodyLength * 0.04, side * bodyWidth * appearance.armorBulk * 0.7)
+          graphics.fillStyle(0x65a9ff, 0.96).fillTriangle(
+            inner.x, inner.y, outer.x, outer.y, rearShield.x, rearShield.y,
+          )
+          graphics.lineStyle(2 * visual, 0xc4e6ff, 0.76).lineBetween(outer.x, outer.y, rearShield.x, rearShield.y)
+        }
+      }
     }
     if ((ranks['symbiotic-brood'] ?? 0) + (ranks['devouring-colony'] ?? 0) > 0) {
-      graphics.fillStyle(GENE_COLORS.swarm, 0.8)
-      graphics.fillCircle(x + Math.cos(angle + 2.2) * 16 * visual, bodyY + Math.sin(angle + 2.2) * 16 * visual, 5 * visual)
-      graphics.fillCircle(x + Math.cos(angle - 2.2) * 18 * visual, bodyY + Math.sin(angle - 2.2) * 18 * visual, 4 * visual)
+      const sac = point(-bodyLength * 0.22, 0)
+      const sacPulse = 1 + Math.sin(time / 150) * 0.08
+      graphics.fillStyle(0x174f46, 0.98).fillCircle(sac.x + 2, sac.y + 3, appearance.broodSacRadius * 1.25 * visual)
+      graphics.fillStyle(0x74e8d1, 0.92).fillCircle(sac.x, sac.y, appearance.broodSacRadius * sacPulse * visual)
+      graphics.fillStyle(0xe0fff8, 0.62).fillCircle(
+        sac.x - appearance.broodSacRadius * 0.28 * visual,
+        sac.y - appearance.broodSacRadius * 0.3 * visual,
+        appearance.broodSacRadius * 0.28 * visual,
+      )
+      const broodOrbit = (bodyWidth * 0.72 + 10) * visual
+      for (let index = 0; index < appearance.broodCount; index += 1) {
+        const broodAngle = -time / 680 + index / appearance.broodCount * Math.PI * 2
+        const broodX = x + Math.cos(broodAngle) * broodOrbit
+        const broodY = bodyY + Math.sin(broodAngle) * broodOrbit * 0.54
+        const broodRadius = (2.8 + (index % 2) * 0.8 + appearance.stage * 0.12) * visual
+        graphics.fillStyle(0x153d36, 0.94).fillCircle(broodX + 1.5, broodY + 2, broodRadius * 1.2)
+        graphics.fillStyle(index % 2 === 0 ? 0xa8ffe9 : 0x63d8c0, 0.96).fillCircle(broodX, broodY, broodRadius)
+      }
     }
     if ((ranks['toxin-coating'] ?? 0) + (ranks['toxic-blood'] ?? 0) > 0) {
-      graphics.lineStyle(3, GENE_COLORS.venom, 0.85)
-      graphics.lineBetween(
-        x,
-        bodyY,
-        x + Math.cos(angle + Math.PI) * 26 * visual,
-        bodyY + Math.sin(angle + Math.PI) * 26 * visual,
+      const gland = point(-bodyLength * 0.48 - appearance.tailLength * 0.35, 0)
+      for (let segment = 0; segment < 3; segment += 1) {
+        const segmentPoint = point(-bodyLength * (0.34 + segment * 0.14), Math.sin(time / 220 + segment) * 2.4)
+        graphics.fillStyle(segment % 2 === 0 ? 0x6aa83c : 0x47752c, 0.98)
+          .fillCircle(segmentPoint.x, segmentPoint.y, (appearance.venomGlandRadius * (0.72 - segment * 0.08)) * visual)
+      }
+      graphics.fillStyle(0x345c28, 1).fillCircle(gland.x + 2, gland.y + 3, appearance.venomGlandRadius * 1.18 * visual)
+      graphics.fillStyle(GENE_COLORS.venom, 0.96).fillCircle(gland.x, gland.y, appearance.venomGlandRadius * visual)
+      graphics.fillStyle(0xe8ffb8, 0.62).fillCircle(
+        gland.x - appearance.venomGlandRadius * 0.28 * visual,
+        gland.y - appearance.venomGlandRadius * 0.3 * visual,
+        appearance.venomGlandRadius * 0.26 * visual,
       )
-      graphics.fillStyle(GENE_COLORS.venom, 0.9)
-      graphics.fillCircle(
-        x + Math.cos(angle + Math.PI) * 26 * visual,
-        bodyY + Math.sin(angle + Math.PI) * 26 * visual,
-        5 * visual,
+      const needleTip = point(-bodyLength * 0.52 - appearance.venomNeedleLength, 0)
+      const needleLeft = point(-bodyLength * 0.52 - appearance.venomNeedleLength * 0.28, -appearance.venomGlandRadius * 0.46)
+      const needleRight = point(-bodyLength * 0.52 - appearance.venomNeedleLength * 0.28, appearance.venomGlandRadius * 0.46)
+      graphics.fillStyle(0xe8ffb8, 0.98).fillTriangle(
+        needleTip.x, needleTip.y, needleLeft.x, needleLeft.y, needleRight.x, needleRight.y,
       )
+      if (appearance.stage >= 4) {
+        for (const side of [-1, 1]) {
+          const drop = point(-bodyLength * 0.28, side * (bodyWidth * 0.48 + 5))
+          graphics.fillStyle(0xa7ef62, 0.72).fillCircle(drop.x, drop.y + Math.sin(time / 180 + side) * 3 * visual, 2.5 * visual)
+        }
+      }
     }
     if ((ranks['pulse-gland'] ?? 0) + (ranks['rift-chamber'] ?? 0) > 0) {
-      graphics.lineStyle(2, GENE_COLORS.rift, 0.55 + Math.sin(time / 90) * 0.25)
-      graphics.strokeEllipse(x, bodyY, (radius + 12 * visual) * 1.1, radius + 14 * visual)
+      const core = point(bodyLength * 0.06, 0)
+      const riftPulse = 1 + Math.sin(time / 105) * 0.12
+      graphics.fillStyle(0x25113c, 0.98).fillCircle(core.x, core.y, appearance.riftCoreRadius * 1.45 * visual)
+      graphics.lineStyle(3 * visual, GENE_COLORS.rift, 0.82).strokeCircle(core.x, core.y, appearance.riftCoreRadius * riftPulse * visual)
+      graphics.fillStyle(0xf2d9ff, 0.86).fillCircle(core.x, core.y, Math.max(2.5, appearance.riftCoreRadius * 0.34) * visual)
+      const orbitRadius = (18 + appearance.stage * 2.2) * visual
+      for (let index = 0; index < appearance.riftOrbCount; index += 1) {
+        const orbitAngle = time / 420 + index / appearance.riftOrbCount * Math.PI * 2
+        const orbX = core.x + Math.cos(orbitAngle) * orbitRadius
+        const orbY = core.y + Math.sin(orbitAngle) * orbitRadius * 0.56
+        graphics.lineStyle(1.2 * visual, GENE_COLORS.rift, 0.18).lineBetween(core.x, core.y, orbX, orbY)
+        graphics.fillStyle(index % 2 === 0 ? 0xe0b0ff : 0x8c5cff, 0.9)
+          .fillCircle(orbX, orbY, (2.5 + appearance.stage * 0.24) * visual)
+      }
+      if (appearance.stage >= 3) {
+        for (const side of [-1, 1]) {
+          const root = point(-bodyLength * 0.34, side * bodyWidth * 0.22)
+          const bend = point(-bodyLength * 0.58, side * (bodyWidth * 0.45 + 5))
+          const tip = point(-bodyLength * 0.7 - appearance.stage * 1.5, side * (bodyWidth * 0.7 + 8))
+          graphics.lineStyle((3.5 - Math.abs(side) * 0.5) * visual, 0x8d58c4, 0.82)
+          graphics.lineBetween(root.x, root.y, bend.x, bend.y)
+          graphics.lineStyle(2 * visual, 0xd9a6ff, 0.72).lineBetween(bend.x, bend.y, tip.x, tip.y)
+        }
+      }
+    }
+
+    if (appearance.apex) {
+      const alpha = 0.42 + Math.sin(time / 120) * 0.18
+      if (dominant !== 'rift') {
+        graphics.lineStyle(3 * visual, bodyColor, alpha)
+        graphics.strokeEllipse(x, bodyY, (bodyLength + 22) * visual, (bodyWidth + 20) * visual)
+      }
+      const crown = point(bodyLength * 0.38, 0)
+      if (dominant === 'carapace') {
+        const crownFront = point(bodyLength * 0.7, 0)
+        const crownLeft = point(bodyLength * 0.38, -appearance.headRadius * 1.15)
+        const crownRight = point(bodyLength * 0.38, appearance.headRadius * 1.15)
+        const crownRear = point(bodyLength * 0.18, 0)
+        graphics.fillStyle(0x2f5f96, 0.98).fillPoints([crownFront, crownRight, crownRear, crownLeft], true)
+        graphics.lineStyle(3 * visual, 0xc4e6ff, 0.86)
+          .lineBetween(crownLeft.x, crownLeft.y, crownFront.x, crownFront.y)
+          .lineBetween(crownFront.x, crownFront.y, crownRight.x, crownRight.y)
+        graphics.fillStyle(0xe9f7ff, 0.82).fillCircle(crownFront.x, crownFront.y, 3.5 * visual)
+      } else if (dominant === 'rift') {
+        graphics.lineStyle(3 * visual, 0xd9a6ff, 0.72)
+          .strokeCircle(crown.x, crown.y, appearance.headRadius * 1.32 * visual)
+        graphics.fillStyle(0xffffff, 0.86).fillCircle(crown.x, crown.y, 4 * visual)
+      } else if (dominant === 'wing') {
+        for (const side of [-1, 1]) {
+          const root = point(bodyLength * 0.38, side * appearance.headRadius * 0.48)
+          const inner = point(bodyLength * 0.5, side * appearance.headRadius * 0.86)
+          const tip = point(bodyLength * 0.72, side * appearance.headRadius * 1.35)
+          graphics.fillStyle(0xbfffd7, 0.9).fillTriangle(root.x, root.y, inner.x, inner.y, tip.x, tip.y)
+        }
+        graphics.fillStyle(0xf0fff6, 0.8).fillCircle(crown.x, crown.y, 3.5 * visual)
+      } else if (dominant === 'swarm') {
+        for (const side of [-1, 0, 1]) {
+          const node = point(bodyLength * (0.45 + (side === 0 ? 0.13 : 0)), side * appearance.headRadius * 0.82)
+          graphics.fillStyle(side === 0 ? 0xdffff7 : 0x74e8d1, 0.94)
+            .fillCircle(node.x, node.y, (side === 0 ? 5 : 4) * visual)
+        }
+      } else if (dominant === 'venom') {
+        const needleBaseLeft = point(bodyLength * 0.38, -appearance.headRadius * 0.6)
+        const needleBaseRight = point(bodyLength * 0.38, appearance.headRadius * 0.6)
+        const needleCrown = point(bodyLength * 0.82, 0)
+        graphics.fillStyle(0xe8ffb8, 0.96).fillTriangle(
+          needleBaseLeft.x, needleBaseLeft.y,
+          needleBaseRight.x, needleBaseRight.y,
+          needleCrown.x, needleCrown.y,
+        )
+        graphics.fillStyle(0xa7ef62, 0.9).fillCircle(crown.x, crown.y, 4.5 * visual)
+      } else {
+        for (const side of [-1, 0, 1]) {
+          const root = point(bodyLength * 0.4, side * appearance.headRadius * 0.55)
+          const rootBack = point(bodyLength * 0.3, side * appearance.headRadius * 0.72)
+          const tip = point(bodyLength * (0.72 + (side === 0 ? 0.08 : 0)), side * appearance.headRadius * 0.85)
+          graphics.fillStyle(side === 0 ? 0xfff3bd : 0xffd37a, 0.94).fillTriangle(
+            root.x, root.y, rootBack.x, rootBack.y, tip.x, tip.y,
+          )
+        }
+        graphics.fillStyle(0xffffff, 0.72).fillCircle(crown.x, crown.y, 3.5 * visual)
+      }
+    }
+
+    if (time < this.evolutionBurstUntil) {
+      const progress = 1 - Math.max(0, this.evolutionBurstUntil - time) / 1100
+      graphics.lineStyle((6 - progress * 4) * visual, bodyColor, 0.8 * (1 - progress))
+      graphics.strokeCircle(x, bodyY, (32 + progress * 54) * visual)
     }
 
     if (isEvolutionPreviewReady(this.evolution, evolutionRequirementForStage(this.evolutionStage)) && dominant) {
       graphics.lineStyle(2, GENE_COLORS[dominant], 0.35 + lean[dominant] * 0.4)
-      graphics.strokeEllipse(x, bodyY, (radius + 16 * visual) * 1.1, radius + 18 * visual)
+      graphics.strokeEllipse(x, bodyY, (bodyLength + 24) * visual, (bodyWidth + 24) * visual)
     }
     const buffActive = eliteOrbBuffRemainingMs(this.eliteOrbBuff, time) > 0
     if (buffActive && this.eliteOrbBuff) {
       graphics.lineStyle(3, ELITE_AFFIXES[this.eliteOrbBuff.affix].color, 0.45 + Math.sin(time / 90) * 0.2)
-      graphics.strokeEllipse(x, bodyY, (radius + 20 * visual) * 1.1, radius + 22 * visual)
+      graphics.strokeEllipse(x, bodyY, (bodyLength + 30) * visual, (bodyWidth + 30) * visual)
     }
   }
 
@@ -3300,7 +3958,6 @@ interface RunResult {
   outcome: 'victory' | 'death'
   formName: string
   elapsedSeconds: number
-  retries: number
   kills: number
   exploredPercent: number
   mutations: string[]
@@ -3322,7 +3979,7 @@ function showRunResult(result: RunResult) {
     <div class="result-stat"><strong>${minutes}:${seconds}</strong><span>本局时长</span></div>
     <div class="result-stat"><strong>${result.kills}</strong><span>猎物击杀</span></div>
     <div class="result-stat"><strong>${result.exploredPercent}%</strong><span>地图探索</span></div>
-    <div class="result-stat"><strong>${result.retries}</strong><span>挑战重试</span></div>
+    <div class="result-stat"><strong>${result.outcome === 'victory' ? '完成' : '失败'}</strong><span>Boss结果</span></div>
   `
   const chain = result.mutations.length > 0
     ? `进化基因链：${result.mutations.join(' → ')}`
@@ -3333,10 +3990,27 @@ function showRunResult(result: RunResult) {
   window.setTimeout(() => document.querySelector<HTMLButtonElement>('#restart-run')?.focus(), 120)
 }
 
-document.querySelector<HTMLButtonElement>('#restart-run')?.addEventListener('click', () => window.location.reload())
+document.querySelector<HTMLButtonElement>('#restart-run')?.addEventListener('click', () => {
+  if (document.body.classList.contains('is-v4-live')) {
+    const params = new URLSearchParams(window.location.search)
+    params.set('spawnSeed', `gloamwood-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`)
+    params.delete('boss')
+    params.delete('prop')
+    params.delete('nest')
+    params.delete('enemy')
+    params.delete('health')
+    params.delete('hazard')
+    params.delete('combatStyle')
+    params.delete('evolutionRoute')
+    params.delete('evolutionStage')
+    window.history.replaceState(null, '', `${window.location.pathname}?${params}`)
+  }
+  window.location.reload()
+})
 
 const debugRequested = new URLSearchParams(window.location.search).get('debug') === '1'
 let game: Phaser.Game | undefined
+let quality3DCleanup: (() => void) | undefined
 let starterKeyHandler: ((event: KeyboardEvent) => void) | undefined
 
 function installDebugApi(activeGame: Phaser.Game) {
@@ -3345,7 +4019,9 @@ function installDebugApi(activeGame: Phaser.Game) {
   const debugApi = {
     getState: () => scene().getDebugState(),
     setStage: (stage: number) => scene().applyDebugStage(stage),
+    setEvolutionRoute: (family: GeneFamily, stage: number) => scene().applyDebugEvolutionRoute(family, stage),
     grantSigils: () => scene().grantDebugSigils(),
+    advanceNest: () => scene().advanceDebugNest(),
   }
   ;(window as Window & { __EA_DEBUG__?: typeof debugApi }).__EA_DEBUG__ = debugApi
   if (debugRequested) {
@@ -3361,16 +4037,53 @@ function installDebugApi(activeGame: Phaser.Game) {
       }
     }, 100)
     window.addEventListener('beforeunload', () => window.clearInterval(debugInterval), { once: true })
+    const search = new URLSearchParams(window.location.search)
+    const route = search.get('evolutionRoute') as GeneFamily | null
+    const stage = Number(search.get('evolutionStage'))
+    if (route && GENE_FAMILIES.includes(route) && Number.isFinite(stage)) {
+      window.setTimeout(() => scene().applyDebugEvolutionRoute(route, stage), 420)
+    }
   }
 }
 
 function launchRun(starterId: StarterVariantId) {
   if (game) return
+  const huntSliceRequested = isGloamwoodHuntSliceRequested()
+  const nestLabRequested = isMonsterNestLabRequested()
   selectedStarter = STARTER_VARIANTS[starterId]
   if (starterKeyHandler) window.removeEventListener('keydown', starterKeyHandler)
   const overlay = document.querySelector<HTMLElement>('#starter-overlay')!
   overlay.classList.add('is-leaving')
   overlay.setAttribute('aria-hidden', 'true')
+  if (!huntSliceRequested && !nestLabRequested) {
+    const params = new URLSearchParams(window.location.search)
+    params.set('maplab', '4')
+    params.set('live', '1')
+    params.set('starter', starterId)
+    if (!params.has('spawnSeed')) {
+      params.set('spawnSeed', `gloamwood-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`)
+    }
+    window.history.replaceState(null, '', `${window.location.pathname}?${params}`)
+    window.setTimeout(() => {
+      overlay.classList.remove('is-open', 'is-leaving')
+      launchGloamwoodExplorationLab()
+    }, 220)
+    return
+  }
+  if (huntSliceRequested) {
+    document.title = '猎杀切片 · 幽影林地战斗可读性'
+    const badge = document.querySelector<HTMLElement>('.prototype-badge')
+    if (badge) badge.textContent = 'Hunt Lab · 林地战斗切片'
+  } else if (nestLabRequested) {
+    document.title = '窝点实战 · 棘牙地穴'
+    const badge = document.querySelector<HTMLElement>('.prototype-badge')
+    if (badge) badge.textContent = 'Nest Lab · 两波守卫与核心'
+    const help = document.querySelector<HTMLElement>('.helpbar')
+    if (help) help.innerHTML = [
+      '<span><strong>点击 / Tab</strong> 锁定 · <strong>1 / 2 / 3</strong> 近战、远程、魔法 · 清除两波守卫后摧毁核心</span>',
+      debugRequested ? '<button class="maplab-stage-button" type="button" data-nest-debug="advance">QA 推进阶段</button>' : '',
+    ].join('')
+  }
 
   window.setTimeout(() => {
     overlay.classList.remove('is-open', 'is-leaving')
@@ -3386,10 +4099,16 @@ function launchRun(starterId: StarterVariantId) {
       render: { antialias: true, pixelArt: false },
     })
     installDebugApi(game)
+    if (nestLabRequested && debugRequested) {
+      document.querySelector<HTMLButtonElement>('[data-nest-debug="advance"]')?.addEventListener('click', () => {
+        const scene = game?.scene.getScene('prototype') as PrototypeScene | undefined
+        scene?.advanceDebugNest()
+      })
+    }
   }, 220)
 }
 
-function launchMapLab() {
+function launchLegacyMapLab() {
   if (game) return
   document.body.classList.add('is-maplab')
   document.title = '地图工坊 · 树木'
@@ -3432,6 +4151,355 @@ function launchMapLab() {
   }
 }
 
+function launchMapLabV2() {
+  if (game) return
+  document.body.classList.add('is-maplab')
+  document.title = '地图工坊 V2 · 雾光氛围'
+  const overlay = document.querySelector<HTMLElement>('#starter-overlay')
+  overlay?.classList.remove('is-open')
+  overlay?.setAttribute('aria-hidden', 'true')
+  overlay?.setAttribute('hidden', '')
+  document.querySelector<HTMLElement>('#evolution-hud')?.setAttribute('hidden', '')
+  document.querySelector<HTMLElement>('#result-overlay')?.setAttribute('hidden', '')
+  document.querySelector<HTMLElement>('#bestiary-overlay')?.setAttribute('hidden', '')
+  const badge = document.querySelector<HTMLElement>('.prototype-badge')
+  if (badge) badge.textContent = 'Map Lab V2 · 第六层 · 氛围'
+  const help = document.querySelector<HTMLElement>('.helpbar')
+  if (help) {
+    help.innerHTML = [
+      '<button class="maplab-stage-button" type="button" data-maplab-stage="ground" aria-pressed="false"><strong>1</strong> 基础地面</button>',
+      '<button class="maplab-stage-button" type="button" data-maplab-stage="elevation" aria-pressed="false"><strong>2</strong> 高差悬崖</button>',
+      '<button class="maplab-stage-button" type="button" data-maplab-stage="riverbanks" aria-pressed="false"><strong>3</strong> 河岸浅滩</button>',
+      '<button class="maplab-stage-button" type="button" data-maplab-stage="trees" aria-pressed="false"><strong>4</strong> 树木分层</button>',
+      '<button class="maplab-stage-button" type="button" data-maplab-stage="landmarks" aria-pressed="false"><strong>5</strong> 岩石遗迹</button>',
+      '<button class="maplab-stage-button is-active" type="button" data-maplab-stage="atmosphere" aria-pressed="true"><strong>6</strong> 雾光氛围</button>',
+      '<span class="maplab-camera-help"><strong>WASD / 拖拽</strong> 平移 · <strong>滚轮 · Q/E</strong> 缩放</span>',
+      '<span class="divider">/</span>',
+      '<span class="optional">第六层只验收薄雾、冷暖光与路线可读性</span>',
+    ].join('')
+  }
+  game = new Phaser.Game({
+    type: Phaser.AUTO,
+    parent: 'game-container',
+    width: 1280,
+    height: 720,
+    backgroundColor: '#050906',
+    scene: MapLabV2Scene,
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    render: { antialias: true, pixelArt: false },
+  })
+  const debugRequested = new URLSearchParams(window.location.search).get('debug') === '1'
+  if (import.meta.env.DEV || debugRequested) {
+    const scene = () => game!.scene.getScene(MAP_LAB_V2.sceneKey) as MapLabV2Scene
+    const debugApi = { getState: () => scene().getDebugState() }
+    ;(window as Window & { __EA_DEBUG__?: typeof debugApi }).__EA_DEBUG__ = debugApi
+  }
+  document.querySelectorAll<HTMLButtonElement>('[data-maplab-stage]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const stage = button.dataset.maplabStage
+      if (stage === 'ground' || stage === 'elevation' || stage === 'riverbanks' || stage === 'trees' || stage === 'landmarks' || stage === 'atmosphere') {
+        const scene = game!.scene.getScene(MAP_LAB_V2.sceneKey) as MapLabV2Scene
+        scene.setStage(stage)
+      }
+    })
+  })
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== '1' && event.key !== '2' && event.key !== '3' && event.key !== '4' && event.key !== '5' && event.key !== '6') return
+    const scene = game!.scene.getScene(MAP_LAB_V2.sceneKey) as MapLabV2Scene
+    const stages: Record<string, MapLabV2Stage> = { '1': 'ground', '2': 'elevation', '3': 'riverbanks', '4': 'trees', '5': 'landmarks', '6': 'atmosphere' }
+    scene.setStage(stages[event.key])
+  })
+}
+
+function launchQualitySlice() {
+  if (game) return
+  document.body.classList.add('is-maplab')
+  document.body.classList.add('is-quality-slice')
+  document.title = '进化竞技场 · 品质基准样板'
+  const overlay = document.querySelector<HTMLElement>('#starter-overlay')
+  overlay?.classList.remove('is-open')
+  overlay?.setAttribute('aria-hidden', 'true')
+  overlay?.setAttribute('hidden', '')
+  document.querySelector<HTMLElement>('#evolution-hud')?.setAttribute('hidden', '')
+  document.querySelector<HTMLElement>('#result-overlay')?.setAttribute('hidden', '')
+  document.querySelector<HTMLElement>('#bestiary-overlay')?.setAttribute('hidden', '')
+  const badge = document.querySelector<HTMLElement>('.prototype-badge')
+  if (badge) badge.textContent = 'Quality Slice · 地图与角色比例'
+  const help = document.querySelector<HTMLElement>('.helpbar')
+  if (help) help.innerHTML = [
+    '<button class="maplab-stage-button" type="button" data-quality-action="collision" aria-pressed="false"><strong>C</strong> 碰撞校验</button>',
+    '<span class="maplab-camera-help"><strong>WASD / 点击地面</strong> 移动 · 高崖、森林壁和水域不可穿越</span>',
+    '<span class="divider">/</span>',
+    '<span class="optional">幼龙四足步态 · 可见身高约112px · 主路可并排5.5个角色</span>',
+  ].join('')
+  game = new Phaser.Game({
+    type: Phaser.AUTO,
+    parent: 'game-container',
+    width: 1280,
+    height: window.innerHeight <= 500 ? 590 : 720,
+    backgroundColor: '#07100b',
+    physics: { default: 'arcade', arcade: { debug: false } },
+    scene: QualitySliceScene,
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    render: { antialias: true, pixelArt: false },
+  })
+  const scene = () => game!.scene.getScene(QUALITY_SLICE.sceneKey) as QualitySliceScene
+  const debugRequested = new URLSearchParams(window.location.search).get('debug') === '1'
+  if (import.meta.env.DEV || debugRequested) {
+    const debugApi = { getState: () => scene().getDebugState() }
+    ;(window as Window & { __EA_DEBUG__?: typeof debugApi }).__EA_DEBUG__ = debugApi
+    if (debugRequested) {
+      const output = document.createElement('output')
+      output.id = 'debug-state'
+      output.hidden = true
+      document.body.append(output)
+      window.setInterval(() => { output.textContent = JSON.stringify(debugApi.getState()) }, 250)
+    }
+  }
+  document.querySelector<HTMLButtonElement>('[data-quality-action="collision"]')?.addEventListener('click', (event) => {
+    const button = event.currentTarget as HTMLButtonElement
+    scene().toggleCollisionDebug()
+    button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'))
+  })
+}
+
+function launchGloamwoodSpaceLab() {
+  if (game) return
+  document.body.classList.add('is-maplab')
+  document.title = '地图工坊 V3 · 宽阔空间骨架'
+  const overlay = document.querySelector<HTMLElement>('#starter-overlay')
+  overlay?.classList.remove('is-open')
+  overlay?.setAttribute('aria-hidden', 'true')
+  overlay?.setAttribute('hidden', '')
+  document.querySelector<HTMLElement>('#evolution-hud')?.setAttribute('hidden', '')
+  document.querySelector<HTMLElement>('#result-overlay')?.setAttribute('hidden', '')
+  document.querySelector<HTMLElement>('#bestiary-overlay')?.setAttribute('hidden', '')
+  const badge = document.querySelector<HTMLElement>('.prototype-badge')
+  if (badge) badge.textContent = 'Map Lab V3 · 第一层 · 宽阔地面'
+  const help = document.querySelector<HTMLElement>('.helpbar')
+  if (help) {
+    help.innerHTML = [
+      '<button class="maplab-stage-button is-active" type="button" data-space-action="ranges" aria-pressed="true"><strong>R</strong> 攻击尺度</button>',
+      '<button class="maplab-stage-button" type="button" data-space-action="layer" aria-pressed="false"><strong>G</strong> 骨架对照</button>',
+      '<button class="maplab-stage-button" type="button" data-space-action="overview" aria-pressed="false"><strong>M</strong> 全图总览</button>',
+      '<span class="maplab-camera-help"><strong>WASD / 点击地面</strong> 移动 · 黄圈远程 390 · 紫圈魔法 430</span>',
+      '<span class="divider">/</span>',
+      '<span class="optional">四个大空间 · 五条宽猎路 · 暂不铺最终美术</span>',
+    ].join('')
+  }
+  game = new Phaser.Game({
+    type: Phaser.AUTO,
+    parent: 'game-container',
+    width: 1280,
+    height: 720,
+    backgroundColor: '#07100c',
+    physics: { default: 'arcade', arcade: { debug: false } },
+    scene: GloamwoodSpaceLabScene,
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    render: { antialias: true, pixelArt: false },
+  })
+  const scene = () => game!.scene.getScene(GLOAMWOOD_SPACE_LAYOUT.sceneKey) as GloamwoodSpaceLabScene
+  const debugRequested = new URLSearchParams(window.location.search).get('debug') === '1'
+  if (import.meta.env.DEV || debugRequested) {
+    const debugApi = { getState: () => scene().getDebugState() }
+    ;(window as Window & { __EA_DEBUG__?: typeof debugApi }).__EA_DEBUG__ = debugApi
+    if (debugRequested) {
+      const debugOutput = document.createElement('output')
+      debugOutput.id = 'debug-state'
+      debugOutput.hidden = true
+      document.body.append(debugOutput)
+      const debugInterval = window.setInterval(() => {
+        try {
+          debugOutput.textContent = JSON.stringify(debugApi.getState())
+        } catch {
+          window.clearInterval(debugInterval)
+        }
+      }, 250)
+    }
+  }
+  document.querySelector<HTMLButtonElement>('[data-space-action="ranges"]')?.addEventListener('click', () => scene().toggleRanges())
+  document.querySelector<HTMLButtonElement>('[data-space-action="layer"]')?.addEventListener('click', () => scene().toggleSkeleton())
+  document.querySelector<HTMLButtonElement>('[data-space-action="overview"]')?.addEventListener('click', (event) => {
+    const button = event.currentTarget as HTMLButtonElement
+    scene().setOverview(button.getAttribute('aria-pressed') !== 'true')
+  })
+  window.addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() === 'r') scene().toggleRanges()
+    if (event.key.toLowerCase() === 'g') scene().toggleSkeleton()
+    if (event.key.toLowerCase() === 'm') {
+      const button = document.querySelector<HTMLButtonElement>('[data-space-action="overview"]')
+      scene().setOverview(button?.getAttribute('aria-pressed') !== 'true')
+    }
+  })
+}
+
+function launchGloamwoodExplorationLab() {
+  if (game) return
+  const searchParams = new URLSearchParams(window.location.search)
+  const debugRequested = searchParams.get('debug') === '1'
+  const liveRunRequested = searchParams.get('live') === '1'
+  const debugNestId = searchParams.get('nest')
+  const debugHazardId = searchParams.get('hazard')
+  const debugMonsterType = searchParams.get('enemy')
+  const debugCombatStyle = searchParams.get('style')
+  const debugHealth = Number(searchParams.get('health'))
+  const debugBoss = searchParams.get('boss')
+  const debugPropValue = searchParams.get('prop')
+  const debugProp = debugPropValue === null ? Number.NaN : Number(debugPropValue)
+  document.body.classList.add('is-maplab')
+  document.body.classList.toggle('is-v4-live', liveRunRequested)
+  document.title = liveRunRequested ? '进化竞技场 Lite · 幽影林地' : '地图工坊 V4 · 八大生态窝点'
+  const overlay = document.querySelector<HTMLElement>('#starter-overlay')
+  overlay?.classList.remove('is-open')
+  overlay?.setAttribute('aria-hidden', 'true')
+  overlay?.setAttribute('hidden', '')
+  document.querySelector<HTMLElement>('#evolution-hud')?.setAttribute('hidden', '')
+  document.querySelector<HTMLElement>('#result-overlay')?.setAttribute('hidden', '')
+  document.querySelector<HTMLElement>('#bestiary-overlay')?.setAttribute('hidden', '')
+  const badge = document.querySelector<HTMLElement>('.prototype-badge')
+  if (badge) badge.textContent = liveRunRequested ? '幽影林地 · Hunt & Evolve' : 'Map Lab V4 · 八大特色战斗窝点'
+  const help = document.querySelector<HTMLElement>('.helpbar')
+  if (help) {
+    help.innerHTML = [
+      !liveRunRequested || debugRequested ? '<button class="maplab-stage-button" type="button" data-exploration-action="nests" aria-pressed="false"><strong>N</strong> 窝点范围</button>' : '',
+      liveRunRequested ? '' : '<button class="maplab-stage-button" type="button" data-exploration-action="spawn"><strong>S</strong> 随机出生</button>',
+      liveRunRequested ? '' : '<button class="maplab-stage-button" type="button" data-exploration-action="thorn"><strong>T</strong> 切换窝点</button>',
+      `<button class="maplab-stage-button" type="button" data-exploration-action="overview" aria-pressed="false"><strong>M</strong> ${liveRunRequested ? '探索地图' : '全图总览'}</button>`,
+      debugRequested ? '<button class="maplab-stage-button" type="button" data-exploration-action="advance"><strong>Q</strong> QA推进</button>' : '',
+      '<button class="maplab-stage-button" type="button" data-exploration-action="feedback" aria-expanded="false"><strong>F</strong> 反馈</button>',
+      `<span class="maplab-camera-help"><strong>WASD</strong> 移动 · <strong>点击/Tab</strong> 锁定 · <strong>1/2/3 + Space</strong> 战斗${liveRunRequested ? ' · <strong>R</strong> 抗拒生长' : ''}</span>`,
+      '<span class="divider">/</span>',
+      `<span class="optional">${liveRunRequested ? '猎杀吞噬决定进化 · 清理窝点后挑战古林之心' : '8个窝点拥有独立入口、2/3波节奏、机制、核心与奖励'}</span>`,
+    ].join('')
+  }
+  const feedbackPanel = document.createElement('section')
+  feedbackPanel.className = 'combat-feedback-panel'
+  feedbackPanel.dataset.combatFeedbackPanel = ''
+  feedbackPanel.setAttribute('aria-label', '战斗反馈设置')
+  feedbackPanel.hidden = true
+  feedbackPanel.innerHTML = [
+    '<header><strong>战斗反馈</strong><span>即时生效并保存在本机</span></header>',
+    '<button type="button" data-feedback-setting="shake">镜头震动：开</button>',
+    '<button type="button" data-feedback-setting="flash">受击闪光：开</button>',
+    '<button type="button" data-feedback-setting="volume">音效音量：60%</button>',
+  ].join('')
+  document.querySelector('#game-container')?.append(feedbackPanel)
+  game = new Phaser.Game({
+    type: Phaser.AUTO,
+    parent: 'game-container',
+    width: 1280,
+    height: 720,
+    backgroundColor: '#050b08',
+    physics: { default: 'arcade', arcade: { debug: false } },
+    scene: GloamwoodExplorationLabScene,
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    render: { antialias: true, pixelArt: false },
+  })
+  const scene = () => game!.scene.getScene(GLOAMWOOD_EXPLORATION_LAYOUT.sceneKey) as GloamwoodExplorationLabScene
+  if (import.meta.env.DEV || debugRequested) {
+    const debugApi = {
+      getState: () => scene().getDebugState(),
+      teleportToFirstNest: () => scene().teleportToFirstNest(),
+      teleportToNest: (id: string) => scene().teleportToNestById(id),
+      teleportToHazard: (id?: string) => scene().teleportToArenaHazard(id),
+      teleportToMonsterSkill: (type: string) => scene().teleportToMonsterSkill(type),
+      setCombatStyle: (style: string) => scene().setCombatStyleForDebug(style),
+      setPlayerHealth: (value: number) => scene().setPlayerHealthForDebug(value),
+      teleportToNextNest: () => scene().teleportToNextNest(),
+      advanceFirstNest: () => scene().advanceFirstNestDebug(),
+      startBoss: () => scene().startBossForDebug(),
+      defeatBoss: () => scene().defeatBossForDebug(),
+      teleportToProp: (index = 0) => scene().teleportToEnvironmentPropForDebug(index),
+    }
+    ;(window as Window & { __EA_DEBUG__?: typeof debugApi }).__EA_DEBUG__ = debugApi
+    if (debugRequested && debugNestId) {
+      window.setTimeout(() => {
+        try {
+          scene().teleportToNestById(debugNestId)
+          if (debugHazardId) scene().teleportToArenaHazard(debugHazardId === 'first' ? undefined : debugHazardId)
+        } catch {
+          // Invalid QA-only nest ids should not prevent the lab from launching.
+        }
+      }, 300)
+      if (debugCombatStyle) {
+        window.setTimeout(() => scene().setCombatStyleForDebug(debugCombatStyle), 520)
+      }
+      if (Number.isFinite(debugHealth) && debugHealth > 0) {
+        window.setTimeout(() => scene().setPlayerHealthForDebug(debugHealth), 620)
+      }
+      if (debugMonsterType) {
+        window.setTimeout(() => {
+          try {
+            scene().teleportToMonsterSkill(debugMonsterType)
+          } catch {
+            // QA-only monster selectors must not prevent the lab from launching.
+          }
+        }, 560)
+      }
+    }
+    if (debugRequested && (debugBoss === 'start' || debugBoss === 'defeat')) {
+      window.setTimeout(() => scene().startBossForDebug(), 700)
+      if (debugBoss === 'defeat') window.setTimeout(() => scene().defeatBossForDebug(), 1900)
+    }
+    if (debugRequested && Number.isFinite(debugProp) && debugProp >= 0) {
+      window.setTimeout(() => scene().teleportToEnvironmentPropForDebug(debugProp), 720)
+    }
+    if (debugRequested) {
+      const debugOutput = document.createElement('output')
+      debugOutput.id = 'debug-state'
+      debugOutput.hidden = true
+      document.body.append(debugOutput)
+      const debugInterval = window.setInterval(() => {
+        try {
+          debugOutput.textContent = JSON.stringify(debugApi.getState())
+        } catch {
+          window.clearInterval(debugInterval)
+        }
+      }, 250)
+    }
+  }
+  document.querySelector<HTMLButtonElement>('[data-exploration-action="nests"]')?.addEventListener('click', () => scene().toggleNestRanges())
+  document.querySelector<HTMLButtonElement>('[data-exploration-action="spawn"]')?.addEventListener('click', () => scene().randomizeSpawn())
+  document.querySelector<HTMLButtonElement>('[data-exploration-action="thorn"]')?.addEventListener('click', () => scene().teleportToNextNest())
+  document.querySelector<HTMLButtonElement>('[data-exploration-action="advance"]')?.addEventListener('click', () => scene().advanceFirstNestDebug())
+  document.querySelector<HTMLButtonElement>('[data-exploration-action="overview"]')?.addEventListener('click', (event) => {
+    const button = event.currentTarget as HTMLButtonElement
+    scene().setOverview(button.getAttribute('aria-pressed') !== 'true')
+  })
+  const feedbackToggle = document.querySelector<HTMLButtonElement>('[data-exploration-action="feedback"]')
+  const renderFeedbackSettings = () => {
+    const settings = scene().getCombatFeedbackSettings()
+    const shake = feedbackPanel.querySelector<HTMLButtonElement>('[data-feedback-setting="shake"]')
+    const flash = feedbackPanel.querySelector<HTMLButtonElement>('[data-feedback-setting="flash"]')
+    const volume = feedbackPanel.querySelector<HTMLButtonElement>('[data-feedback-setting="volume"]')
+    if (shake) shake.textContent = `镜头震动：${settings.shake ? '开' : '关'}`
+    if (flash) flash.textContent = `受击闪光：${settings.flash ? '开' : '关'}`
+    if (volume) volume.textContent = `音效音量：${Math.round(settings.volume * 100)}%`
+  }
+  feedbackToggle?.addEventListener('click', () => {
+    feedbackPanel.hidden = !feedbackPanel.hidden
+    feedbackToggle.setAttribute('aria-expanded', String(!feedbackPanel.hidden))
+    feedbackToggle.classList.toggle('is-active', !feedbackPanel.hidden)
+    if (!feedbackPanel.hidden) renderFeedbackSettings()
+  })
+  feedbackPanel.querySelectorAll<HTMLButtonElement>('[data-feedback-setting]').forEach((button) => {
+    button.addEventListener('click', () => {
+      scene().cycleCombatFeedbackSetting(button.dataset.feedbackSetting ?? '')
+      renderFeedbackSettings()
+    })
+  })
+  window.addEventListener('keydown', (event) => {
+    if (!liveRunRequested && event.key.toLowerCase() === 'n') scene().toggleNestRanges()
+    if (!liveRunRequested && event.key.toLowerCase() === 's') scene().randomizeSpawn()
+    if (!liveRunRequested && event.key.toLowerCase() === 't') scene().teleportToNextNest()
+    if (event.key.toLowerCase() === 'q' && debugRequested) scene().advanceFirstNestDebug()
+    if (event.key.toLowerCase() === 'm') {
+      const button = document.querySelector<HTMLButtonElement>('[data-exploration-action="overview"]')
+      scene().setOverview(button?.getAttribute('aria-pressed') !== 'true')
+    }
+  })
+}
+
 document.querySelectorAll<HTMLButtonElement>('[data-starter]').forEach((button) => {
   button.addEventListener('click', () => {
     const starterId = button.dataset.starter
@@ -3447,13 +4515,34 @@ starterKeyHandler = (event: KeyboardEvent) => {
 }
 window.addEventListener('keydown', starterKeyHandler)
 
-if (isMapLabRequested()) {
+if (isQuality3DRequested()) {
   if (starterKeyHandler) window.removeEventListener('keydown', starterKeyHandler)
-  launchMapLab()
+  void import('./quality-3d').then(({ launchQuality3D }) => {
+    quality3DCleanup = launchQuality3D()
+  })
+} else if (isQualitySliceRequested()) {
+  if (starterKeyHandler) window.removeEventListener('keydown', starterKeyHandler)
+  launchQualitySlice()
+} else if (isGloamwoodExplorationLabRequested()) {
+  if (starterKeyHandler) window.removeEventListener('keydown', starterKeyHandler)
+  launchGloamwoodExplorationLab()
+} else if (isGloamwoodSpaceLabRequested()) {
+  if (starterKeyHandler) window.removeEventListener('keydown', starterKeyHandler)
+  launchGloamwoodSpaceLab()
+} else if (isMapLabV2Requested()) {
+  if (starterKeyHandler) window.removeEventListener('keydown', starterKeyHandler)
+  launchMapLabV2()
+} else if (isMapLabRequested()) {
+  if (starterKeyHandler) window.removeEventListener('keydown', starterKeyHandler)
+  launchLegacyMapLab()
 } else {
   const requestedStarter = new URLSearchParams(window.location.search).get('starter')
-  if (isStarterVariantId(requestedStarter)) launchRun(requestedStarter)
+  if (isMonsterNestLabRequested() || isGloamwoodHuntSliceRequested()) launchRun(isStarterVariantId(requestedStarter) ? requestedStarter : 'spine-stalker')
+  else if (isStarterVariantId(requestedStarter)) launchRun(requestedStarter)
   else window.setTimeout(() => document.querySelector<HTMLButtonElement>('[data-starter]')?.focus(), 120)
 }
 
-window.addEventListener('beforeunload', () => game?.destroy(true))
+window.addEventListener('beforeunload', () => {
+  quality3DCleanup?.()
+  game?.destroy(true)
+})

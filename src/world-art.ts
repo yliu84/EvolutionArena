@@ -31,6 +31,14 @@ export interface WorldPropStamp {
   alpha: number
 }
 
+export interface WorldArtOptions {
+  excludePropsInside?: { x: number; y: number; width: number; height: number }
+}
+
+function isInsideRect(x: number, y: number, rect: NonNullable<WorldArtOptions['excludePropsInside']>) {
+  return x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height
+}
+
 function shade(color: number, factor: number) {
   const r = Math.max(0, Math.min(255, Math.round(((color >> 16) & 0xff) * factor)))
   const g = Math.max(0, Math.min(255, Math.round(((color >> 8) & 0xff) * factor)))
@@ -171,6 +179,7 @@ export function paintRunWorld(
   scene: Scene,
   runMap: RunMap,
   graphics: GameObjects.Graphics,
+  options: WorldArtOptions = {},
 ) {
   scene.cameras.main.setBackgroundColor('#030908')
   graphics.setDepth(GROUND_DEPTH)
@@ -187,6 +196,7 @@ export function paintRunWorld(
     ).setDepth(GROUND_DEPTH + 0.1).setAlpha(0.94)
     paintBiomeCliff(graphics, biome)
     for (const stamp of planBiomeProps(biome, decorationRandom)) {
+      if (options.excludePropsInside && isInsideRect(stamp.x, stamp.y, options.excludePropsInside)) continue
       scene.add.image(stamp.x, stamp.y, stamp.texture)
         .setDepth(worldDepth(stamp.y))
         .setScale(stamp.scale)

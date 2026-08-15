@@ -43,3 +43,7 @@ export function bossPatternForTurn(turn: number, phase: 1 | 2): BossPattern {
 export function bossCooldown(phase: 1 | 2): number {
   return phase === 1 ? 900 : 520
 }
+
+export function bossFailureOutcome(): 'death' {
+  return 'death'
+}

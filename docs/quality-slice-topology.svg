@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#13251c"/>
+  <path d="M0 650 C180 565 250 580 390 625 C520 670 610 625 710 520 C805 420 865 335 1015 330 C1170 325 1265 260 1360 115 L1600 0 L1600 900 L0 900Z" fill="#2f5b3d"/>
+  <path d="M0 735 C185 620 310 645 430 690 C570 745 680 670 770 555 C860 445 925 400 1060 395 C1230 390 1370 280 1480 80" fill="none" stroke="#b58b55" stroke-width="390" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M0 735 C185 620 310 645 430 690 C570 745 680 670 770 555 C860 445 925 400 1060 395 C1230 390 1370 280 1480 80" fill="none" stroke="#d7b77a" stroke-width="270" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="810" cy="520" rx="430" ry="305" fill="#d7b77a"/>
+  <ellipse cx="810" cy="520" rx="330" ry="225" fill="#c99f65"/>
+  <path d="M200 0 H825 C790 115 728 175 640 210 C515 260 400 255 300 320 L0 430 V0Z" fill="#59664b"/>
+  <path d="M200 250 C375 180 520 205 640 155 C730 120 780 65 825 0" fill="none" stroke="#1b211b" stroke-width="52"/>
+  <path d="M1020 0 H1600 V900 H1310 C1385 730 1335 615 1245 545 C1160 480 1150 405 1260 330 C1365 260 1425 150 1440 0Z" fill="#405945"/>
+  <path d="M1265 0 C1260 160 1170 250 1105 305 C1035 365 1040 430 1130 500 C1255 595 1325 705 1265 900" fill="none" stroke="#191f1a" stroke-width="56"/>
+  <ellipse cx="820" cy="510" rx="185" ry="118" fill="#e3c88d" stroke="#8c6f45" stroke-width="12"/>
+  <path d="M620 710 C680 650 740 640 805 665 C870 690 930 675 990 610" fill="none" stroke="#5d8f90" stroke-width="58" stroke-linecap="round"/>
+  <path d="M620 710 C680 650 740 640 805 665 C870 690 930 675 990 610" fill="none" stroke="#9ac7c2" stroke-width="34" stroke-linecap="round"/>
+  <rect x="732" y="626" width="164" height="94" rx="30" fill="#a88355" stroke="#624b31" stroke-width="8"/>
+  <circle cx="800" cy="500" r="34" fill="#62d7c7" stroke="#ffffff" stroke-width="5"/>
+  <circle cx="1080" cy="425" r="46" fill="#c85e43" stroke="#ffffff" stroke-width="5"/>
+  <g fill="#0f1913" stroke="#d8b66f" stroke-width="4" opacity="0.95">
+    <rect x="170" y="80" width="310" height="90" rx="20"/>
+    <rect x="1120" y="720" width="320" height="100" rx="20"/>
+  </g>
+  <g fill="#f4dfad" font-family="Arial, sans-serif" font-size="28" font-weight="700">
+    <text x="205" y="136">HIGH CLIFF — BLOCKED</text>
+    <text x="1155" y="780">FOREST WALL — BLOCKED</text>
+  </g>
+  <g fill="#0c1510" font-family="Arial, sans-serif" font-size="25" font-weight="700">
+    <text x="720" y="445">COMBAT CLEARING</text>
+    <text x="695" y="760">ONLY CROSSING</text>
+  </g>
+</svg>
