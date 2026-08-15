@@ -74,7 +74,12 @@ interface DrakeRig {
   claws: THREE.Mesh[]
   tailJoints: THREE.Group[]
   legs: LegRig[]
-  shadow: THREE.Mesh
+  shadow: {
+    root: THREE.Group
+    body: THREE.MeshBasicMaterial
+    head: THREE.MeshBasicMaterial
+    tail: THREE.MeshBasicMaterial
+  }
   materials: {
     primary: THREE.MeshStandardMaterial
     secondary: THREE.MeshStandardMaterial
@@ -91,6 +96,22 @@ interface DrakeRig {
   speciesForms: SpeciesFormRig[]
 }
 
+interface CombatDummyRig {
+  root: THREE.Group
+  visual: THREE.Group
+  healthBar: THREE.Group
+  healthFill: THREE.Mesh
+  materials: THREE.MeshStandardMaterial[]
+  health: number
+  state: 'alive' | 'dead' | 'respawning'
+  flashRemaining: number
+  respawnRemaining: number
+  knockbackVelocity: THREE.Vector3
+  hits: number
+  deaths: number
+  lastHitAction: string
+}
+
 interface Quality3DDebugState {
   renderer: string
   position: { x: number; y: number; z: number }
@@ -103,8 +124,13 @@ interface Quality3DDebugState {
   evolution: { enabled: boolean; stage: number; targetStage: number; name: string; formId: string; bodyPlan: string; state: string; progress: number; autoplay: boolean }
   asset: { baselineId: string; source: string; displayScale: number; loadedGLBs: number; activeClip: string; footBones: number; playbackRate: number; dustPuffs: number; tunedMaterials: number; normalMappedMaterials: number; aoMappedMaterials: number }
   weight: { locomotionBlend: number; stepImpact: number; stopSettle: number; turnFollowDegrees: number; groundCorrection: number }
+  combat: { profileId: string; system: string; skillsEnabled: boolean; action: string; elapsed: number; remaining: number; contactReached: boolean; comboStep: number; nextAction: string; buffered: boolean; targetLocked: boolean; aimErrorDegrees: number }
+  combatTarget: { name: string; state: string; health: number; maxHealth: number; distance: number; inRange: boolean; hits: number; deaths: number; lastHitAction: string }
+  shadow: { layers: number; shape: string; groundLift: number }
   fps: number
 }
+
+type CoralGeckoCombatAction = 'Bite' | 'Claw' | 'TailSwipe' | 'Hit' | 'Death'
 
 declare global {
   interface Window {
@@ -124,9 +150,11 @@ class Quality3DExperience {
   private readonly gltfLoader = new GLTFLoader()
   private readonly terrain: THREE.Mesh
   private readonly drake: DrakeRig
+  private readonly combatDummy: CombatDummyRig
   private readonly keys = new Set<string>()
   private readonly target = new THREE.Vector3()
   private readonly footstepDust: THREE.Sprite[] = []
+  private readonly impactParticles: THREE.Mesh[] = []
   private waterMaterial?: THREE.ShaderMaterial
   private hasTarget = false
   private currentYaw = 0
@@ -140,6 +168,15 @@ class Quality3DExperience {
   private stopSettleRemaining = 0
   private turnFollow = 0
   private wasMoving = false
+  private combatAction: CoralGeckoCombatAction | null = null
+  private combatActionElapsed = 0
+  private combatActionRemaining = 0
+  private combatContactReached = false
+  private combatHitResolved = false
+  private comboStep = 0
+  private comboBuffered = false
+  private comboResetRemaining = 0
+  private attackTargetYaw: number | null = null
   private maxFootError = 0
   private blockedProbe: string | null = null
   private loadedGLBCount = 0
@@ -162,7 +199,16 @@ class Quality3DExperience {
   private previousWidth = 0
   private previousHeight = 0
   private readonly onResize = () => this.resize()
-  private readonly onKeyDown = (event: KeyboardEvent) => this.keys.add(event.code)
+  private readonly onKeyDown = (event: KeyboardEvent) => {
+    this.keys.add(event.code)
+    if (event.repeat) return
+    if (event.code === 'Space') {
+      event.preventDefault()
+      this.requestPrimaryAttack()
+    } else if (event.code === 'KeyH') this.triggerCombatAction('Hit')
+    else if (event.code === 'KeyK') this.triggerCombatAction('Death')
+    else if (event.code === 'KeyR') this.resetCombatPose()
+  }
   private readonly onKeyUp = (event: KeyboardEvent) => this.keys.delete(event.code)
   private readonly onPointerDown = (event: PointerEvent) => this.setPointerTarget(event)
 
@@ -197,6 +243,9 @@ class Quality3DExperience {
         : QUALITY_3D.spawn
     this.drake.root.position.set(spawn.x, terrainHeight(spawn.x, spawn.z), spawn.z)
     this.scene.add(this.drake.root)
+    this.combatDummy = this.createCombatDummy()
+    this.resetCombatDummy(true)
+    this.createImpactParticles()
     this.applyEvolutionMorph(getQuality3DEvolutionStage(0).morphology)
     this.setSpeciesFormVisual(0)
     void this.loadGLBSpeciesForms()
@@ -293,6 +342,36 @@ class Quality3DExperience {
         stopSettle: round(this.stopSettleRemaining),
         turnFollowDegrees: round(THREE.MathUtils.radToDeg(this.turnFollow)),
         groundCorrection: round(activeForm?.groundCorrection ?? 0),
+      },
+      combat: {
+        profileId: CORAL_GECKO_PRESENTATION.combat.profileId,
+        system: CORAL_GECKO_PRESENTATION.combat.system,
+        skillsEnabled: CORAL_GECKO_PRESENTATION.combat.skillsEnabled,
+        action: this.combatAction ?? 'ready',
+        elapsed: round(this.combatActionElapsed),
+        remaining: round(this.combatActionRemaining),
+        contactReached: this.combatContactReached,
+        comboStep: this.comboStep,
+        nextAction: CORAL_GECKO_PRESENTATION.combat.primaryCombo[this.comboStep],
+        buffered: this.comboBuffered,
+        targetLocked: this.attackTargetYaw !== null && this.combatDummy.state === 'alive',
+        aimErrorDegrees: round(THREE.MathUtils.radToDeg(this.getAttackAimError())),
+      },
+      combatTarget: {
+        name: CORAL_GECKO_PRESENTATION.combat.demoTarget.name,
+        state: this.combatDummy.state,
+        health: this.combatDummy.health,
+        maxHealth: CORAL_GECKO_PRESENTATION.combat.demoTarget.maxHealth,
+        distance: round(this.combatDummy.root.position.distanceTo(this.drake.root.position)),
+        inRange: this.isCombatDummyInRange(this.combatAction ?? 'Bite'),
+        hits: this.combatDummy.hits,
+        deaths: this.combatDummy.deaths,
+        lastHitAction: this.combatDummy.lastHitAction,
+      },
+      shadow: {
+        layers: 3,
+        shape: 'body-head-tail ellipses',
+        groundLift: CORAL_GECKO_PRESENTATION.contactShadow.groundLift,
       },
       fps: Math.round(this.smoothedFps),
     }
@@ -864,12 +943,8 @@ class Quality3DExperience {
       wings.push(wing)
     }
 
-    const shadowMaterial = new THREE.MeshBasicMaterial({ color: 0x020503, transparent: true, opacity: 0.28, depthWrite: false })
-    const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.35, 32), shadowMaterial)
-    shadow.rotation.x = -Math.PI / 2
-    shadow.scale.z = 0.55
-    shadow.position.y = 0.018
-    root.add(shadow)
+    const shadow = this.createContactShadow()
+    root.add(shadow.root)
     const evolutionFx = this.createEvolutionFx(root)
     const speciesForms = QUALITY_3D_LIZARD_DRAGON_FORMS.map((form) => this.createSpeciesForm(form, scaleTexture))
     speciesForms.forEach((form) => root.add(form.root))
@@ -898,6 +973,53 @@ class Quality3DExperience {
       evolutionFx,
       speciesForms,
     }
+  }
+
+  private createContactShadow(): DrakeRig['shadow'] {
+    const root = new THREE.Group()
+    root.name = 'creature-contact-shadow'
+    root.position.y = CORAL_GECKO_PRESENTATION.contactShadow.groundLift
+    const createLayer = (name: string, width: number, length: number, x: number, opacity: number) => {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0x020503,
+        transparent: true,
+        opacity,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3,
+      })
+      const mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 48), material)
+      mesh.name = name
+      mesh.rotation.x = -Math.PI / 2
+      mesh.scale.set(width, length, 1)
+      mesh.position.x = x
+      mesh.renderOrder = 2
+      root.add(mesh)
+      return material
+    }
+    const body = createLayer(
+      'contact-shadow-body',
+      CORAL_GECKO_PRESENTATION.contactShadow.bodyWidth,
+      CORAL_GECKO_PRESENTATION.contactShadow.bodyLength,
+      -0.08,
+      CORAL_GECKO_PRESENTATION.contactShadow.bodyOpacity,
+    )
+    const head = createLayer(
+      'contact-shadow-head',
+      CORAL_GECKO_PRESENTATION.contactShadow.headWidth,
+      CORAL_GECKO_PRESENTATION.contactShadow.headLength,
+      0.72,
+      CORAL_GECKO_PRESENTATION.contactShadow.headOpacity,
+    )
+    const tail = createLayer(
+      'contact-shadow-tail',
+      CORAL_GECKO_PRESENTATION.contactShadow.tailWidth,
+      CORAL_GECKO_PRESENTATION.contactShadow.tailLength,
+      -0.9,
+      CORAL_GECKO_PRESENTATION.contactShadow.tailOpacity,
+    )
+    return { root, body, head, tail }
   }
 
   private createSpeciesForm(definition: Quality3DSpeciesForm, scaleTexture: THREE.Texture): SpeciesFormRig {
@@ -1280,7 +1402,7 @@ class Quality3DExperience {
     this.setSpeciesFormVisual(this.isEvolving ? this.targetEvolutionStage : this.currentEvolutionStage)
   }
 
-  private setGLBAction(form: SpeciesFormRig, name: 'Idle' | 'Run' | 'Turn') {
+  private setGLBAction(form: SpeciesFormRig, name: string, force = false) {
     if (!form.actions) return
     const next = form.actions.get(name)
     if (!next) return
@@ -1292,10 +1414,16 @@ class Quality3DExperience {
           : CORAL_GECKO_PRESENTATION.animation.idlePlaybackRate
       : 1
     next.setEffectiveTimeScale(playbackRate)
-    if (form.activeAction === name) return
+    const oneShot = name === 'Bite' || name === 'Claw' || name === 'TailSwipe' || name === 'Hit' || name === 'Death'
+    next.setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity)
+    next.clampWhenFinished = oneShot
+    if (form.activeAction === name && !force) return
     const previous = form.actions.get(form.activeAction ?? '')
-    previous?.fadeOut(CORAL_GECKO_PRESENTATION.animation.crossfadeSeconds)
-    next.reset().fadeIn(CORAL_GECKO_PRESENTATION.animation.crossfadeSeconds).play()
+    const crossfade = oneShot
+      ? CORAL_GECKO_PRESENTATION.combat.oneShotCrossfadeSeconds
+      : CORAL_GECKO_PRESENTATION.animation.crossfadeSeconds
+    previous?.fadeOut(crossfade)
+    next.reset().fadeIn(crossfade).play()
     form.activeAction = name
   }
 
@@ -1500,6 +1628,248 @@ class Quality3DExperience {
     return mesh
   }
 
+  private createCombatDummy(): CombatDummyRig {
+    const root = new THREE.Group()
+    root.name = 'basic-attack-training-beetle'
+    const visual = new THREE.Group()
+    root.add(visual)
+
+    const shell = new THREE.MeshStandardMaterial({ color: 0x6d3928, roughness: 0.64, metalness: 0.04 })
+    const armor = new THREE.MeshStandardMaterial({ color: 0xb56b35, roughness: 0.52, metalness: 0.06 })
+    const underside = new THREE.MeshStandardMaterial({ color: 0x34251f, roughness: 0.9 })
+    const eye = new THREE.MeshStandardMaterial({ color: 0xffd46a, emissive: 0x7a3100, emissiveIntensity: 0.7, roughness: 0.32 })
+    const materials = [shell, armor, underside]
+
+    const body = this.mesh(new THREE.SphereGeometry(0.68, 20, 14), shell, true)
+    body.scale.set(1.15, 0.66, 0.88)
+    body.position.y = 0.58
+    visual.add(body)
+    const backPlate = this.mesh(new THREE.SphereGeometry(0.58, 18, 12), armor, true)
+    backPlate.scale.set(1.02, 0.42, 0.82)
+    backPlate.position.set(0.05, 0.79, 0)
+    visual.add(backPlate)
+    const head = this.mesh(new THREE.SphereGeometry(0.38, 16, 12), underside, true)
+    head.scale.set(0.95, 0.72, 0.92)
+    head.position.set(-0.72, 0.52, 0)
+    visual.add(head)
+    for (const side of [-1, 1]) {
+      const eyeMesh = this.mesh(new THREE.SphereGeometry(0.07, 10, 8), eye, true)
+      eyeMesh.position.set(-0.99, 0.62, side * 0.22)
+      visual.add(eyeMesh)
+      for (let index = 0; index < 3; index += 1) {
+        const leg = this.mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.68, 7), underside, true)
+        leg.position.set(-0.34 + index * 0.38, 0.27, side * (0.48 + index * 0.045))
+        leg.rotation.x = side * (0.84 + index * 0.08)
+        leg.rotation.z = (index - 1) * 0.28
+        visual.add(leg)
+      }
+    }
+    const horn = this.mesh(new THREE.ConeGeometry(0.13, 0.5, 8), armor, true)
+    horn.rotation.z = Math.PI / 2
+    horn.position.set(-1.02, 0.52, 0)
+    visual.add(horn)
+
+    const shadowMaterial = new THREE.MeshBasicMaterial({ color: 0x07100d, transparent: true, opacity: 0.34, depthWrite: false })
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.72, 32), shadowMaterial)
+    shadow.rotation.x = -Math.PI / 2
+    shadow.scale.set(1.25, 0.7, 1)
+    shadow.position.y = 0.035
+    root.add(shadow)
+
+    const healthBar = new THREE.Group()
+    healthBar.name = 'training-beetle-health-bar'
+    const barBack = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.72, 0.18),
+      new THREE.MeshBasicMaterial({ color: 0x180e0b, transparent: true, opacity: 0.88, depthTest: false, depthWrite: false }),
+    )
+    const healthFill = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.6, 0.1),
+      new THREE.MeshBasicMaterial({ color: 0xf0b64d, depthTest: false, depthWrite: false }),
+    )
+    barBack.renderOrder = 30
+    healthFill.position.z = 0.02
+    healthFill.renderOrder = 31
+    healthBar.add(barBack, healthFill)
+    healthBar.renderOrder = 30
+    this.scene.add(root, healthBar)
+
+    return {
+      root,
+      visual,
+      healthBar,
+      healthFill,
+      materials,
+      health: CORAL_GECKO_PRESENTATION.combat.demoTarget.maxHealth,
+      state: 'alive',
+      flashRemaining: 0,
+      respawnRemaining: 0,
+      knockbackVelocity: new THREE.Vector3(),
+      hits: 0,
+      deaths: 0,
+      lastHitAction: 'none',
+    }
+  }
+
+  private createImpactParticles() {
+    const geometry = new THREE.OctahedronGeometry(0.075, 0)
+    const material = new THREE.MeshBasicMaterial({ color: 0xffc768, transparent: true, opacity: 0.94, depthWrite: false })
+    for (let index = 0; index < 18; index += 1) {
+      const particle = new THREE.Mesh(geometry, material)
+      particle.visible = false
+      particle.renderOrder = 20
+      particle.userData.life = 0
+      particle.userData.duration = 0.24
+      particle.userData.velocity = new THREE.Vector3()
+      this.scene.add(particle)
+      this.impactParticles.push(particle)
+    }
+  }
+
+  private resetCombatDummy(initial = false) {
+    const forward = new THREE.Vector3(Math.cos(this.currentYaw), 0, -Math.sin(this.currentYaw))
+    const spawn = this.drake.root.position.clone().addScaledVector(forward, CORAL_GECKO_PRESENTATION.combat.demoTarget.spawnDistance)
+    this.combatDummy.root.position.set(spawn.x, terrainHeight(spawn.x, spawn.z), spawn.z)
+    this.combatDummy.root.visible = true
+    this.combatDummy.visual.position.set(0, 0, 0)
+    this.combatDummy.visual.rotation.set(0, 0, 0)
+    this.combatDummy.visual.scale.setScalar(1)
+    this.combatDummy.healthBar.visible = true
+    this.combatDummy.health = CORAL_GECKO_PRESENTATION.combat.demoTarget.maxHealth
+    this.combatDummy.state = 'alive'
+    this.combatDummy.flashRemaining = 0
+    this.combatDummy.respawnRemaining = 0
+    this.combatDummy.knockbackVelocity.set(0, 0, 0)
+    if (initial) {
+      this.combatDummy.hits = 0
+      this.combatDummy.deaths = 0
+      this.combatDummy.lastHitAction = 'none'
+    }
+  }
+
+  private isCombatDummyInRange(action: string) {
+    if (this.combatDummy.state !== 'alive') return false
+    const toTarget = this.combatDummy.root.position.clone().sub(this.drake.root.position).setY(0)
+    const distance = toTarget.length()
+    if (distance <= 0.001) return true
+    const forward = new THREE.Vector3(Math.cos(this.currentYaw), 0, -Math.sin(this.currentYaw))
+    const facing = forward.dot(toTarget.normalize())
+    const range = action === 'TailSwipe'
+      ? CORAL_GECKO_PRESENTATION.combat.hitFeedback.tailSwipeRange
+      : action === 'Claw'
+        ? CORAL_GECKO_PRESENTATION.combat.hitFeedback.clawRange
+        : CORAL_GECKO_PRESENTATION.combat.hitFeedback.biteRange
+    return distance <= range && facing >= (action === 'TailSwipe' ? -0.05 : 0.38)
+  }
+
+  private getCombatTargetYaw() {
+    if (this.combatDummy.state !== 'alive') return null
+    const offset = this.combatDummy.root.position.clone().sub(this.drake.root.position).setY(0)
+    if (offset.lengthSq() <= 0.0001) return this.currentYaw
+    return Math.atan2(-offset.z, offset.x)
+  }
+
+  private getAttackAimError() {
+    if (this.attackTargetYaw === null) return 0
+    return Math.abs(shortestAngleDelta(this.currentYaw, this.attackTargetYaw))
+  }
+
+  private updateBasicAttackTargeting(delta: number) {
+    if (!this.combatAction || !CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(this.combatAction as 'Bite' | 'Claw' | 'TailSwipe')) return
+    const targetYaw = this.getCombatTargetYaw()
+    if (targetYaw === null) {
+      this.attackTargetYaw = null
+      return
+    }
+    this.attackTargetYaw = targetYaw
+    this.currentYaw = turnToward(
+      this.currentYaw,
+      targetYaw,
+      CORAL_GECKO_PRESENTATION.combat.targeting.turnSpeedRadiansPerSecond * delta,
+    )
+    this.drake.root.rotation.y = this.currentYaw
+  }
+
+  private resolveBasicAttackHit(action: CoralGeckoCombatAction) {
+    if (!CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(action as 'Bite' | 'Claw' | 'TailSwipe')) return
+    if (this.attackTargetYaw !== null && this.getAttackAimError() > THREE.MathUtils.degToRad(CORAL_GECKO_PRESENTATION.combat.targeting.contactToleranceDegrees)) return
+    if (!this.isCombatDummyInRange(action)) return
+    const feedback = CORAL_GECKO_PRESENTATION.combat.hitFeedback
+    const damage = action === 'Bite' ? feedback.biteDamage : action === 'Claw' ? feedback.clawDamage : feedback.tailSwipeDamage
+    this.combatDummy.health = Math.max(0, this.combatDummy.health - damage)
+    this.combatDummy.hits += 1
+    this.combatDummy.lastHitAction = action
+    this.combatDummy.flashRemaining = feedback.flashSeconds
+    this.cameraTrauma = Math.max(this.cameraTrauma, feedback.cameraTrauma)
+    const knockback = this.combatDummy.root.position.clone().sub(this.drake.root.position).setY(0).normalize()
+    this.combatDummy.knockbackVelocity.copy(knockback).multiplyScalar(feedback.knockbackSpeed)
+    this.emitImpactParticles(this.combatDummy.root.position.clone().add(new THREE.Vector3(-0.45, 0.72, 0)), feedback.particleCount)
+    if (this.combatDummy.health <= 0) {
+      this.combatDummy.state = 'dead'
+      this.combatDummy.deaths += 1
+      this.combatDummy.respawnRemaining = CORAL_GECKO_PRESENTATION.combat.demoTarget.respawnSeconds
+      this.combatDummy.healthBar.visible = false
+      this.cameraTrauma = Math.max(this.cameraTrauma, 0.52)
+    }
+  }
+
+  private emitImpactParticles(origin: THREE.Vector3, count: number) {
+    let emitted = 0
+    for (const particle of this.impactParticles) {
+      if (particle.visible) continue
+      const angle = (emitted / Math.max(1, count)) * Math.PI * 2 + this.elapsedTime * 1.7
+      const lift = 1.2 + (emitted % 3) * 0.24
+      particle.position.copy(origin)
+      particle.scale.setScalar(0.8 + (emitted % 2) * 0.35)
+      particle.visible = true
+      particle.userData.life = particle.userData.duration
+      ;(particle.userData.velocity as THREE.Vector3).set(Math.cos(angle) * 1.45, lift, Math.sin(angle) * 1.45)
+      emitted += 1
+      if (emitted >= count) break
+    }
+  }
+
+  private updateCombatDummy(delta: number) {
+    const dummy = this.combatDummy
+    if (dummy.state === 'dead') {
+      dummy.respawnRemaining = Math.max(0, dummy.respawnRemaining - delta)
+      dummy.visual.rotation.z = THREE.MathUtils.damp(dummy.visual.rotation.z, -1.28, 10, delta)
+      dummy.visual.scale.y = THREE.MathUtils.damp(dummy.visual.scale.y, 0.55, 10, delta)
+      if (dummy.respawnRemaining <= 0) this.resetCombatDummy()
+    } else {
+      dummy.flashRemaining = Math.max(0, dummy.flashRemaining - delta)
+      const flash = dummy.flashRemaining > 0
+      dummy.materials.forEach((material) => {
+        material.emissive.setHex(flash ? 0xffffff : 0x000000)
+        material.emissiveIntensity = flash ? 1.25 : 0
+      })
+      dummy.visual.position.addScaledVector(dummy.knockbackVelocity, delta)
+      dummy.knockbackVelocity.multiplyScalar(Math.exp(-10 * delta))
+      dummy.visual.position.x = THREE.MathUtils.damp(dummy.visual.position.x, 0, 8, delta)
+      dummy.visual.position.z = THREE.MathUtils.damp(dummy.visual.position.z, 0, 8, delta)
+      dummy.visual.rotation.z = THREE.MathUtils.damp(dummy.visual.rotation.z, 0, 13, delta)
+      dummy.visual.scale.y = THREE.MathUtils.damp(dummy.visual.scale.y, 1, 13, delta)
+      dummy.visual.position.y = Math.sin(this.elapsedTime * 2.4) * 0.018
+      const healthRatio = dummy.health / CORAL_GECKO_PRESENTATION.combat.demoTarget.maxHealth
+      dummy.healthFill.scale.x = Math.max(0.001, healthRatio)
+      dummy.healthFill.position.x = -(1 - healthRatio) * 0.8
+    }
+    dummy.healthBar.position.set(dummy.root.position.x, dummy.root.position.y + 1.72, dummy.root.position.z)
+    dummy.healthBar.quaternion.copy(this.camera.quaternion)
+
+    for (const particle of this.impactParticles) {
+      if (!particle.visible) continue
+      particle.userData.life -= delta
+      if (particle.userData.life <= 0) {
+        particle.visible = false
+        continue
+      }
+      const velocity = particle.userData.velocity as THREE.Vector3
+      particle.position.addScaledVector(velocity, delta)
+      velocity.y -= 5.8 * delta
+      particle.scale.multiplyScalar(Math.max(0.1, 1 - delta * 3.2))
+    }
+  }
+
   private createFootstepDust() {
     const canvas = document.createElement('canvas')
     canvas.width = 64
@@ -1581,6 +1951,7 @@ class Quality3DExperience {
   }
 
   private setPointerTarget(event: PointerEvent) {
+    if (this.combatAction === 'Death') return
     const rect = this.renderer.domElement.getBoundingClientRect()
     this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
     this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
@@ -1589,6 +1960,62 @@ class Quality3DExperience {
     if (!hit || !isQuality3DWalkable(hit.point.x, hit.point.z)) return
     this.target.set(hit.point.x, terrainHeight(hit.point.x, hit.point.z), hit.point.z)
     this.hasTarget = true
+  }
+
+  private triggerCombatAction(action: CoralGeckoCombatAction) {
+    if (this.isEvolving || (this.combatAction === 'Death' && action !== 'Death')) return
+    const form = this.drake.speciesForms.find((candidate) => candidate.root.visible)
+    if (!form?.actions?.has(action)) return
+    this.combatAction = action
+    this.combatActionElapsed = 0
+    this.combatContactReached = false
+    this.combatHitResolved = false
+    this.attackTargetYaw = CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(action as 'Bite' | 'Claw' | 'TailSwipe')
+      ? this.getCombatTargetYaw()
+      : null
+    this.combatActionRemaining = action === 'Bite'
+      ? CORAL_GECKO_PRESENTATION.combat.biteDurationSeconds
+      : action === 'Claw'
+        ? CORAL_GECKO_PRESENTATION.combat.clawDurationSeconds
+        : action === 'TailSwipe'
+          ? CORAL_GECKO_PRESENTATION.combat.tailSwipeDurationSeconds
+      : action === 'Hit'
+        ? CORAL_GECKO_PRESENTATION.combat.hitDurationSeconds
+        : CORAL_GECKO_PRESENTATION.combat.deathDurationSeconds
+    this.hasTarget = false
+    if (!CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(action as 'Bite' | 'Claw' | 'TailSwipe')) {
+      this.comboStep = 0
+      this.comboBuffered = false
+      this.comboResetRemaining = 0
+    }
+    this.setGLBAction(form, action, true)
+  }
+
+  private requestPrimaryAttack() {
+    if (this.isEvolving || this.combatAction === 'Death' || this.combatAction === 'Hit') return
+    if (this.combatAction && CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(this.combatAction as 'Bite' | 'Claw' | 'TailSwipe')) {
+      this.comboBuffered = true
+      return
+    }
+    const action = CORAL_GECKO_PRESENTATION.combat.primaryCombo[this.comboStep]
+    this.comboStep = (this.comboStep + 1) % CORAL_GECKO_PRESENTATION.combat.primaryCombo.length
+    this.comboResetRemaining = 0
+    this.attackTargetYaw = null
+    this.triggerCombatAction(action)
+  }
+
+  private resetCombatPose() {
+    this.combatAction = null
+    this.combatActionElapsed = 0
+    this.combatActionRemaining = 0
+    this.combatContactReached = false
+    this.combatHitResolved = false
+    this.comboStep = 0
+    this.comboBuffered = false
+    this.comboResetRemaining = 0
+    this.attackTargetYaw = null
+    const form = this.drake.speciesForms.find((candidate) => candidate.root.visible)
+    if (form) this.setGLBAction(form, 'Idle', true)
   }
 
   private animate() {
@@ -1600,6 +2027,7 @@ class Quality3DExperience {
     this.smoothedFps = THREE.MathUtils.lerp(this.smoothedFps, 1 / Math.max(delta, 0.001), 0.06)
     this.resize()
     this.updatePlayer(delta)
+    this.updateCombatDummy(delta)
     this.updateEvolution(delta)
     this.updateFootstepDust(delta)
     this.updateCamera(false, delta)
@@ -1608,6 +2036,42 @@ class Quality3DExperience {
   }
 
   private updatePlayer(delta: number) {
+    if (!this.combatAction && this.comboResetRemaining > 0) {
+      this.comboResetRemaining = Math.max(0, this.comboResetRemaining - delta)
+      if (this.comboResetRemaining <= 0) this.comboStep = 0
+    }
+    if (this.combatAction) {
+      this.updateBasicAttackTargeting(delta)
+      this.combatActionElapsed += delta
+      this.combatActionRemaining = Math.max(0, this.combatActionRemaining - delta)
+      const contactTime = this.combatAction === 'Bite'
+        ? CORAL_GECKO_PRESENTATION.combat.biteContactSeconds
+        : this.combatAction === 'Claw'
+          ? CORAL_GECKO_PRESENTATION.combat.clawContactSeconds
+          : this.combatAction === 'TailSwipe'
+            ? CORAL_GECKO_PRESENTATION.combat.tailSwipeContactSeconds
+            : Number.POSITIVE_INFINITY
+      if (this.combatActionElapsed >= contactTime && !this.combatHitResolved) {
+        this.combatContactReached = true
+        this.combatHitResolved = true
+        this.resolveBasicAttackHit(this.combatAction)
+      }
+      if (this.combatAction !== 'Death' && this.combatActionRemaining <= 0) {
+        const completedAction = this.combatAction
+        const continueCombo = (this.comboBuffered || this.keys.has('Space'))
+          && CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(completedAction as 'Bite' | 'Claw' | 'TailSwipe')
+        this.combatAction = null
+        this.combatActionElapsed = 0
+        this.combatContactReached = false
+        this.combatHitResolved = false
+        this.attackTargetYaw = null
+        this.comboBuffered = false
+        if (continueCombo) this.requestPrimaryAttack()
+        else if (CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(completedAction as 'Bite' | 'Claw' | 'TailSwipe')) {
+          this.comboResetRemaining = CORAL_GECKO_PRESENTATION.combat.comboResetSeconds
+        }
+      }
+    }
     this.turnAnimationRemaining = Math.max(0, this.turnAnimationRemaining - delta)
     const direction = new THREE.Vector3(
       Number(this.keys.has('KeyD') || this.keys.has('ArrowRight')) - Number(this.keys.has('KeyA') || this.keys.has('ArrowLeft')),
@@ -1625,7 +2089,7 @@ class Quality3DExperience {
       } else direction.normalize()
     }
 
-    const moving = direction.lengthSq() > 0
+    const moving = direction.lengthSq() > 0 && this.combatAction === null
     this.locomotionBlend = THREE.MathUtils.damp(
       this.locomotionBlend,
       moving ? 1 : 0,
@@ -1677,7 +2141,7 @@ class Quality3DExperience {
       this.animationState = this.turnAnimationRemaining > 0 ? 'turn-grounded' : 'walk-grounded'
     } else {
       this.turnRemaining = 0
-      this.animationState = 'idle-grounded'
+      this.animationState = this.combatAction ? `${this.combatAction.toLowerCase()}-grounded` : 'idle-grounded'
     }
     const ground = terrainHeight(this.drake.root.position.x, this.drake.root.position.z)
     this.drake.root.position.y = THREE.MathUtils.damp(this.drake.root.position.y, ground, 18, delta)
@@ -1719,7 +2183,7 @@ class Quality3DExperience {
       wing.rotation.z = THREE.MathUtils.damp(wing.rotation.z, moving ? -0.08 : 0.02, 7, delta)
     })
     const shadowPulse = moving ? Math.abs(Math.sin(phase)) * 0.05 : breathing * 0.012
-    this.drake.shadow.scale.set(1 + shadowPulse, 1 + shadowPulse, 0.55 - shadowPulse * 0.4)
+    this.updateContactShadow(1 + shadowPulse, CORAL_GECKO_PRESENTATION.weight.shadowBaseOpacity)
     this.animateSpeciesForm(moving, delta, phase, breathing, shadowPulse)
   }
 
@@ -1727,7 +2191,13 @@ class Quality3DExperience {
     const form = this.drake.speciesForms.find((candidate) => candidate.root.visible)
     if (!form) return
     if (form.assetSource === 'glb' && form.motion === 'embedded' && form.mixer) {
-      const action = moving && this.turnAnimationRemaining > 0 && form.actions?.has('Turn') ? 'Turn' : moving ? 'Run' : 'Idle'
+      const action = this.combatAction && form.actions?.has(this.combatAction)
+        ? this.combatAction
+        : moving && this.turnAnimationRemaining > 0 && form.actions?.has('Turn')
+          ? 'Turn'
+          : moving
+            ? 'Run'
+            : 'Idle'
       this.setGLBAction(form, action)
       form.mixer.update(delta)
       if (!this.isEvolving) {
@@ -1802,14 +2272,13 @@ class Quality3DExperience {
       const contact = this.stepImpact * this.stepImpact
       const shadowSettle = this.stopSettleRemaining > 0 ? 1 : 0
       const shadowSize = glbShadowSize + shadowPulse - contact * CORAL_GECKO_PRESENTATION.weight.shadowImpactContraction
-      this.drake.shadow.scale.set(shadowSize, shadowSize, 0.48 + form.stage * 0.045)
-      ;(this.drake.shadow.material as THREE.MeshBasicMaterial).opacity = THREE.MathUtils.clamp(
+      this.updateContactShadow(shadowSize, THREE.MathUtils.clamp(
         CORAL_GECKO_PRESENTATION.weight.shadowBaseOpacity
           + contact * CORAL_GECKO_PRESENTATION.weight.shadowImpactOpacity
           + shadowSettle * CORAL_GECKO_PRESENTATION.weight.shadowSettleOpacity,
         0,
         0.48,
-      )
+      ))
       return
     }
     if (form.assetSource === 'glb' && form.motion === 'procedural-root') {
@@ -1818,7 +2287,7 @@ class Quality3DExperience {
       form.root.rotation.x = THREE.MathUtils.damp(form.root.rotation.x, moving ? Math.sin(phase * 2) * 0.012 : breathing * 0.006, 10, delta)
       form.activeAction = moving ? 'ProceduralRun' : 'ProceduralIdle'
       const shadowSize = 0.72 + shadowPulse * 0.45
-      this.drake.shadow.scale.set(shadowSize, shadowSize, 0.43)
+      this.updateContactShadow(shadowSize, CORAL_GECKO_PRESENTATION.weight.shadowBaseOpacity)
       return
     }
     if (!this.isEvolving) form.root.position.y = moving ? Math.abs(Math.sin(phase)) * 0.035 : breathing * 0.018
@@ -1843,7 +2312,28 @@ class Quality3DExperience {
       wing.rotation.z = THREE.MathUtils.damp(wing.rotation.z, moving ? -0.055 : 0.018, 6, delta)
     })
     const shadowSize = 0.74 + form.stage * 0.14 + (form.wings.length ? 0.18 : 0)
-    this.drake.shadow.scale.set(shadowSize + shadowPulse, shadowSize + shadowPulse, 0.48 + form.stage * 0.045)
+    this.updateContactShadow(shadowSize + shadowPulse, CORAL_GECKO_PRESENTATION.weight.shadowBaseOpacity)
+  }
+
+  private updateContactShadow(scale: number, opacity: number) {
+    const shadow = this.drake.shadow
+    shadow.root.scale.setScalar(scale)
+    shadow.body.opacity = opacity
+    shadow.head.opacity = opacity * (CORAL_GECKO_PRESENTATION.contactShadow.headOpacity / CORAL_GECKO_PRESENTATION.contactShadow.bodyOpacity)
+    shadow.tail.opacity = opacity * (CORAL_GECKO_PRESENTATION.contactShadow.tailOpacity / CORAL_GECKO_PRESENTATION.contactShadow.bodyOpacity)
+    const rootPosition = this.drake.root.position
+    const forwardX = Math.cos(this.currentYaw)
+    const forwardZ = -Math.sin(this.currentYaw)
+    const lateralX = -forwardZ
+    const lateralZ = forwardX
+    const samples = [
+      terrainHeight(rootPosition.x, rootPosition.z),
+      terrainHeight(rootPosition.x + forwardX * 0.95, rootPosition.z + forwardZ * 0.95),
+      terrainHeight(rootPosition.x - forwardX * 1.15, rootPosition.z - forwardZ * 1.15),
+      terrainHeight(rootPosition.x + lateralX * 0.62, rootPosition.z + lateralZ * 0.62),
+      terrainHeight(rootPosition.x - lateralX * 0.62, rootPosition.z - lateralZ * 0.62),
+    ]
+    shadow.root.position.y = Math.max(...samples) - rootPosition.y + CORAL_GECKO_PRESENTATION.contactShadow.groundLift
   }
 
   private updateCamera(immediate: boolean, delta = 1 / 60) {
@@ -1912,9 +2402,11 @@ export function launchQuality3D() {
     : [
         '<span><strong>WASD / 点击地面</strong> 任意方向移动</span>',
         '<span class="divider">/</span>',
-        '<span><strong>真实转身</strong> 骨骼步态 · 地面高度采样 · 动态阴影</span>',
+        '<span><strong>Space 普攻连招</strong> 自动循环咬击 → 爪击 → 尾扫</span>',
         '<span class="divider">/</span>',
-        '<span class="optional">走过斜坡并从石桥跨河，观察脚底、身体朝向和遮挡变化</span>',
+        '<span><strong>命中训练虫</strong> 测试距离 · 受击闪光 · 击退 · 生命与死亡</span>',
+        '<span class="divider">/</span>',
+        '<span class="optional">技能系统仍关闭；训练虫死亡后会在角色前方自动重置</span>',
       ].join('')
   const container = document.querySelector<HTMLElement>('#game-container')
   if (!container) throw new Error('Missing game container')

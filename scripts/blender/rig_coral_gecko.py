@@ -41,6 +41,7 @@ add_bone("Root", (0, 0, 0.02), (0, 0, 0.22), deform=False)
 add_bone("Body", (0, 0.26, 0.40), (0, -0.24, 0.50), "Root")
 add_bone("Neck", (0, -0.20, 0.50), (0, -0.48, 0.57), "Body")
 add_bone("Head", (0, -0.43, 0.56), (0, -0.83, 0.59), "Neck")
+add_bone("Jaw", (0, -0.49, 0.535), (0, -0.80, 0.515), "Head")
 
 tail_points = [
     (0, 0.22, 0.40),
@@ -95,7 +96,10 @@ for vertex in mesh.data.vertices:
     weights = {}
 
     # The head and crest occupy the negative-Y end of the sculpt.
-    if y < -0.46:
+    if y < -0.49 and z < 0.535:
+        jaw_blend = min(1.0, max(0.0, (-y - 0.45) / 0.26))
+        weights = {"Jaw": 0.72 + jaw_blend * 0.20, "Head": 0.28 - jaw_blend * 0.16}
+    elif y < -0.46:
         head_blend = min(1.0, max(0.0, (-y - 0.38) / 0.20))
         weights = {"Head": 0.72 + head_blend * 0.24, "Neck": 0.28 - head_blend * 0.20}
     elif y < -0.22 and z > 0.30:
@@ -230,6 +234,210 @@ for frame, amount in [(0, 0.0), (8, 1.0), (16, -0.55), (24, 0.0)]:
         rotations[f"Foot{suffix}"] = (math.radians(8), 0, 0)
     turn_poses.append((frame, rotations, {"Body": (0, 0, 0.008 * abs(amount))}))
 make_action("Turn", 24, turn_poses)
+
+bite_poses = [
+    (0, {"Body": (0, 0, 0), "Neck": (0, 0, 0), "Head": (0, 0, 0), "Jaw": (0, 0, 0)}, {}),
+    (
+        5,
+        {
+            "Body": (math.radians(-5), 0, 0),
+            "Neck": (math.radians(14), 0, 0),
+            "Head": (math.radians(16), 0, 0),
+            "Jaw": (math.radians(42), 0, 0),
+            "Tail_0": (0, 0, math.radians(-5)),
+            "Tail_1": (0, 0, math.radians(-8)),
+            "Tail_2": (0, 0, math.radians(-10)),
+            "Tail_3": (0, 0, math.radians(-12)),
+        },
+        {"Body": (0, 0.055, -0.018)},
+    ),
+    (
+        9,
+        {
+            "Body": (math.radians(10), 0, 0),
+            "Neck": (math.radians(-27), 0, 0),
+            "Head": (math.radians(-32), 0, 0),
+            "Jaw": (math.radians(-2), 0, 0),
+            "Tail_0": (0, 0, math.radians(6)),
+            "Tail_1": (0, 0, math.radians(9)),
+            "Tail_2": (0, 0, math.radians(11)),
+            "Tail_3": (0, 0, math.radians(13)),
+        },
+        {"Body": (0, -0.17, 0.014)},
+    ),
+    (18, {"Body": (0, 0, 0), "Neck": (0, 0, 0), "Head": (0, 0, 0), "Jaw": (0, 0, 0)}, {}),
+]
+make_action("Bite", 18, bite_poses)
+
+claw_poses = [
+    (0, {"Body": (0, 0, 0), "Neck": (0, 0, 0), "Head": (0, 0, 0)}, {}),
+    (
+        5,
+        {
+            "Body": (math.radians(-7), 0, math.radians(-16)),
+            "Neck": (math.radians(8), 0, math.radians(12)),
+            "Head": (math.radians(10), 0, math.radians(16)),
+            "LegFL": (math.radians(-60), math.radians(-11), math.radians(18)),
+            "ShinFL": (math.radians(-50), 0, 0),
+            "FootFL": (math.radians(38), 0, math.radians(-15)),
+            "Tail_0": (0, 0, math.radians(-7)),
+            "Tail_1": (0, 0, math.radians(-11)),
+            "Tail_2": (0, 0, math.radians(-14)),
+            "Tail_3": (0, 0, math.radians(-17)),
+        },
+        {"Body": (0.04, 0.04, -0.028)},
+    ),
+    (
+        9,
+        {
+            "Body": (math.radians(9), 0, math.radians(22)),
+            "Neck": (math.radians(-11), 0, math.radians(-16)),
+            "Head": (math.radians(-13), 0, math.radians(-21)),
+            "LegFL": (math.radians(70), math.radians(10), math.radians(-25)),
+            "ShinFL": (math.radians(14), 0, 0),
+            "FootFL": (math.radians(-24), 0, math.radians(13)),
+            "LegFR": (math.radians(-48), math.radians(9), math.radians(-15)),
+            "ShinFR": (math.radians(-42), 0, 0),
+            "FootFR": (math.radians(31), 0, math.radians(14)),
+        },
+        {"Body": (-0.055, -0.09, 0.02)},
+    ),
+    (
+        14,
+        {
+            "Body": (math.radians(8), 0, math.radians(-23)),
+            "Neck": (math.radians(-10), 0, math.radians(16)),
+            "Head": (math.radians(-12), 0, math.radians(22)),
+            "LegFL": (math.radians(-18), 0, math.radians(8)),
+            "LegFR": (math.radians(72), math.radians(-10), math.radians(26)),
+            "ShinFR": (math.radians(15), 0, 0),
+            "FootFR": (math.radians(-26), 0, math.radians(-14)),
+            "Tail_0": (0, 0, math.radians(8)),
+            "Tail_1": (0, 0, math.radians(12)),
+            "Tail_2": (0, 0, math.radians(16)),
+            "Tail_3": (0, 0, math.radians(20)),
+        },
+        {"Body": (0.065, -0.075, 0.018)},
+    ),
+    (22, {"Body": (0, 0, 0), "Neck": (0, 0, 0), "Head": (0, 0, 0), "LegFL": (0, 0, 0), "LegFR": (0, 0, 0)}, {}),
+]
+make_action("Claw", 22, claw_poses)
+
+tail_swipe_poses = [
+    (0, {"Body": (0, 0, 0), "Neck": (0, 0, 0), "Head": (0, 0, 0)}, {}),
+    (
+        6,
+        {
+            "Body": (math.radians(-8), 0, math.radians(-18)),
+            "Neck": (math.radians(8), 0, math.radians(14)),
+            "Head": (math.radians(11), 0, math.radians(19)),
+            "Tail_0": (0, 0, math.radians(-24)),
+            "Tail_1": (0, 0, math.radians(-38)),
+            "Tail_2": (0, 0, math.radians(-52)),
+            "Tail_3": (0, 0, math.radians(-66)),
+        },
+        {"Body": (0.04, 0.035, -0.032)},
+    ),
+    (
+        12,
+        {
+            "Body": (math.radians(8), 0, math.radians(30)),
+            "Neck": (math.radians(-8), 0, math.radians(-20)),
+            "Head": (math.radians(-11), 0, math.radians(-26)),
+            "Tail_0": (0, 0, math.radians(32)),
+            "Tail_1": (0, 0, math.radians(50)),
+            "Tail_2": (0, 0, math.radians(68)),
+            "Tail_3": (0, 0, math.radians(82)),
+            "LegFL": (math.radians(-8), 0, math.radians(7)),
+            "LegBR": (math.radians(8), 0, math.radians(-7)),
+        },
+        {"Body": (-0.055, -0.045, 0.014)},
+    ),
+    (
+        18,
+        {
+            "Body": (math.radians(2), 0, math.radians(-7)),
+            "Neck": (0, 0, math.radians(5)),
+            "Head": (0, 0, math.radians(7)),
+            "Tail_0": (0, 0, math.radians(12)),
+            "Tail_1": (0, 0, math.radians(18)),
+            "Tail_2": (0, 0, math.radians(23)),
+            "Tail_3": (0, 0, math.radians(28)),
+        },
+        {"Body": (0.01, 0, -0.006)},
+    ),
+    (26, {"Body": (0, 0, 0), "Neck": (0, 0, 0), "Head": (0, 0, 0), "Tail_0": (0, 0, 0), "Tail_1": (0, 0, 0), "Tail_2": (0, 0, 0), "Tail_3": (0, 0, 0)}, {}),
+]
+make_action("TailSwipe", 26, tail_swipe_poses)
+
+hit_poses = [
+    (0, {"Body": (0, 0, 0), "Neck": (0, 0, 0), "Head": (0, 0, 0)}, {}),
+    (
+        4,
+        {
+            "Body": (math.radians(-5), 0, math.radians(12)),
+            "Neck": (math.radians(9), 0, math.radians(-10)),
+            "Head": (math.radians(12), 0, math.radians(-15)),
+            "Tail_0": (0, 0, math.radians(-9)),
+            "Tail_1": (0, 0, math.radians(-14)),
+            "Tail_2": (0, 0, math.radians(-18)),
+            "Tail_3": (0, 0, math.radians(-22)),
+        },
+        {"Body": (0.035, 0.025, -0.035)},
+    ),
+    (14, {"Body": (0, 0, 0), "Neck": (0, 0, 0), "Head": (0, 0, 0)}, {}),
+]
+make_action("Hit", 14, hit_poses)
+
+death_poses = [
+    (0, {"Body": (0, 0, 0), "Neck": (0, 0, 0), "Head": (0, 0, 0)}, {}),
+    (
+        12,
+        {
+            "Body": (math.radians(-6), 0, math.radians(28)),
+            "Neck": (math.radians(12), 0, math.radians(-16)),
+            "Head": (math.radians(18), 0, math.radians(-20)),
+            "LegFL": (math.radians(18), 0, math.radians(16)),
+            "LegFR": (math.radians(-14), 0, math.radians(-14)),
+            "LegBL": (math.radians(16), 0, math.radians(13)),
+            "LegBR": (math.radians(-12), 0, math.radians(-12)),
+        },
+        {"Body": (0.05, 0.015, -0.11)},
+    ),
+    (
+        28,
+        {
+            "Body": (math.radians(-8), 0, math.radians(78)),
+            "Neck": (math.radians(18), 0, math.radians(-22)),
+            "Head": (math.radians(24), 0, math.radians(-30)),
+            "Jaw": (math.radians(8), 0, 0),
+            "LegFL": (math.radians(25), 0, math.radians(23)),
+            "LegFR": (math.radians(-22), 0, math.radians(-21)),
+            "LegBL": (math.radians(21), 0, math.radians(18)),
+            "LegBR": (math.radians(-18), 0, math.radians(-17)),
+            "Tail_0": (0, 0, math.radians(-15)),
+            "Tail_1": (0, 0, math.radians(-20)),
+            "Tail_2": (0, 0, math.radians(-24)),
+            "Tail_3": (0, 0, math.radians(-28)),
+        },
+        {"Body": (0.08, 0.02, -0.27)},
+    ),
+    (
+        36,
+        {
+            "Body": (math.radians(-8), 0, math.radians(82)),
+            "Neck": (math.radians(18), 0, math.radians(-24)),
+            "Head": (math.radians(24), 0, math.radians(-32)),
+            "Jaw": (math.radians(10), 0, 0),
+            "Tail_0": (0, 0, math.radians(-16)),
+            "Tail_1": (0, 0, math.radians(-21)),
+            "Tail_2": (0, 0, math.radians(-25)),
+            "Tail_3": (0, 0, math.radians(-29)),
+        },
+        {"Body": (0.08, 0.02, -0.285)},
+    ),
+]
+make_action("Death", 36, death_poses)
 
 armature.animation_data.action = None
 bpy.context.scene.frame_start = 0

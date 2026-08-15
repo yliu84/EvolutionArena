@@ -27,9 +27,11 @@ These are executable GLB art-direction masters and loading/animation contracts, 
 ## Coral-gecko playable visual slice
 
 `models/coral-gecko-lowpoly-v1.glb` is the cleaned 32k-triangle geometry source.
-`models/coral-gecko-rigged-v2.glb` is the playable replacement with a 20-bone
-quadruped skeleton, four tracked foot bones, four tail joints and embedded
-`Idle`, `Run` and `Turn` clips. The stage-0 runtime uses the rigged asset at a
+`models/coral-gecko-rigged-v2.glb` is the accepted locomotion source with a 20-bone
+quadruped skeleton and `Idle`, `Run` and `Turn` clips. `models/coral-gecko-rigged-v3.glb`
+is the accepted first-version combat-motion master: it preserves the same 32,000-triangle web LOD,
+adds an independently weighted jaw bone, and embeds `Bite`, `Claw`, `TailSwipe`, `Hit` and `Death` alongside
+the locomotion clips. The stage-0 runtime uses the V3 master asset at a
 1.25 scale and crossfades between the three clips. `Run` plays at 3.2x to match
 the 5.8 world-unit movement speed; a pooled 14-sprite dust effect emits two
 warm, ground-hugging puffs at diagonal foot contacts and fully fades after 0.58 seconds. Meshy 5 generated the source
@@ -43,3 +45,11 @@ settle, head/tail turn inertia, contact-shadow response and two-foot dynamic roo
 grounding. Material tuning strengthens the existing normal map and roughness
 response without adding downloads. The source currently has no AO-mapped
 material; this limitation is exposed in debug data rather than hidden.
+
+The player uses only `Space` for the primary chain: Bite, Claw and TailSwipe cycle in order, with one buffered input accepted during the active/recovery animation. All three are normal-attack animation variants, not skills; the separate skill-attack system is intentionally disabled and deferred. `H`, `K` and `R` remain QA-only reaction/reset controls. These clips do not define damage. The accepted combat profile is `coral-gecko-combat-master-v1`. Its contact shadow uses three correctly oriented ellipses instead of the earlier circle, so the body, head and tail produce a readable grounded footprint without the terrain clipping it into a semicircle.
+
+The Quality 3D demo also contains a procedural armored training creature. It is a disposable validation target rather than a production monster asset: normal attacks own its damage/contact rules, while flash, pooled fragments, small camera trauma, knockback and the world-space health bar are presentation only. It cannot attack and automatically respawns in front of the player after death.
+
+Each normal-attack step now reacquires the one live demo target and rotates the character root toward it at up to 12 radians/second before contact; a hit is refused above 8 degrees of residual aim error. The embedded animation revision uses a larger jaw opening and forward lunge for Bite, higher alternating foreclaw arcs and torso twist for Claw, and a wider four-joint coil/sweep for TailSwipe. These changes affect direction readability and silhouette only, not skill state or damage authority.
+
+On 2026-08-15 the user accepted this complete package as the first mother-monster production reference. New monsters may use different rigs and attacks, but their asset budget, grounding, named-state coverage, targeting, hit feedback, validation evidence and documentation must be measured against this master.

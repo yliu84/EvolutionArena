@@ -14,9 +14,10 @@ describe('quality 3D GLB vertical slice assets', () => {
     expect(coralGecko?.formId).toBe('coral-gecko')
     expect(coralGecko?.scale).toBe(CORAL_GECKO_PRESENTATION.displayScale)
     expect(coralGecko?.motion).toBe('embedded')
-    expect(coralGecko?.requiredClips).toEqual(['Idle', 'Run', 'Turn'])
+    expect(coralGecko?.requiredClips).toEqual(['Idle', 'Run', 'Turn', 'Bite', 'Claw', 'TailSwipe', 'Hit', 'Death'])
     expect(coralGecko?.requiredNodes).toContain('FootFL')
     expect(coralGecko?.requiredNodes).toContain('FootBR')
+    expect(coralGecko?.requiredNodes).toContain('Jaw')
     expect(coralGecko?.url).toContain('coral-gecko-rigged')
 
     for (const asset of QUALITY_3D_GLB_ASSETS.filter((candidate) => candidate.motion === 'embedded')) {
@@ -45,6 +46,44 @@ describe('quality 3D GLB vertical slice assets', () => {
       peakOpacity: 0.62,
     })
     expect(CORAL_GECKO_PRESENTATION.validation.maximumPlantedFootError).toBe(0.16)
+    expect(CORAL_GECKO_PRESENTATION.combat).toMatchObject({
+      profileId: 'coral-gecko-combat-master-v1',
+      system: 'basic-attack',
+      skillsEnabled: false,
+      targeting: {
+        mode: 'nearest-live-target',
+        turnSpeedRadiansPerSecond: 12,
+        contactToleranceDegrees: 8,
+      },
+      demoTarget: {
+        name: '甲壳训练虫',
+        maxHealth: 84,
+        respawnSeconds: 1.8,
+        spawnDistance: 2.55,
+      },
+      hitFeedback: {
+        biteDamage: 16,
+        clawDamage: 12,
+        tailSwipeDamage: 14,
+        biteRange: 2.55,
+        clawRange: 2.75,
+        tailSwipeRange: 3.1,
+        flashSeconds: 0.1,
+        cameraTrauma: 0.34,
+        knockbackSpeed: 2.3,
+        particleCount: 9,
+      },
+      primaryCombo: ['Bite', 'Claw', 'TailSwipe'],
+      comboResetSeconds: 1.15,
+      biteDurationSeconds: 0.6,
+      biteContactSeconds: 0.3,
+      clawDurationSeconds: 0.73,
+      clawContactSeconds: 0.3,
+      tailSwipeDurationSeconds: 0.87,
+      tailSwipeContactSeconds: 0.4,
+      hitDurationSeconds: 0.47,
+      deathDurationSeconds: 1.2,
+    })
     expect(CORAL_GECKO_PRESENTATION.weight).toMatchObject({
       stopSettleSeconds: 0.22,
       stepCompression: 0.018,
@@ -55,6 +94,11 @@ describe('quality 3D GLB vertical slice assets', () => {
       normalStrength: 1.18,
       aoStrength: 1.28,
       maximumAnisotropy: 8,
+    })
+    expect(CORAL_GECKO_PRESENTATION.contactShadow).toMatchObject({
+      bodyWidth: 1.18,
+      bodyLength: 0.62,
+      groundLift: 0.045,
     })
   })
 })

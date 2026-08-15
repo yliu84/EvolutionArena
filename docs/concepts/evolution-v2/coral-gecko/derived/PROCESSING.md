@@ -9,6 +9,7 @@ Status: playable web-game LOD and dedicated quadruped rig integrated into the Qu
 - `runtime-preview-v1/`: neutral-light front, side, rear and gameplay-camera previews.
 - `../../../public/assets/quality-3d/models/coral-gecko-lowpoly-v1.glb`: playable 32,000-triangle LOD with three 1K PBR textures (approximately 6 MB).
 - `../../../public/assets/quality-3d/models/coral-gecko-rigged-v2.glb`: 20-bone skinned quadruped with `Idle`, `Run` and `Turn` animation clips.
+- `../../../public/assets/quality-3d/models/coral-gecko-rigged-v3.glb`: accepted 21-bone mother-monster master with a weighted jaw plus `Idle`, `Run`, `Turn`, `Bite`, `Claw`, `TailSwipe`, `Hit` and `Death` clips.
 
 ## Cleanup
 
@@ -30,4 +31,8 @@ Status: playable web-game LOD and dedicated quadruped rig integrated into the Qu
 - Weight/material tuning v5 keeps authoritative movement instant while easing only the visual mass response. It adds 0.22-second stop settle, footstep compression, contact-shadow darkening, stronger turn lean, head/tail follow-through and two-planted-foot dynamic root correction. A sharp-turn sample improved from 0.42 to 0.01 planted-foot error.
 - The single loaded PBR material now uses roughness limits 0.52-0.88, normal strength 1.18, environment intensity 0.72 and texture anisotropy up to 8. The GLB has one normal-mapped material but no AO-mapped material; AO support is configured for later assets and is not counted as current visual detail.
 - Accepted first-version ID `coral-gecko-master-v1` passed 1440x900 and simulated 844x390 browser checks at approximately 120/123 FPS, with zero console warnings/errors. The user visually accepted it on 2026-08-15 as the reusable V1 production baseline. A physical midrange-mobile 30 FPS test remains a separate public-release gate.
-- Jaw separation and bite animation remain a later combat-animation task; they are intentionally outside this locomotion pass.
+- Accepted combat-motion master v1 uses the 32,000-triangle web LOD, not the 320,506-triangle sculpt. The final V3 asset has 21 bones and eight named clips. The runtime maps Bite, Claw and TailSwipe to one ordered Space-key chain with a one-action input buffer and a 1.15-second idle reset, rather than exposing three player attack keys.
+- The amplified combat pass preserves the same 32,000 triangles, 21 bones and eight clip names while increasing Bite jaw/lunge travel, Claw foreleg/torso travel and TailSwipe coil/sweep travel. The post-export tangent repair restored all three inherited zero-length tangent vectors; final glTF validation remains 0 errors and 0 warnings.
+- Every basic-attack step now reacquires the live locked target and turns the character root toward it at 12 radians/second. Runtime contact requires no more than 8 degrees of aim error; the local animation cannot redirect authoritative damage.
+- The runtime contact shadow is no longer one incorrectly scaled circle. It uses three body-plan ellipses (body, head and tail) and samples center/front/rear/left/right terrain height to remain visible on uneven ground and the stone bridge.
+- User acceptance on 2026-08-15 promoted the full art, locomotion, combat, targeting, hit-feedback and validation contract to `coral-gecko-combat-master-v1`, the first mother-monster production reference for subsequent assets.

@@ -1,7 +1,8 @@
 # Character Quality Baseline — Coral Gecko v1
 
-Status: **first-version character master visually accepted; physical-mobile release test remains open**  
-Runtime baseline ID: `coral-gecko-master-v1`  
+Status: **first-version mother-monster master accepted; physical-mobile release test remains open**
+Runtime baseline ID: `coral-gecko-master-v1`
+Combat baseline ID: `coral-gecko-combat-master-v1`
 Playable entry: `?quality3d=1&debug=1`
 
 This document turns the first playable coral gecko into a repeatable production template. It records what is already validated, what remains deliberately unfinished, and the gates every later monster and evolution form must pass.
@@ -10,7 +11,7 @@ This document turns the first playable coral gecko into a repeatable production 
 
 - Runtime tuning: `../../../../src/quality-3d-character-presentation.ts`
 - GLB contract and stage mapping: `../../../../src/quality-3d-glb-assets.ts`
-- Runtime model: `../../../../public/assets/quality-3d/models/coral-gecko-rigged-v2.glb`
+- Runtime model: `../../../../public/assets/quality-3d/models/coral-gecko-rigged-v3.glb`
 - Asset and license notes: `../../../../public/assets/quality-3d/ASSET-NOTES.md`
 - Immutable source/provenance: `../../../concepts/evolution-v2/coral-gecko/source/SOURCE.md`
 - Processing history: `../../../concepts/evolution-v2/coral-gecko/derived/PROCESSING.md`
@@ -27,8 +28,8 @@ Do not copy numbers from this Markdown file back into code. The typed runtime tu
 | Display scale | 1.25 |
 | Gameplay camera | orthographic, 19.2 world-unit view height |
 | Runtime mesh | 32,000 triangles, three 1K PBR textures, approximately 6.6 MB rigged GLB |
-| Rig | 20 bones, four tracked feet, four tail joints |
-| Required clips | `Idle`, `Run`, `Turn` |
+| Rig | 21 bones including an independently weighted jaw, four tracked feet and four tail joints |
+| Required clips | `Idle`, `Run`, `Turn`, `Bite`, `Claw`, `TailSwipe`, `Hit`, `Death` |
 | Playback | Idle 1.0x, Run 3.2x, Turn 1.2x, 0.16-second crossfade |
 | Locomotion | 5.8 world units/second, 6.4 footstep events/second |
 | Foot contact | maximum accepted planted-foot error 0.16; observed 0.07–0.08 in latest pass |
@@ -51,6 +52,41 @@ The model is clearly three-dimensional, grounded and readable. The accepted firs
 3. **Inertia:** the torso starts and stops before the tail fully settles; head and tail follow the body with a short, controlled lag instead of moving as one rigid object.
 4. **Foot contact:** each planted foot drives a small body reaction, contact shadow change and existing dust event. Routine footsteps do not use hit-stop or camera shake.
 5. **Turning:** feet and torso lead, head follows, tail counterbalances; rotation must remain responsive and cannot become an uninterruptible animation.
+
+## Accepted Combat Motion Master
+
+`coral-gecko-combat-master-v1` extends the accepted locomotion master without changing movement speed, collision or damage rules. The V3 GLB adds a weighted jaw bone and five one-shot combat/reaction clips:
+
+- `Bite`: 0.60 seconds with anticipation, open jaw, forward head/body lunge, contact at approximately 0.30 seconds and recovery;
+- `Claw`: 0.73-second alternating left/right foreclaw combo, with torso twist and contact at approximately 0.30 seconds;
+- `TailSwipe`: 0.87-second coil, broad lateral sweep and recovery, with contact at approximately 0.40 seconds;
+- `Hit`: 0.47-second side recoil with head, torso and tail follow-through;
+- `Death`: 1.20-second collapse that holds its final grounded pose until reset.
+
+The player has one primary-attack input: `Space`. Each press advances `Bite → Claw → TailSwipe → Bite`; pressing again before the current recovery ends buffers exactly one next attack, while holding Space continuously loops the same sequence. Waiting more than 1.15 seconds after recovery resets the sequence to Bite. Every combo step reacquires the current live locked target and turns toward it during anticipation; contact is rejected when the remaining aim error exceeds 8 degrees. The Quality 3D demo uses its sole training creature as that target, while the formal hunt must supply the player's selected/locked enemy rather than silently choosing an unrelated creature. `H`, `K` and `R` remain QA-only reaction/reset controls. The clips communicate state only; authoritative hit timing and damage remain owned by the Phaser combat system.
+
+### Current combat-system boundary
+
+`Bite`, `Claw` and `TailSwipe` are three animation variants in one **basic-attack chain**, not three skills. They share the single primary-attack input and the normal-attack authority. The current version has no mana/energy cost, skill slot, independent skill cooldown, skill targeting or skill upgrade tree. Skill attacks are a separate future system and must be designed and validated in their own milestone; they are intentionally disabled in this mother-monster master.
+
+The quality demo includes one non-attacking armored training creature solely for validating this basic-attack chain. It exposes health, range, hit count, last action and death/respawn state in development diagnostics. A valid contact produces a short material flash, pooled impact fragments, restrained camera trauma and visual knockback; these presentation effects never calculate damage. The target cannot attack the player and is not part of the monster-content roster.
+
+The amplified motion revision increases the readable silhouette rather than changing damage: Bite opens the jaw farther and roughly doubles the forward body drive; Claw lifts each foreleg higher with stronger torso twist and follow-through; TailSwipe increases both coil and lateral sweep across all four tail joints. Target-facing rotation remains authoritative at the character root, so these larger local bone motions cannot send the hit in a different direction.
+
+## Mother-Monster Master Acceptance
+
+The user accepted this complete first-version mother-monster model on 2026-08-15. A future ground monster or evolution form may change its silhouette, materials, scale and attack vocabulary, but must inherit or deliberately replace this production contract:
+
+- web-ready GLB budget, source/provenance record and validation with zero glTF errors or warnings;
+- intentional model-to-map scale, grounded four-foot contact, body-plan contact shadow and terrain-safe collision footprint;
+- named `Idle`, `Run`, `Turn`, basic-attack, `Hit` and `Death` clips with readable anticipation, contact and recovery;
+- movement-speed-matched locomotion, target-facing attacks and authoritative contact timing separated from animation;
+- visible health response, pooled hit feedback, visual-only knockback, death/reset behavior and development diagnostics;
+- desktop and mobile-landscape browser checks with no new console errors and no P0/P1 defects.
+
+This acceptance makes the coral gecko the production reference for subsequent monsters. It does not require every monster to reuse the same skeleton or animations, and it does not claim final mature-commercial artwork or physical midrange-mobile certification.
+
+The former single circle shadow has been replaced by three directional ellipses for the torso, head and tail. The ellipse axes now scale in the correct local plane, and five terrain samples lift the group just above the highest nearby surface so slopes and bridge edges do not cut it into a semicircle.
 
 ## Acceptance and Release Gates
 
