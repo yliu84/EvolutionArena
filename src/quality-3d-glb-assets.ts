@@ -2,9 +2,17 @@ import { CORAL_GECKO_PRESENTATION } from './quality-3d-character-presentation'
 import { SCARLET_GECKO_PRESENTATION } from './scarlet-gecko-character-presentation'
 import { SCARLET_HUNTER_PRESENTATION } from './scarlet-hunter-character-presentation'
 
+/**
+ * Gene family a form belongs to. Stage 0 and the late-stage endpoints are shared
+ * by every route, so they leave this undefined.
+ */
+export type Quality3DFormFamily = 'fang' | 'shell' | 'swarm'
+
 export interface Quality3DGLBAsset {
   stage: 0 | 1 | 2 | 3 | 6
   formId: 'coral-gecko' | 'scarlet-gecko' | 'scarlet-hunter' | 'azure-wyvern' | 'golden-ancient'
+  /** Undefined means the form is route-independent and serves every family. */
+  family?: Quality3DFormFamily
   url: string
   scale: number
   requiredNodes: readonly string[]
@@ -45,6 +53,7 @@ export const QUALITY_3D_GLB_ASSETS: readonly Quality3DGLBAsset[] = [
       feet: ['frontleg2', 'R_frontleg2', 'backleg2', 'R_backleg2'],
       tail: ['tail1', 'tail2', 'tail3'],
     },
+    'fang',
   ),
   asset(
     2,
@@ -61,13 +70,33 @@ export const QUALITY_3D_GLB_ASSETS: readonly Quality3DGLBAsset[] = [
       feet: ['frontleg2', 'R_frontleg2', 'backleg2', 'R_backleg2'],
       tail: ['tail1', 'tail2', 'tail3'],
     },
+    'fang',
   ),
   asset(3, 'azure-wyvern', '/assets/quality-3d/models/azure-wyvern-v1.glb', 0.68, ['Body', 'Head', 'LegBL', 'LegBR', 'WingL', 'WingR', 'Tail_0']),
   asset(6, 'golden-ancient', '/assets/quality-3d/models/golden-ancient-v1.glb', 0.74, ['Body', 'Head', 'LegFL', 'LegFR', 'LegBL', 'LegBR', 'WingL', 'WingR', 'Tail_0']),
 ] as const
 
-export function getQuality3DGLBAsset(stage: number) {
-  return QUALITY_3D_GLB_ASSETS.find((asset) => asset.stage === stage)
+/**
+ * Resolve the runtime GLB for a stage, preferring the requested gene family.
+ *
+ * Only the Fang line has authored stage-1/2 models today, so a Shell or Swarm
+ * request still falls back to the Fang form. `matchedFamily` reports whether the
+ * route actually got its own body, so debug state can show the substitution
+ * instead of silently presenting one form as three.
+ */
+export function resolveQuality3DGLBAsset(stage: number, family?: Quality3DFormFamily) {
+  const atStage = QUALITY_3D_GLB_ASSETS.filter((asset) => asset.stage === stage)
+  if (atStage.length === 0) return { asset: undefined, matchedFamily: false }
+  const exact = family ? atStage.find((asset) => asset.family === family) : undefined
+  if (exact) return { asset: exact, matchedFamily: true }
+  const shared = atStage.find((asset) => asset.family === undefined)
+  // A route-independent form serves every family, so it is not a substitution.
+  if (shared) return { asset: shared, matchedFamily: true }
+  return { asset: atStage[0], matchedFamily: family === undefined }
+}
+
+export function getQuality3DGLBAsset(stage: number, family?: Quality3DFormFamily) {
+  return resolveQuality3DGLBAsset(stage, family).asset
 }
 
 function asset(
@@ -80,10 +109,12 @@ function asset(
   modelYaw = 0,
   requiredClips: readonly string[] = motion === 'embedded' ? ['Idle', 'Run'] : [],
   rig?: Quality3DGLBAsset['rig'],
+  family?: Quality3DFormFamily,
 ): Quality3DGLBAsset {
   return {
     stage,
     formId,
+    family,
     url,
     scale,
     requiredNodes,

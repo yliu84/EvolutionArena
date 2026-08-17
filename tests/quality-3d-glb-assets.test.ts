@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AnimationClip, Euler, MathUtils, Quaternion, QuaternionKeyframeTrack } from 'three'
-import { getQuality3DGLBAsset, QUALITY_3D_GLB_ASSETS } from '../src/quality-3d-glb-assets'
+import { getQuality3DGLBAsset, resolveQuality3DGLBAsset, QUALITY_3D_GLB_ASSETS } from '../src/quality-3d-glb-assets'
 import { CORAL_GECKO_PRESENTATION } from '../src/quality-3d-character-presentation'
 import {
   SCARLET_GECKO_LOCOMOTION_STABILITY,
@@ -15,6 +15,36 @@ describe('quality 3D GLB vertical slice assets', () => {
     expect(QUALITY_3D_GLB_ASSETS.map((asset) => asset.stage)).toEqual([0, 1, 2, 3, 6])
     expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.formId)).size).toBe(5)
     expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.url)).size).toBe(5)
+  })
+
+  it('keys evolved forms by gene family so routes can own separate bodies', () => {
+    // Stage 0 is the shared origin; the authored evolutions belong to Fang.
+    expect(getQuality3DGLBAsset(0)?.family).toBeUndefined()
+    expect(getQuality3DGLBAsset(1)?.family).toBe('fang')
+    expect(getQuality3DGLBAsset(2)?.family).toBe('fang')
+  })
+
+  it('resolves a family to its own body and reports when it borrows another', () => {
+    const fang = resolveQuality3DGLBAsset(1, 'fang')
+    expect(fang.asset?.formId).toBe('scarlet-gecko')
+    expect(fang.matchedFamily).toBe(true)
+
+    // No Shell stage-1 model exists yet, so it borrows Fang's - but must say so.
+    const shell = resolveQuality3DGLBAsset(1, 'shell')
+    expect(shell.asset?.formId).toBe('scarlet-gecko')
+    expect(shell.matchedFamily).toBe(false)
+
+    // Stage 0 serves every route, so it is not a substitution.
+    expect(resolveQuality3DGLBAsset(0, 'shell').matchedFamily).toBe(true)
+  })
+
+  it('keeps the family-less lookup resolving exactly as before', () => {
+    for (const stage of [0, 1, 2, 3, 6]) {
+      expect(getQuality3DGLBAsset(stage)?.formId).toBe(
+        QUALITY_3D_GLB_ASSETS.find((asset) => asset.stage === stage)?.formId,
+      )
+    }
+    expect(resolveQuality3DGLBAsset(4).asset).toBeUndefined()
   })
 
   it('requires locomotion clips and body-plan-specific nodes', () => {

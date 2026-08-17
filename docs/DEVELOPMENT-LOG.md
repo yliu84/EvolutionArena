@@ -1465,3 +1465,13 @@
 - 浏览器验证（844×390）：遍历 `<html>` + `<body>` + 全部 195 个后代元素，`touch-action === 'auto'` 的数量为 **0**（修复前该集合包含上述七类容器与根元素）。画布、`.gloamwood-3d-touch`、`.g3d-actions` 为 `none`，HUD/引导/设置为 `manipulation`。另确认圆形攻击键方框四角与屏幕最右下角的命中目标均为画布（`.gloamwood-3d-touch` 为 `pointer-events: none`，命中穿透），其 `touch-action` 为 `none`。
 - 自动验证：70 个测试文件 / 374 项测试、TypeScript、`git diff --check` 与 Vite 生产构建通过。新断言直接锁定非继承这一点（要求存在 `body.is-gloamwood-3d *` 的 touch-action 规则与 `html.is-gloamwood-3d` 规则），避免同类错误再次通过。CSS 51.19→51.49 kB。
 - 待用户真机复验：本机浏览器面板无法复现 iOS 的缩放手势，本轮只能证明计算样式已无 `auto`，**实际是否根除需在 iPhone 上重测**，重点仍是右下角攻击键周边与双拇指同时操作。
+
+## 2026-08-17 · 岩盾支线启动：形象定案与族系资产键
+
+- 类型：架构接线 + 美术契约（未改地图环境、未动已验收的初始/一级 GLB、未改任何权威伤害/射程/碰撞）
+- 前置：G-1 巢卫绕后修复已于上一条目落地，本条不重复。
+- **族系资产键**：`QUALITY_3D_GLB_ASSETS` 增加 `family` 字段，新增 `resolveQuality3DGLBAsset(stage, family)`，按「精确族系 → 无族系共用 → 该阶段首个」顺序解析。stage 0 为共用起源，stage 1/2 标记为 `fang`。`loadCharacter(stage, family)` 与 `chooseEvolution` 打通，调试状态新增 `characterFamily` 与 `characterFamilyMatched`。此前选岩盾或群生都会静默加载裂牙的一级模型；现在替身可见。浏览器实测选岩盾后为 `family=shell, matched=false, modelReady=true`；无族系调用的解析结果与改动前逐一致。
+- **岩盾一级形象定案**：用户在三稿中选定石甲穿山蜥方向（叠瓦石甲、灰岩对暗青绿、全背装甲），并按评估意见重做了抬腿版本，使四足完全露出甲裙线以下以满足步态与落脚尘土规则。盾首龟方向（`shell-stage1-concept-c-buckler-head.png`）转为敌方岩盾／巢卫的设计目标存档——其正面装甲语言恰好描述敌方真实的 ±75.6° 正面减伤，而玩家的减伤是平的（`event.damage * (1 - damageReduction)`，无朝向项）。
+- 新增 `docs/concepts/evolution-v2/shell-stage1/PRODUCTION-MODEL-CONTRACT-V1.md`：玩法身份、不可协商剪影、材质与明度分层、缩放与占地风险（按高度归一化会放大低矮体型，需单独定 typed body radius 并对 82 障碍物验证）、绑定与预算、步态契约、`Bite → Slam → TailSwipe` 攻击门（移除跃扑，短前肢不得硬拉长动作）、验收序列与已否决候选表。文生 3D 第 1 次已记为否决：输出退回通用装甲巨蜥（脊背棘刺、长光滑尾、高站姿），体型与 stage 0/1 无法区分。
+- 自动验证：70 个测试文件 / 377 项测试（本条新增 3 项族系解析回归）、TypeScript、Vite 生产构建、`git diff --check` 通过。MapLab 5 逻辑 120.34 kB；独立 legacy 块的大包提示保持非阻断。
+- 下一步：按契约走图生 3D（禁止文生），并逐次记录尝试次数——**产能数字是这条支线的首要产出**。

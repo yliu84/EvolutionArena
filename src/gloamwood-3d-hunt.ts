@@ -7,7 +7,7 @@ import {
 } from './gloamwood-performance'
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 
-import { getQuality3DGLBAsset } from './quality-3d-glb-assets'
+import { resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
 import { CORAL_GECKO_PRESENTATION } from './quality-3d-character-presentation'
 import {
   applyScarletGeckoSurfaceGrade,
@@ -201,6 +201,9 @@ interface DebugState {
   stage: number
   model: string
   modelReady: boolean
+  /** Route the player evolved into, and whether that route has its own body yet. */
+  characterFamily: string
+  characterFamilyMatched: boolean
   presentation: { baselineId: string; artStyle: string; triangles: number; modelUrl: string }
   activeClip: string
   attack: { visualOffset: number; liftOffset: number; pitchDegrees: number; yawDegrees: number; elapsedSeconds: number; leapBitePhase: string; landingEvents: number }
@@ -361,6 +364,10 @@ class Gloamwood3DHunt {
   private biomassMultiplier = 1
   private killHeal = 0
   private stage = 0
+  /** Gene family whose body the player currently wears; undefined before evolving. */
+  private characterFamily?: Quality3DFormFamily
+  /** False when the route had no authored model and borrowed another family's. */
+  private characterFamilyMatched = true
   private lockedPreyId: string | null = null
   private primaryHeld = false
   private touchMoveX = 0
@@ -1294,17 +1301,20 @@ class Gloamwood3DHunt {
     return visual
   }
 
-  private async loadCharacter(stageOverride?: number) {
+  private async loadCharacter(stageOverride?: number, familyOverride?: Quality3DFormFamily) {
     const params = new URLSearchParams(window.location.search)
     const requestedStage = stageOverride ?? Number(params.get('evolutionStage'))
     const stage = requestedStage >= 2 ? 2 : requestedStage >= 1 ? 1 : 0
     this.stage = stage
+    if (familyOverride) this.characterFamily = familyOverride
     this.combatProfile = stage >= 2
       ? SCARLET_HUNTER_PRESENTATION.combat
       : stage >= 1
         ? SCARLET_GECKO_PRESENTATION.combat
         : CORAL_GECKO_PRESENTATION.combat
-    const asset = getQuality3DGLBAsset(stage)
+    const resolved = resolveQuality3DGLBAsset(stage, this.characterFamily)
+    const asset = resolved.asset
+    this.characterFamilyMatched = resolved.matchedFamily
     if (!asset) throw new Error(`Missing stage-${stage} GLB`)
     const gltf = await this.loader.loadAsync(asset.url)
     if (this.disposed) return
@@ -2516,7 +2526,7 @@ class Gloamwood3DHunt {
       maxHealth: maximumHealth,
       health: Math.min(maximumHealth, this.playerCombat.health + Math.max(0, maximumHealth - previousMaximum)),
     }
-    await this.loadCharacter(1)
+    await this.loadCharacter(1, candidate.family)
     this.createEvolutionAccent(candidate.family)
     this.combatMessage = `进化完成 · ${candidate.name} · ${candidate.statLine}`
     if (this.evolutionOverlay) {
@@ -3249,7 +3259,7 @@ class Gloamwood3DHunt {
 
   private getDebugState(): DebugState {
     const stage = this.stage
-    const asset = getQuality3DGLBAsset(stage >= 2 ? 2 : stage >= 1 ? 1 : 0)
+    const asset = resolveQuality3DGLBAsset(stage >= 2 ? 2 : stage >= 1 ? 1 : 0, this.characterFamily).asset
     const collisionProfile = getGloamwoodPlayerCollisionProfile(stage)
     const collision = inspectGloamwoodPlayerCollision(this.playerRoot.position, this.lastFacing, stage, this.obstacles)
     const playerBodyRadius = gloamwoodPlayerCombatBodyRadius(stage)
@@ -3266,6 +3276,8 @@ class Gloamwood3DHunt {
       stage,
       model: asset?.formId ?? 'missing',
       modelReady: this.modelReady,
+      characterFamily: this.characterFamily ?? 'origin',
+      characterFamilyMatched: this.characterFamilyMatched,
       presentation: {
         baselineId: stage >= 2
           ? SCARLET_HUNTER_PRESENTATION.baselineId
