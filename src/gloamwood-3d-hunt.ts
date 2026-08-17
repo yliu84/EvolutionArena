@@ -2549,7 +2549,11 @@ class Gloamwood3DHunt {
       health: Math.min(maximumHealth, this.playerCombat.health + Math.max(0, maximumHealth - previousMaximum)),
     }
     await this.loadCharacter(1, candidate.family)
-    this.createEvolutionAccent(candidate.family)
+    // The accent is a placeholder for a route with no body of its own: it marks
+    // an evolution the model cannot show. A family that loaded its own form
+    // already wears its identity, and bolting primitives onto it would be the
+    // floating decoration the creature standard forbids.
+    if (!this.characterFamilyMatched) this.createEvolutionAccent(candidate.family)
     this.combatMessage = `进化完成 · ${candidate.name} · ${candidate.statLine}`
     if (this.evolutionOverlay) {
       this.evolutionOverlay.hidden = true

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -78,5 +79,24 @@ describe('Gloamwood 3D rebuild routing', () => {
     ] as const
     expect(assistGloamwoodAttackerLock(prey, null, 'attacker')).toBe('attacker')
     expect(assistGloamwoodAttackerLock(prey, 'chosen', 'attacker')).toBe('chosen')
+  })
+})
+
+describe('Evolution accent placeholder', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+
+  it('only bolts the procedural accent onto a route with no body of its own', () => {
+    // Shell now loads its own plated model, so the grey-green dodecahedron
+    // plates would sit on top of real armour as floating decoration.
+    expect(source).toContain('if (!this.characterFamilyMatched) this.createEvolutionAccent(candidate.family)')
+    expect(source).not.toMatch(/^\s*this\.createEvolutionAccent\(candidate\.family\)$/m)
+  })
+
+  it('gives the Shell form its own world height rather than the stage default', () => {
+    // A low, long body normalised to the 2.16 stage height inflates to 6.98 long.
+    expect(gloamwoodCharacterWorldHeight(1, 'shell')).toBe(1.8)
+    expect(gloamwoodCharacterWorldHeight(1, 'fang')).toBe(2.16)
+    expect(gloamwoodCharacterWorldHeight(1)).toBe(2.16)
+    expect(gloamwoodCharacterWorldHeight(0, 'shell')).toBe(gloamwoodCharacterWorldHeight(0))
   })
 })
