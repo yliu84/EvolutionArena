@@ -305,7 +305,6 @@ const STRINGS = {
   'mute': { en: 'Muted', zh: '静音' },
 
   // ---- dynamic HUD, settings and bindings ---------------------------------
-  'evo.seedNote': { en: 'Seed {seed} · all three are real builds with real costs, not skins', zh: '本次种子 {seed} · 三项均为带代价的实战构筑，不是单纯换皮。' },
   'hud.settingsKey': { en: 'Settings · {key}', zh: '体验设置 · {key}' },
   'hud.moveKeysDyn': { en: '{keys} / touch', zh: '{keys} / 触控' },
   'hud.lockKeysDyn': { en: '{key} / Lock', zh: '{key} / 锁定' },
@@ -348,25 +347,21 @@ const STRINGS = {
   'family.shell': { en: 'Carapace', zh: '岩盾' },
   'family.swarm': { en: 'Swarm', zh: '群生' },
   'evo.fang-serrated-pounce.name': { en: 'Serrated Pounce', zh: '锯齿扑爪' },
-  'evo.fang-serrated-pounce.desc': { en: 'Serrated bone blades erupt along the forelimbs, giving the whole chain finishing power.', zh: '前肢长出锯齿骨刃，跃扑和整套普通攻击更具处决力。' },
   'evo.fang-serrated-pounce.stat': { en: 'Basic attack +24% · Speed +4%', zh: '普通攻击 +24% · 移速 +4%' },
   'evo.fang-execution-jaw.name': { en: 'Executioner Jaw', zh: '处决颚肌' },
-  'evo.fang-execution-jaw.desc': { en: 'A reinforced jaw and shoulder girdle trade mobility for the heaviest melee burst.', zh: '强化颚部与肩带，以较低机动换取最重的近战爆发。' },
   'evo.fang-execution-jaw.stat': { en: 'Basic attack +32% · Speed −6%', zh: '普通攻击 +32% · 移速 −6%' },
   'evo.shell-reactive-plates.name': { en: 'Reactive Plating', zh: '反应甲片' },
-  'evo.shell-reactive-plates.desc': { en: 'Shoulder plates spread each impact, so pushing in from the front stays steady.', zh: '肩背甲片在受击时分散冲力，正面推进更稳定。' },
   'evo.shell-reactive-plates.stat': { en: 'Health +30 · Mitigation 12% · Speed −8%', zh: '生命 +30 · 减伤 12% · 移速 −8%' },
   'evo.shell-bastion-core.name': { en: 'Bastion Core', zh: '堡垒核心' },
-  'evo.shell-bastion-core.desc': { en: 'A thickened pelvis and ribcage trade pursuit speed for the widest margin of error.', zh: '骨盆与胸腔进一步增厚，牺牲追击速度换取最大容错。' },
   'evo.shell-bastion-core.stat': { en: 'Health +45 · Mitigation 8% · Speed −12%', zh: '生命 +45 · 减伤 8% · 移速 −12%' },
   'evo.swarm-symbiotic-brood.name': { en: 'Symbiotic Brood', zh: '共生幼巢' },
-  'evo.swarm-symbiotic-brood.desc': { en: 'Attendant young reclaim the fallen, sustaining the host through long fights.', zh: '伴生幼体回收倒下猎物，在连续战斗中维持宿主。' },
   'evo.swarm-symbiotic-brood.stat': { en: 'Kill heal 7 · Biomass +18% · Damage −6%', zh: '击杀恢复 7 · 生物质 +18% · 伤害 −6%' },
   'evo.swarm-hunting-cloud.name': { en: 'Hunting Bloom', zh: '猎行菌群' },
-  'evo.swarm-hunting-cloud.desc': { en: 'A lightened body with fungal help breaking prey down, built for high mobility.', zh: '轻化身体并让菌群协助分解，形成高机动成长路线。' },
   'evo.swarm-hunting-cloud.stat': { en: 'Speed +14% · Biomass +12% · Health −10', zh: '移速 +14% · 生物质 +12% · 生命 −10' },
   'evo.reason.recent': { en: 'You devoured {recent} {family} prey and hold {genes} Genes, which raised this route\'s weight.', zh: '最近吞噬 {recent} 只{family}猎物，累计 {genes} 份基因，提高了这条路线的出现权重。' },
   'evo.reason.none': { en: '{genes} {family} Genes banked; a low-weight mutation can still surface.', zh: '累计 {genes} 份{family}基因；本次仍可能发生低权重异变。' },
+
+  'evo.busy': { en: 'Reforming your body…', zh: '身体正在重组…' },
 
   // ---- document chrome ----------------------------------------------------
   'document.title': { en: 'Evolution Arena Lite · Gloamwood', zh: '进化竞技场 Lite · 幽影林地 3D 重制' },

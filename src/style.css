@@ -1166,22 +1166,44 @@ body.is-gloamwood-3d * {
 .g3d-evolution-panel > header p, .g3d-evolution-panel > footer p { margin: 0; color: #9eac9f; font-size: 12px; }
 .g3d-evolution-panel code { color: #e6cd88; }
 .g3d-evolution-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0 16px; }
-.g3d-evolution-choices button { display: grid; align-content: start; min-height: 260px; padding: 18px; border: 1px solid rgba(208, 195, 145, .24); border-radius: 7px; color: #edf3e5; text-align: left; background: linear-gradient(160deg, rgba(35, 57, 39, .72), rgba(11, 23, 16, .9)); box-shadow: inset 0 1px rgba(255, 255, 255, .04); cursor: pointer; transition: transform .14s ease, border-color .14s ease, background .14s ease; }
+.g3d-evolution-choices button { display: grid; align-content: start; min-height: 236px; padding: 18px; border: 1px solid rgba(208, 195, 145, .24); border-radius: 7px; color: #edf3e5; text-align: left; background: linear-gradient(160deg, rgba(35, 57, 39, .72), rgba(11, 23, 16, .9)); box-shadow: inset 0 1px rgba(255, 255, 255, .04); cursor: pointer; transition: transform .14s ease, border-color .14s ease, background .14s ease; }
 .g3d-evolution-choices button:hover, .g3d-evolution-choices button:focus-visible { transform: translateY(-4px); border-color: rgba(239, 200, 105, .72); outline: none; background: linear-gradient(160deg, rgba(71, 80, 47, .86), rgba(18, 33, 23, .95)); }
 .g3d-evolution-choices button[data-family="fang"] { --route: #d05c45; }
 .g3d-evolution-choices button[data-family="shell"] { --route: #8fa575; }
 .g3d-evolution-choices button[data-family="swarm"] { --route: #64cbb0; }
 .g3d-evolution-choices span { color: var(--route); font-size: 10px; font-weight: 900; letter-spacing: .08em; }
 .g3d-evolution-choices kbd { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 7px; border: 1px solid currentColor; border-radius: 50%; font: inherit; }
-.g3d-evolution-choices strong { margin-top: 14px; font-size: 23px; }
+.g3d-evolution-choices strong { margin-top: 10px; font-size: 23px; }
 .g3d-evolution-choices b { margin-top: 7px; color: #efd07d; font-size: 12px; }
-.g3d-evolution-choices p { margin: 18px 0 9px; color: #cad3c7; font-size: 13px; line-height: 1.5; }
-.g3d-evolution-choices small { margin-top: auto; color: #87978a; font-size: 10px; line-height: 1.45; }
+/* The route silhouette carries the first impression, so it gets real size and
+   the route colour. Both candidates in a family share a body, so this reads the
+   route rather than pretending the two outcomes look different. */
+.g3d-route-mark {
+  width: 100%;
+  max-width: 132px;
+  height: auto;
+  margin: 14px 0 2px;
+  color: var(--route);
+  --g3d-seam: rgba(0, 0, 0, .38);
+  --g3d-eye: #0b120c;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .38));
+}
+/* The causal line is what the playtest actually measures, so it is a readable
+   element rather than a footnote. */
+.g3d-evolution-choices small {
+  margin-top: auto;
+  padding-top: 12px;
+  color: #b6c4b3;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
 .g3d-evolution-panel > footer { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
 .g3d-evolution-panel > footer button { min-height: 46px; padding: 8px 16px; border: 1px solid rgba(221, 195, 119, .42); border-radius: 5px; color: #eddfb7; background: rgba(106, 84, 39, .28); cursor: pointer; }
 .g3d-evolution-panel > footer button:disabled { opacity: .4; cursor: default; }
 .g3d-evolution-panel > footer small { display: block; color: #a6966e; font-size: 9px; }
-.gloamwood-evolution-overlay[data-busy="true"] .g3d-evolution-panel::after { content: "身体正在重组…"; display: block; margin-top: 12px; color: #e8c66c; text-align: center; }
+/* Text comes from the data attribute so it follows the chosen locale; CSS
+   content cannot reach the translation table. */
+.gloamwood-evolution-overlay[data-busy="true"] .g3d-evolution-panel::after { content: attr(data-busy-label); display: block; margin-top: 12px; color: #e8c66c; text-align: center; }
 
 .gloamwood-run-result { position: absolute; inset: 0; z-index: 46; display: grid; place-items: center; padding: 20px; background: radial-gradient(circle at 50% 40%, rgba(45, 73, 53, .54), rgba(2, 7, 5, .9)); backdrop-filter: blur(7px); }
 .gloamwood-run-result[hidden] { display: none; }
@@ -1287,6 +1309,16 @@ body.is-gloamwood-3d * {
 }
 
 @media (max-width: 900px) and (orientation: landscape), (max-height: 520px) and (orientation: landscape) {
+  /* The silhouette replaced a paragraph of prose, so the card is shorter, but
+     phone landscape has only 390px of height for the whole panel. Trim the
+     chrome rather than the silhouette - the image is the point of this screen. */
+  .g3d-evolution-panel { padding: 14px 16px; }
+  .g3d-evolution-choices { margin: 12px 0 10px; gap: 9px; }
+  .g3d-evolution-choices button { min-height: 0; padding: 12px 13px; }
+  .g3d-route-mark { max-width: 108px; margin: 8px 0 0; }
+  .g3d-evolution-choices strong { margin-top: 6px; font-size: 18px; }
+  .g3d-evolution-choices small { padding-top: 8px; font-size: 10.5px; }
+
   .gloamwood-3d-hud {
     width: min(214px, calc(100% - 16px));
     padding: 6px 8px;

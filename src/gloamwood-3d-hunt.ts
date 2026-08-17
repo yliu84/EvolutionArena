@@ -10,6 +10,7 @@ import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import { resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
 import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presentation'
 import { applyDocumentLocale, t } from './i18n'
+import { gloamwoodFamilySilhouette } from './gloamwood-family-silhouettes'
 import { CORAL_GECKO_PRESENTATION } from './quality-3d-character-presentation'
 import {
   applyScarletGeckoSurfaceGrade,
@@ -2521,16 +2522,18 @@ class Gloamwood3DHunt {
   private renderEvolutionOffer() {
     if (!this.evolutionOverlay) return
     this.evolutionOverlay.innerHTML = [
-      '<div class="g3d-evolution-panel">',
+      `<div class="g3d-evolution-panel" data-busy-label="${t('evo.busy')}">`,
       `<header><span>${t('evo.eyebrow')}</span><h1>${t('evo.headline')}</h1>`,
-      `<p>${t('evo.seedNote', { seed: this.evolutionState.seed })}</p></header>`,
+      '</header>',
       '<div class="g3d-evolution-choices">',
       ...this.evolutionState.candidates.map((candidate, index) => [
         `<button data-evolution-choice="${index}" data-family="${candidate.family}">`,
         `<span><kbd>${index + 1}</kbd>${t('evo.routeLine', { family: candidate.familyName, probability: candidate.probability })}</span>`,
+        // The silhouette reads the route, which is what actually differs; both
+        // candidates in a family share one body, so a creature image cannot.
+        gloamwoodFamilySilhouette(candidate.family),
         `<strong>${candidate.name}</strong>`,
         `<b>${candidate.statLine}</b>`,
-        `<p>${candidate.description}</p>`,
         `<small>${candidate.reason}</small>`,
         '</button>',
       ].join('')),

@@ -19,7 +19,6 @@ export interface GloamwoodEvolutionCandidate {
   family: GloamwoodEvolutionFamily
   familyName: string
   name: string
-  description: string
   statLine: string
   reason: string
   probability: number
@@ -175,7 +174,6 @@ export function generateGloamwoodEvolutionCandidates(
       ...candidate,
       familyName: family,
       name: t(`evo.${candidate.id}.name` as never),
-      description: t(`evo.${candidate.id}.desc` as never),
       statLine: t(`evo.${candidate.id}.stat` as never),
       probability,
       reason,
