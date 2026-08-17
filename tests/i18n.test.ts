@@ -119,9 +119,18 @@ describe('Auto-engage and target bar', () => {
   })
 
   it('lets steering drop the automation while keeping the lock', () => {
-    expect(source).toMatch(/if \(this\.autoEngage\) \{\s*\n\s*this\.autoEngage = false/)
+    expect(source).toMatch(/if \(this\.autoEngageTargetId\) \{\s*\n\s*this\.cancelAutoEngage\(\)/)
     // Cancelling must not clear lockedPreyId, or flanking costs a re-select.
-    expect(source).not.toMatch(/this\.autoEngage = false\s*\n\s*this\.lockedPreyId = null/)
+    expect(source).not.toMatch(/cancelAutoEngage\(\)\s*\n\s*this\.lockedPreyId = null/)
+  })
+
+  it('ends the order when its target is replaced, so one press is one enemy', () => {
+    // A kill auto-locks the next threat and a hit can assist-lock an attacker.
+    // Without this the order rides those handovers and clears a pack unattended.
+    expect(source).toContain('private currentLockIdentity()')
+    expect(source).toContain('if (this.currentLockIdentity() !== this.autoEngageTargetId) return this.cancelAutoEngage()')
+    // The order binds after the lock is resolved, not before.
+    expect(source).toContain('this.autoEngageTargetId = this.currentLockIdentity()')
   })
 
   it('bounds the approach so a stray press cannot cross the map', () => {

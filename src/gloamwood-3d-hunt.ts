@@ -405,7 +405,7 @@ class Gloamwood3DHunt {
    * Angle stays a manual decision; steering cancels the automation but keeps
    * the lock, so flanking costs no extra input.
    */
-  private autoEngage = false
+  private autoEngageTargetId: string | null = null
   private touchMoveX = 0
   private touchMoveZ = 0
   private movementInputStrength = 0
@@ -1617,8 +1617,8 @@ class Gloamwood3DHunt {
     if (this.movement.lengthSq() > 0) {
       // Steering is the player taking the angle back. Drop the automation but
       // keep the lock, or flanking would cost a re-select every time.
-      if (this.autoEngage) {
-        this.autoEngage = false
+      if (this.autoEngageTargetId) {
+        this.cancelAutoEngage()
         this.primaryHeld = false
       }
       this.movementInputStrength = Math.min(1, this.movement.length())
@@ -1673,7 +1673,15 @@ class Gloamwood3DHunt {
   }
 
   private cancelAutoEngage() {
-    this.autoEngage = false
+    this.autoEngageTargetId = null
+  }
+
+  /** Identity of whatever is locked right now, so a standing order can tell
+   *  that its target was replaced rather than merely moved. */
+  private currentLockIdentity() {
+    if (this.bossActive() && this.bossLocked) return 'boss'
+    const prey = this.lockedPrey()
+    return prey && prey.phase !== 'dead' ? prey.id : null
   }
 
   /**
@@ -1682,8 +1690,12 @@ class Gloamwood3DHunt {
    * goes through the same range, live-target and eight-degree checks.
    */
   private updateAutoEngage() {
-    if (!this.autoEngage) return
+    if (!this.autoEngageTargetId) return
     if (!this.playerCombat.alive || this.paused || this.evolutionState.phase === 'choosing') return this.cancelAutoEngage()
+    // One press commits to one enemy. Killing it auto-locks the next threat and
+    // being hit can assist-lock an attacker; without this the order would ride
+    // those handovers and clear a whole pack with no further input.
+    if (this.currentLockIdentity() !== this.autoEngageTargetId) return this.cancelAutoEngage()
     const target = this.bossActive() && this.bossLocked
       ? { x: this.bossState.x, z: this.bossState.z, radius: GLOAMWOOD_BOSS.bodyRadius }
       : (() => {
@@ -1724,8 +1736,6 @@ class Gloamwood3DHunt {
       return
     }
     if (this.runPhase === 'victory' || this.runPhase === 'defeat') return
-    // Pressing attack re-opens the standing order after a manual reposition.
-    this.autoEngage = true
     if (this.bossActive()) {
       this.bossLocked = true
       this.lockedPreyId = null
@@ -1738,6 +1748,9 @@ class Gloamwood3DHunt {
       this.combatMessage = t('hud.msg.reinforcements')
       return
     }
+    // Bind the order to whatever is locked now, after the lock is resolved.
+    // A fresh press is what starts the next enemy, so one press is one enemy.
+    this.autoEngageTargetId = this.currentLockIdentity()
     const now = performance.now()
     const previous = this.attackState.action
     this.attackState = requestFormalHuntBasicAttack(this.attackState, now, this.combatProfile)
