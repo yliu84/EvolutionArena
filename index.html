@@ -11,9 +11,15 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="进化竞技场" />
-    <meta name="description" content="在战争迷雾中探索、猎杀并吸收怪物基因的动作进化游戏原型" />
-    <title>进化竞技场 Lite · 黑暗探索原型</title>
+    <!-- Static head text cannot be localised before paint, and these three are
+         the parts an outside tester meets before any script runs: the icon name
+         an Add-to-Home-Screen install writes, the link preview when the URL is
+         shared, and the tab title during the first load. English is the primary
+         market, so English is the static value; applyDocumentLocale replaces the
+         title for a Chinese player as soon as the module boots. -->
+    <meta name="apple-mobile-web-app-title" content="Evolution Arena" />
+    <meta name="description" content="An action evolution prototype: hunt creatures in the Gloamwood, absorb their genes, and choose what your body becomes." />
+    <title>Evolution Arena Lite · Gloamwood</title>
   </head>
   <body>
     <main id="app">

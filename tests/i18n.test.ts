@@ -218,3 +218,22 @@ describe('Boot screen', () => {
     }
   })
 })
+
+describe('Static head text, which no script can localise before paint', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+  const head = html.slice(0, html.indexOf('</head>'))
+
+  it('meets an English tester in English', () => {
+    // The Add-to-Home-Screen icon name, the link preview and the first-paint tab
+    // title all come from here. The documented iPhone full-screen route runs
+    // through the icon install, so a Chinese icon name lands in a B-section test.
+    expect(/[一-鿿]/.test(head), 'index.html head still contains Han characters').toBe(false)
+    expect(head).toContain('<title>Evolution Arena Lite · Gloamwood</title>')
+    expect(head).toContain('name="apple-mobile-web-app-title" content="Evolution Arena"')
+  })
+
+  it('still hands the title to the locale runtime once the module boots', () => {
+    const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+    expect(source).toContain("document.title = t('document.title')")
+  })
+})

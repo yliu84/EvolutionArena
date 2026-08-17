@@ -1723,3 +1723,29 @@
 **`.github/workflows/deploy.yml`**：push 到 main 时跑 `npm ci` → `npm test` → `npm run build`（带 `DEPLOY_BASE`）→ 发布到 Pages。测试是闸门，一个会 404 掉进化模型或漏翻译的构建不应该送到试玩者手里。`concurrency` 设为不取消进行中的部署，避免有人正在试玩时被换成半成品。
 
 **尚需用户操作**：仓库 Settings → Pages → Source 选 **GitHub Actions**。这一步需要仓库权限，我做不了。启用后地址是 `https://yliu84.github.io/EvolutionArena/?maplab=5`。
+
+## 2026-08-17 · 试玩地址已上线
+
+`https://yliu84.github.io/EvolutionArena/?maplab=5`
+
+Pages 需要仓库所有者手动把 Settings → Pages → Source 改成 `GitHub Actions`；我加的 `configure-pages` + `enablement: true` 在这个账户下无效，工作流不能代替所有者创建站点。注意不能选 `Deploy from a branch`——那会把仓库源码原样发出去，没有经过构建。
+
+**线上实测**（浏览器直接访问生产地址）：
+
+- 26 个请求 / 5.38MB、**零失败请求**
+- `gameReadyMs` = 1325（走真实网络）
+- `documentElement.lang` = `en`，标题、猎手指引、HUD 全部英文
+- 岩盾模型 200，1,737,992 字节
+- 旧 Phaser 外壳（中文顶栏、开局覆盖层）在 `maplab=5` 下是 `display: none`，画面内没有中文残留
+
+**修掉最后一处英文玩家会先撞上的中文**：`index.html` 的静态 head。这三处在任何脚本运行之前就已经生效，JS 补不了：
+
+| 位置 | 影响 |
+| --- | --- |
+| `apple-mobile-web-app-title` | 添加到主屏幕后的图标名称——而 iOS 全屏路线正是走这个流程 |
+| `meta description` | 分享链接时的预览文案 |
+| `<title>` | 首次加载时标签页显示的名字，以及浏览器历史与书签 |
+
+英文是主要市场，所以静态值取英文；中文玩家的标题由 `applyDocumentLocale` 在模块启动后替换。新增测试断言 head 中不含汉字。
+
+`docs/GOAL-5-PLAYTEST-RECORD.md` 的测试入口已更新为线上地址，并明确 **B 节不要发带 `debug=1` 的地址**。
