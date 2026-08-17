@@ -112,3 +112,15 @@ describe('Per-form material grading', () => {
     expect(source).toContain('applyScarletGeckoSurfaceGrade(material)')
   })
 })
+
+describe('Route entry parameter', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+
+  it('loads a gene family straight from the URL for footprint checks', () => {
+    // The documented entries always carried evolutionRoute, but only the stage
+    // was read, so a non-Fang body could not be inspected without playing to
+    // the evolution first - which is where the traversal check kept stalling.
+    expect(source).toContain("params.get('evolutionRoute')")
+    expect(source).toContain("if (route === 'fang' || route === 'shell' || route === 'swarm') this.characterFamily = route")
+  })
+})

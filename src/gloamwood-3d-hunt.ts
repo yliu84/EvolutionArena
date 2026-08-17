@@ -1329,6 +1329,14 @@ class Gloamwood3DHunt {
   private async loadCharacter(stageOverride?: number, familyOverride?: Quality3DFormFamily) {
     const params = new URLSearchParams(window.location.search)
     const requestedStage = stageOverride ?? Number(params.get('evolutionStage'))
+    // The documented MapLab 5 entries already carry evolutionRoute, but only the
+    // stage was ever read, so a route could not be inspected without playing to
+    // the evolution. Reading it here lets any form be loaded straight into the
+    // free-movement hunt, which is where footprint and traversal are checked.
+    if (!familyOverride) {
+      const route = params.get('evolutionRoute')
+      if (route === 'fang' || route === 'shell' || route === 'swarm') this.characterFamily = route
+    }
     const stage = requestedStage >= 2 ? 2 : requestedStage >= 1 ? 1 : 0
     this.stage = stage
     if (familyOverride) this.characterFamily = familyOverride
