@@ -315,7 +315,7 @@ function stepPrey(
   }
   if (!player.alive) return { state: enterPhase(next, 'chase'), events }
 
-  const stopDistance = gloamwoodPreyStopDistance(state.kind, player.bodyRadius ?? 0)
+  const stopDistance = gloamwoodPreyStopDistance(state, player.bodyRadius ?? 0)
   const slot = gloamwoodCombatSlotPosition(state.slot, state.kind, player, stopDistance)
   const desiredX = slot.x
   const desiredZ = slot.z
@@ -424,7 +424,7 @@ export function resolveGloamwoodPreyAroundPlayer(
     let dx = target.x - player.x
     let dz = target.z - player.z
     let distance = Math.hypot(dx, dz)
-    const minimum = gloamwoodPreyStopDistance(target.kind, playerBodyRadius)
+    const minimum = gloamwoodPreyStopDistance(target, playerBodyRadius)
     if (distance >= minimum - 0.000001) return target
     const previous = previousPositions?.get(target.id)
     if (previous) {
@@ -465,7 +465,7 @@ export function inspectGloamwoodPlayerPreyActionClearance(
 ) {
   const clearances = prey
     .filter((target) => target.phase !== 'dead')
-    .map((target) => Math.hypot(position.x - target.x, position.z - target.z) - gloamwoodPreyStopDistance(target.kind, playerBodyRadius))
+    .map((target) => Math.hypot(position.x - target.x, position.z - target.z) - gloamwoodPreyStopDistance(target, playerBodyRadius))
   return clearances.length ? Math.min(...clearances) : 0
 }
 
@@ -524,10 +524,24 @@ function separateLivingPrey(prey: readonly GloamwoodNestPrey[]) {
   return separated
 }
 
-export function gloamwoodPreyStopDistance(kind: GloamwoodPreyKind, playerBodyRadius: number) {
+/**
+ * The ring a creature holds while fighting: its own body, the player's body, and
+ * the action space its attack animation needs between them.
+ *
+ * This takes the creature, not its family, because body size is per creature.
+ * The nest guardian is a `shell` with a 1.82 radius against the family's 1.42,
+ * so reading the family here put its ring 0.40 inside its own hull - 0.08 clear
+ * of the hard collision floor. It closed until it was touching the player's
+ * collision skin, which is why the guardian fight rendered snout-in-body while
+ * ordinary beetles kept a visible gap.
+ */
+export function gloamwoodPreyStopDistance(
+  prey: Pick<GloamwoodNestPrey, 'id' | 'kind'>,
+  playerBodyRadius: number,
+) {
   return Math.max(
-    GLOAMWOOD_PREY[kind].stopRange,
-    Math.max(0, playerBodyRadius) + GLOAMWOOD_PREY_BODY_RADII[kind] + GLOAMWOOD_COMBAT_SPACING.actionSpace[kind],
+    GLOAMWOOD_PREY[prey.kind].stopRange,
+    Math.max(0, playerBodyRadius) + gloamwoodPreyBodyRadius(prey) + GLOAMWOOD_COMBAT_SPACING.actionSpace[prey.kind],
   )
 }
 

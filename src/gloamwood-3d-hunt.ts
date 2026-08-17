@@ -50,7 +50,6 @@ import {
   inspectGloamwoodPlayerPreyActionClearance,
   inspectGloamwoodPreyPairClearance,
   gloamwoodPreyBodyRadius,
-  resolveGloamwoodPreyAroundPlayer,
   resolveGloamwoodPlayerPreyCollision,
   stepGloamwoodNest,
   type GloamwoodNestPrey,
@@ -2010,14 +2009,12 @@ class Gloamwood3DHunt {
       alive: this.playerCombat.alive,
       bodyRadius: gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily),
     })
-    this.nestState = {
-      ...frame.state,
-      prey: resolveGloamwoodPreyAroundPlayer(
-        frame.state.prey,
-        { x: this.playerRoot.position.x, z: this.playerRoot.position.z },
-        gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily),
-      ),
-    }
+    // stepGloamwoodNest already holds prey at their action ring, and it does so
+    // knowing where each one stood a frame ago - which is how it tells a prey
+    // that closed the gap from a player who walked in. Re-running the same
+    // separation here without that history treated every overlap as the prey's
+    // fault and put the plough behaviour straight back.
+    this.nestState = frame.state
     if (this.runPhase === 'guardian') {
       this.nestState = {
         ...this.nestState,

@@ -42,8 +42,8 @@ describe('Gloamwood first ecology nest', () => {
 
   it('reserves body and authored action space before an enemy may attack', () => {
     const playerRadius = 1.28
-    const shellStop = gloamwoodPreyStopDistance('shell', playerRadius)
-    const fangStop = gloamwoodPreyStopDistance('fang', playerRadius)
+    const shellStop = gloamwoodPreyStopDistance({ id: 'a', kind: 'shell' }, playerRadius)
+    const fangStop = gloamwoodPreyStopDistance({ id: 'b', kind: 'fang' }, playerRadius)
     expect(shellStop).toBeCloseTo(playerRadius + GLOAMWOOD_PREY_BODY_RADII.shell + GLOAMWOOD_COMBAT_SPACING.actionSpace.shell)
     expect(fangStop).toBeCloseTo(playerRadius + GLOAMWOOD_PREY_BODY_RADII.fang + GLOAMWOOD_COMBAT_SPACING.actionSpace.fang)
     expect(shellStop).toBeGreaterThan(fangStop)
@@ -276,5 +276,44 @@ describe('Earned multipliers and push resistance', () => {
     // A prey that closed the gap itself is still pushed back out to its ring.
     const pushed = resolveGloamwoodPreyAroundPlayer(prey, player, player.bodyRadius, new Map([['p1', { x: 4, z: 0 }]]))
     expect(pushed[0].x).toBeGreaterThan(1.4)
+  })
+})
+
+describe('Fighting distance is measured from the creature, not its family', () => {
+  const guardian = awakenGloamwoodNestGuardian(createGloamwoodNestState()).prey[0]
+  const beetle = { id: 'shell-1', kind: 'shell' as const }
+  // The Fang stage-1 combat radius: half-width plus the longer body probe plus
+  // the pounce travel the form reserves so a leap cannot land inside a body.
+  const playerRadius = 1.5296
+
+  it('gives the oversized guardian real action space instead of pressing it to the skin', () => {
+    const ring = gloamwoodPreyStopDistance(guardian, playerRadius)
+    const hardFloor = playerRadius + GLOAMWOOD_NEST_GUARDIAN.bodyRadius
+    // Reading the family radius here gave the guardian 0.08 of clearance over
+    // its own collision hull, so it closed until the two bodies touched.
+    expect(ring - hardFloor).toBeCloseTo(GLOAMWOOD_COMBAT_SPACING.actionSpace.shell, 5)
+    expect(ring).toBeGreaterThan(gloamwoodPreyStopDistance(beetle, playerRadius))
+    expect(ring - gloamwoodPreyStopDistance(beetle, playerRadius))
+      .toBeCloseTo(GLOAMWOOD_NEST_GUARDIAN.bodyRadius - GLOAMWOOD_PREY_BODY_RADII.shell, 5)
+  })
+
+  it('leaves the widened ring inside the shortest reach in the chain', () => {
+    // Spacing may not quietly move a target out of range: reach is measured from
+    // the player origin to the hurt surface, so the ring has to stay under it.
+    const shortestReach = 2.55
+    const surfaceDistance = gloamwoodPreyStopDistance(guardian, playerRadius) - GLOAMWOOD_NEST_GUARDIAN.bodyRadius
+    expect(surfaceDistance).toBeLessThan(shortestReach)
+  })
+
+  it('holds the guardian at its ring through a live chase', () => {
+    let state = awakenGloamwoodNestGuardian(createGloamwoodNestState())
+    state = { ...state, prey: [{ ...state.prey[0], x: -6, z: 0 }] }
+    for (let index = 0; index < 600; index += 1) {
+      state = stepGloamwoodNest(state, 1 / 60, { x: 0, z: 0, alive: true, bodyRadius: playerRadius }).state
+      if (state.prey[0].phase !== 'chase') break
+    }
+    const distance = Math.hypot(state.prey[0].x, state.prey[0].z)
+    expect(distance).toBeGreaterThanOrEqual(playerRadius + GLOAMWOOD_NEST_GUARDIAN.bodyRadius)
+    expect(inspectGloamwoodPlayerPreyClearance({ x: 0, z: 0 }, playerRadius, state.prey)).toBeGreaterThanOrEqual(-0.00001)
   })
 })
