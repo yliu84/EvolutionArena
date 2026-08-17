@@ -131,6 +131,34 @@ def amplify_quaternion_motion(action, bone_names, factor, ceiling_degrees=58):
     return changed_keys
 
 
+def neutralise_root_location(action, bone_name="Hips"):
+    """Remove the constant root displacement Meshy bakes into its clips.
+
+    The exported Walking action parks Hips about -0.38 from the bind position and
+    only oscillates 0.0075 around it. The authored clips key the rest position
+    instead, so entering Walk snapped the body down and left it hovering with the
+    torso pulled away from the planted feet. Subtracting each channel's mean
+    keeps the cyclic weight bob while restoring the bind height, which is also
+    the project's existing division of labour: the runtime owns world
+    translation and the clip owns foot plants.
+    """
+    path = f'pose.bones["{bone_name}"].location'
+    shifted = 0
+    for channelbag in channelbags(action):
+        for curve in channelbag.fcurves:
+            if curve.data_path != path or not curve.keyframe_points:
+                continue
+            mean = sum(point.co.y for point in curve.keyframe_points) / len(curve.keyframe_points)
+            if abs(mean) < 1e-9:
+                continue
+            for point in curve.keyframe_points:
+                point.co.y -= mean
+                point.handle_left.y -= mean
+                point.handle_right.y -= mean
+            shifted += 1
+    return shifted
+
+
 def reset_pose():
     for bone in armature.pose.bones:
         bone.rotation_mode = "QUATERNION"
@@ -185,6 +213,7 @@ LEG_BONES = {
 imported = next(iter(bpy.data.actions))
 imported.name = "Walk"
 removed_scale_curves = remove_scale_curves(imported)
+recentred_root_channels = neutralise_root_location(imported)
 walk_end = int(imported.frame_range[1])
 
 # glTF animation names come from NLA track names, not action names. The import
@@ -466,5 +495,6 @@ print("EA_STONE_PANGOLIN_PROCESS=" + json.dumps({
     "bones": [bone.name for bone in armature.data.bones],
     "actions": sorted(action.name for action in bpy.data.actions),
     "removed_imported_scale_curves": removed_scale_curves,
+    "recentred_root_location_channels": recentred_root_channels,
     "amplified_run_quaternion_keys": amplified_run_keys,
 }, ensure_ascii=False))
