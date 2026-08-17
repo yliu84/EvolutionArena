@@ -1,12 +1,6 @@
 import './style.css'
 import { applyDocumentLocale, t } from './i18n'
-
-function isGloamwood3DEntry(search = window.location.search) {
-  const params = new URLSearchParams(search)
-  return params.get('maplab') === '5'
-    || params.get('world3d') === '1'
-    || (params.get('maplab') === '4' && params.get('live') === '1')
-}
+import { isGloamwood3DEntry } from './entry-routing'
 
 function createGameLoadingState() {
   const container = document.querySelector<HTMLElement>('#game-container')

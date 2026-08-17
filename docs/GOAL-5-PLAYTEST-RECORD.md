@@ -2,9 +2,11 @@
 
 测试入口（2026-08-17 起）：
 
-**外部试玩（B 节）**：`https://yliu84.github.io/EvolutionArena/?maplab=5`
+**外部试玩（B 节）**：`https://yliu84.github.io/EvolutionArena/`
 
-这是 GitHub Pages 上的生产构建，陌生玩家用这个地址。**不要给带 `debug=1` 的地址**——调试信息会改变他们看到的东西。
+这是 GitHub Pages 上的生产构建，陌生玩家用这个地址。**不加任何查询参数**——裸地址现在直接进本体，`?maplab=5` 已不再必需（仍然有效）。也**不要给带 `debug=1` 的地址**，调试信息会改变他们看到的东西。
+
+冻结的旧栈需要按名字点名才会进入：`?classic=1`（旧 2D 原型）、`?maplab=1..4`、`?huntlab=1`、`?nestlab=1`、`?quality=1`、`?quality3d=1`。
 
 **本机真机测试（A 节）**：`npm run dev` 或 `npm run preview` 后使用局域网地址（例如 `http://10.0.0.159:4173/?maplab=5&debug=1`）。手机与开发机需在同一 Wi-Fi。
 

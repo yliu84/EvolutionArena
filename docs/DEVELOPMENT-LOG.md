@@ -1749,3 +1749,30 @@ Pages 需要仓库所有者手动把 Settings → Pages → Source 改成 `GitHu
 英文是主要市场，所以静态值取英文；中文玩家的标题由 `applyDocumentLocale` 在模块启动后替换。新增测试断言 head 中不含汉字。
 
 `docs/GOAL-5-PLAYTEST-RECORD.md` 的测试入口已更新为线上地址，并明确 **B 节不要发带 `debug=1` 的地址**。
+
+## 2026-08-17 · 裸地址现在直接进本体
+
+线上发布后用户发现：打开 `https://yliu84.github.io/EvolutionArena/` 选完角色，进的是**旧的 2D 原型**。
+
+原因是 `?maplab=5` 一直是个开发期开关——它是在 3D 本体还在搭的时候加的。没有这个参数时 `main.ts` 走 `legacy-main`，也就是冻结的 Phaser 栈。部署之前这没关系，因为地址只有开发者自己在用；部署之后它就变成了：**发给陌生人的链接默认打开的是错的那个游戏**。
+
+在无讲解试玩里这尤其危险——测试者没有任何线索能知道自己进错了版本，整场反馈会被记到错误的构建上。
+
+**改为反过来：本体是默认，冻结的旧栈按名字点名。**
+
+- 裸地址、`?debug=1`、`?lang=zh` 等 → 本体
+- `?maplab=1..4`、`?huntlab=1`、`?nestlab=1`、`?quality=1`、`?quality3d=1` → 对应的冻结工具，行为不变
+- `?classic=1` → 旧 2D 原型。它原先占用的是「空查询串」，现在需要自己的名字
+- `?maplab=5`、`?world3d=1`、`?maplab=4&live=1` 仍然有效
+
+路由函数抽到 `src/entry-routing.ts`——`main.ts` 顶层有副作用（导入即启动），测试无法导入它。`tests/entry-routing.test.ts` 直接对函数做行为断言，而不是匹配源码字符串。
+
+子路径构建实测（`DEPLOY_BASE=/EvolutionArena/`，静态服务器托管在 `/EvolutionArena/` 下）：
+
+| 地址 | 结果 |
+| --- | --- |
+| 裸地址 | 本体，637ms 就绪，猎手指引英文，零失败请求 |
+| `?classic=1` | 旧原型开局覆盖层，零失败请求 |
+| `?maplab=4` | 地图工坊 V4，Phaser 画布，零失败请求 |
+
+73 个测试文件 / 425 项测试通过。
