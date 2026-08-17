@@ -124,3 +124,20 @@ describe('Route entry parameter', () => {
     expect(source).toContain("if (route === 'fang' || route === 'shell' || route === 'swarm') this.characterFamily = route")
   })
 })
+
+describe('Shell attack chain', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+
+  it('plays Slam for the Shell second step without touching combat authority', () => {
+    // The Slam clip shipped in the GLB but nothing played it: the form ran the
+    // gecko profile's Pounce, which it has no clip for, so step two was silent.
+    expect(source).toContain("this.characterFamily === 'shell' && name === 'Pounce'")
+    expect(source).toContain("? 'Slam'")
+    // Only the clip is redirected - no per-form damage, range or timing override.
+    expect(source).not.toMatch(/slamDamage|slamRange|slamDurationSeconds/)
+  })
+
+  it('names the Shell chain after its own vocabulary', () => {
+    expect(source).toContain('STONE_PANGOLIN_PRESENTATION.combat.attackNames.Slam')
+  })
+})

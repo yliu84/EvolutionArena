@@ -8,6 +8,7 @@ import {
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 
 import { resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
+import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presentation'
 import { CORAL_GECKO_PRESENTATION } from './quality-3d-character-presentation'
 import {
   applyScarletGeckoSurfaceGrade,
@@ -2211,6 +2212,11 @@ class Gloamwood3DHunt {
       if (action === 'Pounce') return CORAL_GECKO_PRESENTATION.combat.attackNames.Pounce
       if (action === 'TailSwipe') return CORAL_GECKO_PRESENTATION.combat.attackNames.TailSwipe
     }
+    if (this.characterFamily === 'shell') {
+      if (action === 'Bite') return STONE_PANGOLIN_PRESENTATION.combat.attackNames.Bite
+      if (action === 'Pounce') return STONE_PANGOLIN_PRESENTATION.combat.attackNames.Slam
+      if (action === 'TailSwipe') return STONE_PANGOLIN_PRESENTATION.combat.attackNames.TailSwipe
+    }
     if (this.stage === 1) {
       if (action === 'Bite') return SCARLET_GECKO_PRESENTATION.combat.attackNames.Bite
       if (action === 'Pounce') return SCARLET_GECKO_PRESENTATION.combat.attackNames.Pounce
@@ -2420,9 +2426,14 @@ class Gloamwood3DHunt {
   }
 
   private setAction(name: string, force = false) {
-    const clipName = this.stage <= 1 && name === 'Pounce'
-      ? CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.clipName
-      : name
+    // The Shell form has no Pounce: short stout forelimbs cannot sell a leap, so
+    // the contract replaces it with a planted Slam. Only the clip is redirected -
+    // damage, range and timing stay on the existing authority untouched.
+    const clipName = this.characterFamily === 'shell' && name === 'Pounce'
+      ? 'Slam'
+      : this.stage <= 1 && name === 'Pounce'
+        ? CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.clipName
+        : name
     const next = this.actions.get(clipName)
     if (!next || (!force && name === this.activeClip)) return
     const previousClipName = this.stage <= 1 && this.activeClip === 'Pounce'
@@ -3328,21 +3339,28 @@ class Gloamwood3DHunt {
       characterFamily: this.characterFamily ?? 'origin',
       characterFamilyMatched: this.characterFamilyMatched,
       presentation: {
-        baselineId: stage >= 2
-          ? SCARLET_HUNTER_PRESENTATION.baselineId
-          : stage >= 1
-            ? SCARLET_GECKO_PRESENTATION.baselineId
-            : 'inherited-pbr-baseline',
-        artStyle: stage >= 2
-          ? SCARLET_HUNTER_PRESENTATION.asset.artStyle
-          : stage >= 1
-            ? SCARLET_GECKO_PRESENTATION.asset.artStyle
-            : 'pbr',
-        triangles: stage >= 2
-          ? SCARLET_HUNTER_PRESENTATION.asset.triangles
-          : stage >= 1
-            ? SCARLET_GECKO_PRESENTATION.asset.triangles
-            : 32_000,
+        // Reported by form, not by stage: two different bodies now share stage 1.
+        baselineId: asset?.formId === 'stone-pangolin'
+          ? STONE_PANGOLIN_PRESENTATION.baselineId
+          : stage >= 2
+            ? SCARLET_HUNTER_PRESENTATION.baselineId
+            : stage >= 1
+              ? SCARLET_GECKO_PRESENTATION.baselineId
+              : 'inherited-pbr-baseline',
+        artStyle: asset?.formId === 'stone-pangolin'
+          ? STONE_PANGOLIN_PRESENTATION.asset.artStyle
+          : stage >= 2
+            ? SCARLET_HUNTER_PRESENTATION.asset.artStyle
+            : stage >= 1
+              ? SCARLET_GECKO_PRESENTATION.asset.artStyle
+              : 'pbr',
+        triangles: asset?.formId === 'stone-pangolin'
+          ? STONE_PANGOLIN_PRESENTATION.asset.triangles
+          : stage >= 2
+            ? SCARLET_HUNTER_PRESENTATION.asset.triangles
+            : stage >= 1
+              ? SCARLET_GECKO_PRESENTATION.asset.triangles
+              : 32_000,
         modelUrl: asset?.url ?? 'missing',
       },
       activeClip: this.activeClip,

@@ -1553,3 +1553,13 @@
 - 遗留：壳顶中央仍有一道细小静态缝隙。**静置姿势下即存在**，因此属网格接缝，非绑定或动画问题；在 13.3% 屏高的实际游戏尺寸下不可见。是否修补留待用户按实机观感决定。
 - 运行时指向 `stone-pangolin-rigged-runtime-v2.glb?v=shell-stage1-v3-compact`，旧 v1 资产已删除。浏览器实测加载正确、`matched=true`。
 - 自动验证：70 个测试文件 / 383 项测试、TypeScript、生产构建通过。
+
+## 2026-08-17 · 岩盾一级用户验收，标识升 master；并修复第二段普攻无动作
+
+- 类型：验收 + 表现修复（未改动任何权威伤害、射程、时序）
+- 用户完成契约验收序列第 5–7 步：**穿行正常、头部不再插入敌人身体**。v2 紧凑体型（1.58 × 4.57 × 1.80，体长:体高 2.54）解决了 v1 的占地问题。标识由 candidate 升为 `stone-pangolin-shell-first-evolution-master-v1` / `stone-pangolin-combat-master-v1`。
+- 新增 `src/stone-pangolin-character-presentation.ts`：形态基线、显示比例、世界高度 1.80、最重步频（4.6 落脚/秒）、`Bite → Slam → TailSwipe` 攻击词汇与中文名、实测剪影比例、以及**明确区别于赤冠壁蜥的材质档**（无暖色染、无自发光填充、法线强度 1.0）。
+- **升 master 过程中发现并修复**：契约写明的 `Bite → Slam → TailSwipe` 此前**并未真正运行**。`FormalHuntBasicAttackAction` 类型无 `Slam`，岩盾沿用赤冠壁蜥的战斗档案（`Bite → Pounce → TailSwipe`），而本形态没有 Pounce 片段——第二段伤害照常结算但**没有任何动作播放**。修法取最小侵入：仅在 `setAction` 内把岩盾的 `Pounce` 重定向到 `Slam` 片段（运行时已有同类重定向先例），**伤害、射程、时序、接触判定完全不变**，不新增权威数据。攻击名称同步按形态返回「低扑咬 / 压甲撞 / 重尾扫」。
+- 调试状态的 `presentation` 此前按阶段返回，岩盾会错报成赤冠壁蜥基线与 19,406 三角；已改为按形态返回，实测为 `stone-pangolin-shell-first-evolution-master-v1` / 20,391 三角。
+- **未验证项**：第二段是否真的播放 Slam，本轮无法在自动化中确认——连招推进需要落地接触，而调试入口无法驱动玩家接近猎物。单元测试覆盖了重定向逻辑，实机需用户复看一次。
+- 自动验证：70 个测试文件 / 386 项测试、TypeScript、生产构建通过。

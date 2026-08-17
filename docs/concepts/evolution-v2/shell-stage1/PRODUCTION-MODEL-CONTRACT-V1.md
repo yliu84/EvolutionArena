@@ -1,6 +1,10 @@
 # Shell Stage-1 Production Model Contract V1
 
-Status: design direction accepted by the user on 2026-08-17. This is the first non-Fang player evolution, and the first creature produced purely to measure the production line's real cost.
+Status: **user-accepted 2026-08-17.** Acceptance sequence steps 1-7 complete; traversal and head clearance confirmed in play by the user. Identifiers promoted to `stone-pangolin-shell-first-evolution-master-v1` / `stone-pangolin-combat-master-v1`.
+
+One follow-up landed after acceptance: the chain's second step was running the Fang profile's Pounce, for which this form has no clip, so it played nothing while damage still resolved. The Slam clip is now redirected onto that step. Authority is untouched - re-confirm in play that step two animates.
+
+Original status: design direction accepted by the user on 2026-08-17. This is the first non-Fang player evolution, and the first creature produced purely to measure the production line's real cost.
 
 Standard: `evolution-arena-creature-production-v2.1`. Where this document and typed runtime code disagree, stop and reconcile before producing another creature.
 
