@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { QUALITY_SLICE, pointInsideQualityBlocker, qualitySlicePlayerRoadRatio, qualitySliceScale } from './quality-slice-layout'
+import { assetUrl } from './asset-url'
 
 export class QualitySliceScene extends Phaser.Scene {
   private playerBody!: Phaser.Physics.Arcade.Image
@@ -19,8 +20,8 @@ export class QualitySliceScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.image('quality-forest-arena', '/assets/quality-slice/forest-arena-v2.png')
-    this.load.spritesheet('quality-juvenile-drake-walk', '/assets/quality-slice/juvenile-drake-walk-v2.png', {
+    this.load.image('quality-forest-arena', assetUrl('/assets/quality-slice/forest-arena-v2.png'))
+    this.load.spritesheet('quality-juvenile-drake-walk', assetUrl('/assets/quality-slice/juvenile-drake-walk-v2.png'), {
       frameWidth: 543,
       frameHeight: 724,
     })

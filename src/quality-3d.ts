@@ -40,6 +40,7 @@ import { getQuality3DSpeciesForm, QUALITY_3D_LIZARD_DRAGON_FORMS, type Quality3D
 import { QUALITY_3D_GLB_ASSETS, type Quality3DGLBAsset } from './quality-3d-glb-assets'
 import { getQuality3DAttackFeedback, type Quality3DBasicAttackAction } from './quality-3d-attack-feedback'
 import { juvenileLeapBiteMotionFrame, juvenileSpinTailSwipeMotionFrame, quadrupedAttackMotionFrame, quadrupedPounceFrame } from './quadruped-combat-motion'
+import { assetUrl } from './asset-url'
 
 interface LegRig {
   hip: THREE.Group
@@ -1466,7 +1467,7 @@ class Quality3DExperience {
 
   private async loadGLBSpeciesForms() {
     const results = await Promise.allSettled(QUALITY_3D_GLB_ASSETS.map(async (asset) => {
-      const gltf = await this.gltfLoader.loadAsync(asset.url)
+      const gltf = await this.gltfLoader.loadAsync(assetUrl(asset.url))
       this.replaceSpeciesFormWithGLB(asset, gltf)
     }))
     const failed = results.filter((result) => result.status === 'rejected')
@@ -1820,7 +1821,7 @@ class Quality3DExperience {
   }
 
   private loadRepeatedTexture(path: string, repeatX: number, repeatY: number) {
-    const texture = new THREE.TextureLoader().load(path)
+    const texture = new THREE.TextureLoader().load(assetUrl(path))
     texture.colorSpace = THREE.SRGBColorSpace
     texture.wrapS = THREE.RepeatWrapping
     texture.wrapT = THREE.RepeatWrapping

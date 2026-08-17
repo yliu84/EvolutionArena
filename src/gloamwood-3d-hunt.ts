@@ -117,6 +117,7 @@ import {
   type GloamwoodInputAction,
   type GloamwoodInputBindings,
 } from './gloamwood-input-settings'
+import { assetUrl } from './asset-url'
 
 const WORLD_HALF_WIDTH = 25
 const WORLD_HALF_DEPTH = 18
@@ -637,7 +638,7 @@ class Gloamwood3DHunt {
     }
     geometry.setAttribute('color', new THREE.BufferAttribute(vertexColors, 3))
     geometry.computeVertexNormals()
-    const groundTexture = new THREE.TextureLoader().load('/assets/terrain/forest.jpg')
+    const groundTexture = new THREE.TextureLoader().load(assetUrl('/assets/terrain/forest.jpg'))
     groundTexture.wrapS = THREE.RepeatWrapping
     groundTexture.wrapT = THREE.RepeatWrapping
     groundTexture.repeat.set(11, 8)
@@ -709,7 +710,7 @@ class Gloamwood3DHunt {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
     geometry.setIndex(indices)
     geometry.computeVertexNormals()
-    const dirtTexture = new THREE.TextureLoader().load('/assets/terrain/dirt.jpg')
+    const dirtTexture = new THREE.TextureLoader().load(assetUrl('/assets/terrain/dirt.jpg'))
     dirtTexture.wrapS = THREE.RepeatWrapping
     dirtTexture.wrapT = THREE.RepeatWrapping
     dirtTexture.repeat.set(9, 2)
@@ -862,7 +863,7 @@ class Gloamwood3DHunt {
     const ROCK_GRADE: KitGrade = { saturation: -0.12, exposure: 0.68, tint: [1, 1, 1], windAmp: 0 }
     const VEGETATION_GRADE: KitGrade = { saturation: -0.02, exposure: 0.92, tint: [1.02, 1.06, 0.78], windAmp: 0.22 }
     const loadTemplate = async (url: string, mode: 'height' | 'lateral', grade: KitGrade) => {
-      const gltf = await this.loader.loadAsync(url)
+      const gltf = await this.loader.loadAsync(assetUrl(url))
       const source = gltf.scene
       source.traverse((node) => {
         if (!(node instanceof THREE.Mesh)) return
@@ -1373,7 +1374,7 @@ class Gloamwood3DHunt {
     const asset = resolved.asset
     this.characterFamilyMatched = resolved.matchedFamily
     if (!asset) throw new Error(`Missing stage-${stage} GLB`)
-    const gltf = await this.loader.loadAsync(asset.url)
+    const gltf = await this.loader.loadAsync(assetUrl(asset.url))
     if (this.disposed) return
     this.actions.clear()
     this.tailNodes.length = 0

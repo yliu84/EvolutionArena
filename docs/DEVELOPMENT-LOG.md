@@ -1707,3 +1707,19 @@
 
 - 72 个测试文件 / 418 项测试、TypeScript、生产构建通过。
 - `npm run dev` 与 `npm run preview` 都加了 `--host`，真机可以通过局域网地址访问。
+
+## 2026-08-17 · 让构建可以部署到子路径，并修正上一条记录里的一个错误
+
+**先纠正上一条.** 上一条里我说 map-lab-v2 / v3 已经没有任何代码引用，把它们移进了 `art-source/`。这是错的：`map-lab-v2-config.ts` 引用它们时**不带前导斜杠**（`assets/map-lab-v2/...`），而我找孤儿资源的正则要求前导斜杠，所以整批都漏掉了。冻结的 MapLab 2 / 3 工具会因此加载失败。两个目录已经移回 `public/`。
+
+`tests/public-payload.test.ts` 新增一项：把 `src/` 与 `index.html` 里**每一条**资源引用（两种写法都匹配）拿去 `public/` 下解析，缺一个就失败。这是能拦住我这个错误的检查。
+
+**部署到 GitHub Pages 需要的改动.** Pages 给项目仓库的是子路径（`/EvolutionArena/`），不是域名根。`public/` 下的资源全部是字符串字面量，打包器看不见，因此在子路径下 33 处引用会全部 404。
+
+新增 `src/asset-url.ts`：`assetUrl()` 用 `import.meta.env.BASE_URL` 解析路径，**只在取数据的边界上调用**（GLTFLoader、TextureLoader、Phaser `load.*`、portrait 的 `img src`），资源清单本身保持根相对写法，这样清单仍然是可读的数据、并且和磁盘上的文件一一对应。`vite.config.ts` 的 `base` 读 `DEPLOY_BASE` 环境变量，不设时为 `/`，所以 dev、preview 和任何根路径托管都不受影响。
+
+**已按 CI 的方式实测过子路径构建**：`DEPLOY_BASE=/EvolutionArena/ npm run build`，用静态服务器放在 `/EvolutionArena/` 下打开——26 个请求 / 7.52MB、**零失败请求**，岩盾模型 200，三张进化立绘全部加载成功，路径都正确带上了前缀。
+
+**`.github/workflows/deploy.yml`**：push 到 main 时跑 `npm ci` → `npm test` → `npm run build`（带 `DEPLOY_BASE`）→ 发布到 Pages。测试是闸门，一个会 404 掉进化模型或漏翻译的构建不应该送到试玩者手里。`concurrency` 设为不取消进行中的部署，避免有人正在试玩时被换成半成品。
+
+**尚需用户操作**：仓库 Settings → Pages → Source 选 **GitHub Actions**。这一步需要仓库权限，我做不了。启用后地址是 `https://yliu84.github.io/EvolutionArena/?maplab=5`。

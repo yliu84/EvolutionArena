@@ -6,6 +6,7 @@ import {
   screenAreaCount,
   zoneById,
 } from './gloamwood-space-layout'
+import { assetUrl } from './asset-url'
 
 const PLAYER_SPEED = 330
 const FOLLOW_ZOOM = 0.88
@@ -29,7 +30,7 @@ export class GloamwoodSpaceLabScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.image(GLOAMWOOD_SPACE_LAYOUT.groundAsset.key, GLOAMWOOD_SPACE_LAYOUT.groundAsset.path)
+    this.load.image(GLOAMWOOD_SPACE_LAYOUT.groundAsset.key, assetUrl(GLOAMWOOD_SPACE_LAYOUT.groundAsset.path))
   }
 
   create() {

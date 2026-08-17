@@ -1,6 +1,12 @@
 import { defineConfig } from 'vite'
 
 export default defineConfig({
+  // GitHub Pages serves a project repository from a subpath, not the domain
+  // root. Paths under public/ are string literals the bundler cannot rewrite,
+  // so src/asset-url.ts resolves them against this at the fetch boundary.
+  // Unset - dev, preview, any root-served host - it stays '/'.
+  base: process.env.DEPLOY_BASE ?? '/',
+
   // `public/` is the shipped payload: everything in it is copied verbatim into
   // dist and served to players. Authoring intermediates - Meshy exports, rig
   // iterations, superseded map bakes - live in `art-source/`, which is tracked

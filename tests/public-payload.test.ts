@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { QUALITY_3D_GLB_ASSETS } from '../src/quality-3d-glb-assets'
@@ -38,5 +39,28 @@ describe('The served payload holds runtime assets only', () => {
     // A prune step that deletes from dist hides the mistake instead of
     // preventing it: the source of truth stays a list somebody has to remember.
     expect(config).not.toContain('rmSync')
+  })
+})
+
+describe('Every asset the code names is actually served', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url))
+  const sources = [
+    ...readdirSync(new URL('../src/', import.meta.url)).filter((f) => f.endsWith('.ts')).map((f) => `src/${f}`),
+    'index.html',
+  ]
+
+  it('resolves every referenced path under public/', () => {
+    // References are written both with and without a leading slash. A first
+    // attempt at pruning orphaned art searched only for the leading-slash form,
+    // so it moved the MapLab 2 bakes out from under the tool that loads them.
+    const missing: string[] = []
+    for (const file of sources) {
+      const text = readFileSync(`${root}${file}`, 'utf8')
+      for (const match of text.matchAll(/['"`](\/?assets\/[A-Za-z0-9/._-]*\.(?:png|jpe?g|glb|webp))/g)) {
+        const relative = match[1].replace(/^\//, '')
+        if (!existsSync(`${root}public/${relative}`)) missing.push(`${file} -> ${relative}`)
+      }
+    }
+    expect(missing).toEqual([])
   })
 })

@@ -1,4 +1,5 @@
 import type { GloamwoodPreyKind } from './gloamwood-3d-ecology'
+import { assetUrl } from './asset-url'
 
 /**
  * Route portraits for the evolution choice screen.
@@ -15,5 +16,5 @@ const PORTRAITS: Record<GloamwoodPreyKind, string> = {
 }
 
 export function gloamwoodFamilyPortrait(family: GloamwoodPreyKind): string {
-  return `<img class="g3d-route-mark" src="${PORTRAITS[family]}" alt="" width="1024" height="682" decoding="async">`
+  return `<img class="g3d-route-mark" src="${assetUrl(PORTRAITS[family])}" alt="" width="1024" height="682" decoding="async">`
 }

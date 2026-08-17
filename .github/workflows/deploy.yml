@@ -1,0 +1,51 @@
+name: Deploy playtest build
+
+# Publishes the built game to GitHub Pages so real devices and outside testers
+# can reach it. Goal 5's remaining acceptance gates - a PERF reading from a
+# physical phone and three strangers with only a URL - cannot be run against a
+# localhost dev server.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never interrupt a running deploy; a half-published site is worse than a stale
+# one when someone is mid-playtest.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # The suite is the gate. A build that ships a 404'ing creature model or
+      # untranslated copy must not reach a tester.
+      - run: npm test
+      - run: npm run build
+        env:
+          DEPLOY_BASE: /${{ github.event.repository.name }}/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

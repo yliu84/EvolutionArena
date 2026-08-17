@@ -131,6 +131,7 @@ import {
   type IncomingHitKind,
   type PlayerHitFeedbackProfile,
 } from './player-hit-feedback'
+import { assetUrl } from './asset-url'
 
 const FOLLOW_ZOOM = 0.88
 const ARRIVAL_RADIUS = 18
@@ -308,12 +309,12 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.image('gloamwood-v4-live-ground', '/assets/map-lab-v4/gloamwood-v4-live-ground-v1.png')
-    this.load.image('gloamwood-live-broadleaf', '/assets/hunt-slice/gloamwood-broadleaf-v1.png')
-    this.load.image('gloamwood-live-conifer', '/assets/hunt-slice/gloamwood-conifer-v1.png')
-    for (const config of GLOAMWOOD_NEST_CONFIGS) this.load.image(config.art.key, config.art.path)
+    this.load.image('gloamwood-v4-live-ground', assetUrl('/assets/map-lab-v4/gloamwood-v4-live-ground-v1.png'))
+    this.load.image('gloamwood-live-broadleaf', assetUrl('/assets/hunt-slice/gloamwood-broadleaf-v1.png'))
+    this.load.image('gloamwood-live-conifer', assetUrl('/assets/hunt-slice/gloamwood-conifer-v1.png'))
+    for (const config of GLOAMWOOD_NEST_CONFIGS) this.load.image(config.art.key, assetUrl(config.art.path))
     for (const atlas of Object.values(MONSTER_ANIMATION_ATLASES)) {
-      this.load.spritesheet(atlas.key, atlas.path, {
+      this.load.spritesheet(atlas.key, assetUrl(atlas.path), {
         frameWidth: atlas.frameWidth,
         frameHeight: atlas.frameHeight,
       })
