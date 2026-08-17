@@ -1368,7 +1368,12 @@ class Gloamwood3DHunt {
           material.metalness = 0
           material.envMapIntensity = 0.48
           material.needsUpdate = true
-        } else if (stage === 1) {
+        } else if (asset.formId === 'scarlet-gecko') {
+          // This whole grade is tuned for the scarlet gecko's coral/teal/cream
+          // source and its over-bright emissive export. Applying it by stage
+          // instead of by form tinted the Shell body warm, added an emissive
+          // fill that erases body planes, and cut its normal map to 62%, which
+          // flattened the plate relief into a muddy patch.
           material.flatShading = false
           material.color.setHex(SCARLET_GECKO_PRESENTATION.material.colorTint)
           material.roughness = THREE.MathUtils.clamp(

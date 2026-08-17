@@ -100,3 +100,15 @@ describe('Evolution accent placeholder', () => {
     expect(gloamwoodCharacterWorldHeight(0, 'shell')).toBe(gloamwoodCharacterWorldHeight(0))
   })
 })
+
+describe('Per-form material grading', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+
+  it('applies the scarlet-gecko grade by form, never by stage', () => {
+    // Keyed on stage it also hit the Shell body: a warm tint over grey stone, an
+    // emissive fill that erases planes, and normalScale cut to 62%.
+    expect(source).toContain("} else if (asset.formId === 'scarlet-gecko') {")
+    expect(source).not.toMatch(/}\s*else if \(stage === 1\) \{/)
+    expect(source).toContain('applyScarletGeckoSurfaceGrade(material)')
+  })
+})
