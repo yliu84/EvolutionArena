@@ -20,6 +20,13 @@ export interface GloamwoodPreySpec {
   damage: number
   knockback: number
   biomass: number
+  /**
+   * When true the creature commits its facing the moment it leaves `chase`, and
+   * only re-acquires the player on return. Families whose front is mechanically
+   * stronger need this: without it their turn speed exceeds the angular speed a
+   * player can orbit at, so the flank the onboarding asks for is unreachable.
+   */
+  commitsFacingWhileAttacking: boolean
 }
 
 export interface GloamwoodNestPrey {
@@ -87,16 +94,20 @@ export const GLOAMWOOD_PREY: Record<GloamwoodPreyKind, GloamwoodPreySpec> = {
     displayName: '裂牙猎兽', gene: 'fang', maxHealth: 46, moveSpeed: 3.65, turnSpeed: 7.4,
     stopRange: 1.72, attackRange: 2.12, telegraphSeconds: 0.46, contactSeconds: 0.1,
     strikeSeconds: 0.3, recoverSeconds: 0.58, stunSeconds: 0.24, damage: 12, knockback: 1.05, biomass: 8,
+    commitsFacingWhileAttacking: false,
   },
   shell: {
     displayName: '岩盾甲虫', gene: 'shell', maxHealth: 92, moveSpeed: 1.48, turnSpeed: 3.1,
     stopRange: 2.18, attackRange: 2.62, telegraphSeconds: 1.05, contactSeconds: 0.18,
     strikeSeconds: 0.48, recoverSeconds: 1.08, stunSeconds: 0.18, damage: 20, knockback: 1.75, biomass: 14,
+    // Only the shell family reduces frontal damage, so only it needs the window.
+    commitsFacingWhileAttacking: true,
   },
   swarm: {
     displayName: '荧孢群虫', gene: 'swarm', maxHealth: 24, moveSpeed: 2.9, turnSpeed: 6.2,
     stopRange: 1.5, attackRange: 1.82, telegraphSeconds: 0.34, contactSeconds: 0.08,
     strikeSeconds: 0.24, recoverSeconds: 0.72, stunSeconds: 0.32, damage: 6, knockback: 0.52, biomass: 4,
+    commitsFacingWhileAttacking: false,
   },
 }
 
@@ -303,7 +314,12 @@ function stepPrey(
   const attackDistance = Math.max(spec.attackRange, stopDistance + GLOAMWOOD_COMBAT_SPACING.strikeReach[state.kind])
   const desiredDistance = Math.hypot(dx, dz)
   const facing = Math.atan2(-(player.z - next.z), player.x - next.x)
-  next.facingRadians = turnToward(next.facingRadians, facing, spec.turnSpeed * delta)
+  // A committed creature keeps the facing it chose when the telegraph began, so
+  // telegraph/strike/recover form the window the onboarding's flank advice needs.
+  // Uncommitted families keep re-acquiring every frame, exactly as before.
+  if (!spec.commitsFacingWhileAttacking || next.phase === 'chase') {
+    next.facingRadians = turnToward(next.facingRadians, facing, spec.turnSpeed * delta)
+  }
 
   if (next.phase === 'chase') {
     if (desiredDistance <= GLOAMWOOD_COMBAT_SPACING.slotArrivalTolerance && playerDistance <= stopDistance + 0.18) {

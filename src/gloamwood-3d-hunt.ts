@@ -3384,7 +3384,18 @@ class Gloamwood3DHunt {
         z: round(this.bossState.z),
         locked: this.bossLocked,
       },
-      prey: this.nestState.prey.map((prey) => ({ id: prey.id, kind: prey.kind, health: prey.health, phase: prey.phase, x: round(prey.x), z: round(prey.z) })),
+      // `facing` and `playerBearing` make the shell flank window observable on a
+      // real device, where remote developer tools are not available.
+      prey: this.nestState.prey.map((prey) => ({
+        id: prey.id,
+        kind: prey.kind,
+        health: prey.health,
+        phase: prey.phase,
+        x: round(prey.x),
+        z: round(prey.z),
+        facing: round(prey.facingRadians),
+        playerBearing: round(Math.atan2(-(this.playerRoot.position.z - prey.z), this.playerRoot.position.x - prey.x)),
+      })),
       camera: { fov: this.camera.fov, pitch: 36, distance: round(GLOAMWOOD_3D_CAMERA_DISTANCE) },
       world: {
         geometry: 'real-3d',

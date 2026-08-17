@@ -62,6 +62,68 @@ describe('Gloamwood first ecology nest', () => {
     expect(rear.effectiveDamage).toBeGreaterThan(20)
   })
 
+  it('lets a committed shell be flanked, so the onboarding advice is reachable', () => {
+    // Regression for G-1: shell turnSpeed 3.1 rad/s used to exceed the ~2.4 rad/s a
+    // player can orbit at, so "绕到侧后攻击" was geometrically impossible.
+    const spacing = 2.6
+    const orbitSpeed = 6.2 / spacing
+    let state = stepGloamwoodNest(createGloamwoodNestState(), 0.05, { x: GLOAMWOOD_NEST.centerX, z: GLOAMWOOD_NEST.centerZ, alive: true }).state
+    state = { ...state, prey: [{ ...state.prey[0], id: 'shell', kind: 'shell', health: 999, maxHealth: 999, x: 0, z: 0, facingRadians: 0, phase: 'telegraph' as const, phaseElapsed: 0 }] }
+    const committedFacing = state.prey[0].facingRadians
+
+    // Orbit the shell for the duration of its telegraph, exactly as a player would.
+    let angle = 0
+    let elapsed = 0
+    const delta = 0.05
+    while (elapsed < GLOAMWOOD_PREY.shell.telegraphSeconds) {
+      angle += orbitSpeed * delta
+      elapsed += delta
+      state = stepGloamwoodNest(state, delta, { x: Math.cos(angle) * spacing, z: Math.sin(angle) * spacing, alive: true }).state
+    }
+
+    expect(state.prey[0].facingRadians).toBeCloseTo(committedFacing, 6)
+    const rear = damageGloamwoodNestPrey(state, 'shell', 20, 'Pounce', { x: Math.cos(angle) * spacing, z: Math.sin(angle) * spacing }, 0.5)
+    expect(rear.blocked).toBe(false)
+    expect(rear.effectiveDamage).toBeGreaterThan(20)
+  })
+
+  it('keeps the shell facing locked from telegraph through recover, then re-acquires', () => {
+    const committed = { phase: 'telegraph', elapsed: 0 } as const
+    let state = stepGloamwoodNest(createGloamwoodNestState(), 0.05, { x: GLOAMWOOD_NEST.centerX, z: GLOAMWOOD_NEST.centerZ, alive: true }).state
+    state = { ...state, prey: [{ ...state.prey[0], id: 'shell', kind: 'shell', health: 999, maxHealth: 999, x: 0, z: 0, facingRadians: 0, phase: committed.phase, phaseElapsed: committed.elapsed }] }
+    const behind = { x: -2.6, z: 0, alive: true }
+    const seen = new Set<string>()
+    let framesUntilChase = 0
+    // Only the first committed sequence is under test; once chase resumes the
+    // creature legitimately turns and commits to a fresh facing next telegraph.
+    while (framesUntilChase < 80) {
+      state = stepGloamwoodNest(state, 0.05, behind).state
+      const prey = state.prey[0]
+      framesUntilChase += 1
+      if (prey.phase === 'chase') break
+      seen.add(prey.phase)
+      expect(prey.facingRadians).toBeCloseTo(0, 6)
+    }
+    // The window must actually span every committed phase before chase resumes.
+    expect(seen.has('strike')).toBe(true)
+    expect(seen.has('recover')).toBe(true)
+    expect(state.prey[0].phase).toBe('chase')
+    // And re-acquisition must still work: chase turns back toward the player.
+    state = stepGloamwoodNest(state, 0.2, behind).state
+    expect(state.prey[0].facingRadians).not.toBeCloseTo(0, 2)
+  })
+
+  it('leaves fang and swarm tracking every frame, since neither has a frontal rule', () => {
+    for (const kind of ['fang', 'swarm'] as const) {
+      expect(GLOAMWOOD_PREY[kind].commitsFacingWhileAttacking).toBe(false)
+      let state = stepGloamwoodNest(createGloamwoodNestState(), 0.05, { x: GLOAMWOOD_NEST.centerX, z: GLOAMWOOD_NEST.centerZ, alive: true }).state
+      state = { ...state, prey: [{ ...state.prey[0], id: kind, kind, x: 0, z: 0, facingRadians: 0, phase: 'telegraph' as const, phaseElapsed: 0 }] }
+      state = stepGloamwoodNest(state, 0.05, { x: -2.6, z: 0, alive: true }).state
+      expect(state.prey[0].facingRadians).not.toBeCloseTo(0, 6)
+    }
+    expect(GLOAMWOOD_PREY.shell.commitsFacingWhileAttacking).toBe(true)
+  })
+
   it('records family genes and biomass only on authoritative kills', () => {
     let state = stepGloamwoodNest(createGloamwoodNestState(), 0.05, { x: GLOAMWOOD_NEST.centerX, z: GLOAMWOOD_NEST.centerZ, alive: true }).state
     const target = state.prey[0]
