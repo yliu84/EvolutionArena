@@ -161,3 +161,21 @@ describe('One press, one enemy', () => {
     expect(source).toMatch(/if \(!event\.repeat\) \{\s*\n\s*this\.primaryHeld = true/)
   })
 })
+
+describe('Arriving opens the chain', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+  const chain = readFileSync(new URL('../src/formal-hunt-basic-attack.ts', import.meta.url), 'utf8')
+
+  it('starts a chain on arrival rather than waiting for a second press', () => {
+    // primaryHeld only continues a running chain - the authority returns early
+    // when no action is active - so arriving has to open one itself.
+    expect(chain).toMatch(/if \(!state\.action\) \{/)
+    expect(source).toContain('if (!this.attackState.action) this.requestPrimaryAttack()')
+  })
+
+  it('only opens one step at a time, so the combo cannot be reset every frame', () => {
+    // requestFormalHuntBasicAttack buffers instead of restarting while an action
+    // runs, and the caller guards on there being no action.
+    expect(chain).toContain('if (state.action) return { ...state, buffered: true }')
+  })
+})

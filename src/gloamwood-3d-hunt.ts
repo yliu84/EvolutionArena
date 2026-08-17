@@ -1732,6 +1732,11 @@ class Gloamwood3DHunt {
     }
     this.target.copy(this.playerRoot.position)
     this.primaryHeld = true
+    // primaryHeld only continues a chain that is already running; it cannot open
+    // one. The swing that opened the order has almost always finished by the
+    // time the approach lands, so arriving has to start the next chain itself -
+    // otherwise the player walks all the way in and then waits for a second press.
+    if (!this.attackState.action) this.requestPrimaryAttack()
   }
 
   private requestPrimaryAttack() {
