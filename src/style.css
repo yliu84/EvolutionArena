@@ -998,6 +998,9 @@ body.is-gloamwood-3d * {
   will-change: transform, opacity;
 }
 .g3d-damage-number[data-tone="blocked"] { color: #9fb0a4; font-size: 20px; }
+/* An earned multiplier - the Carapace flank, or a family's weak attack. Reads
+   like a crit because it is one, except the player produced it deliberately. */
+.g3d-damage-number[data-tone="weakness"] { color: #ffd76a; font-size: 33px; text-shadow: 0 2px 0 rgba(0, 0, 0, .6), 0 0 20px rgba(255, 200, 90, .55); }
 .g3d-damage-number[data-tone="kill"] { color: #ffd76a; font-size: 34px; }
 /* Damage taken reads as a warning, and is the one number the player must not miss. */
 .g3d-damage-number[data-tone="player"] { color: #ff8b6b; }
@@ -1005,6 +1008,7 @@ body.is-gloamwood-3d * {
 @media (max-width: 900px) and (orientation: landscape), (max-height: 520px) and (orientation: landscape) {
   .g3d-damage-number { font-size: 19px; }
   .g3d-damage-number[data-tone="kill"] { font-size: 25px; }
+  .g3d-damage-number[data-tone="weakness"] { font-size: 24px; }
   .g3d-damage-number[data-tone="blocked"] { font-size: 15px; }
 }
 

@@ -250,3 +250,31 @@ describe('Gloamwood first ecology nest', () => {
     expect(transition.events.map((event) => event.type)).toContain('nest-cleared')
   })
 })
+
+describe('Earned multipliers and push resistance', () => {
+  it('reports which hits earned a multiplier without changing any number', () => {
+    let state = stepGloamwoodNest(createGloamwoodNestState(), 0.05, { x: GLOAMWOOD_NEST.centerX, z: GLOAMWOOD_NEST.centerZ, alive: true }).state
+    state = { ...state, prey: [{ ...state.prey[0], id: 'shell', kind: 'shell', health: 999, maxHealth: 999, x: 0, z: 0, facingRadians: 0 }] }
+    const rear = damageGloamwoodNestPrey(state, 'shell', 20, 'Pounce', { x: -2, z: 0 }, 0.5)
+    const front = damageGloamwoodNestPrey(state, 'shell', 20, 'Pounce', { x: 2, z: 0 }, 0.5)
+    // The flank bonus already existed; it was simply invisible until now.
+    expect(rear.weakness).toBe(true)
+    expect(front.weakness).toBe(false)
+    expect(front.blocked).toBe(true)
+    expect(rear.effectiveDamage).toBeGreaterThan(front.effectiveDamage)
+  })
+
+  it('does not let a walking player shove prey ahead of them', () => {
+    const player = { x: 0, z: 0, alive: true, bodyRadius: 1.2 }
+    const prey = [{
+      id: 'p1', kind: 'fang' as const, phase: 'chase' as const, phaseElapsed: 0,
+      health: 46, maxHealth: 46, x: 1.4, z: 0, facingRadians: 0, attackResolved: false, slot: 0,
+    }]
+    // The prey has not moved this frame, so the player walked in: the prey holds.
+    const held = resolveGloamwoodPreyAroundPlayer(prey, player, player.bodyRadius, new Map([['p1', { x: 1.4, z: 0 }]]))
+    expect(held[0].x).toBeCloseTo(1.4, 5)
+    // A prey that closed the gap itself is still pushed back out to its ring.
+    const pushed = resolveGloamwoodPreyAroundPlayer(prey, player, player.bodyRadius, new Map([['p1', { x: 4, z: 0 }]]))
+    expect(pushed[0].x).toBeGreaterThan(1.4)
+  })
+})

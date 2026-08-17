@@ -67,6 +67,12 @@ export interface GloamwoodPreyDamageResult {
   state: GloamwoodNestState
   effectiveDamage: number
   blocked: boolean
+  /**
+   * True when an earned multiplier applied - the Carapace flank, or the attack
+   * a family is weak to. Reported so presentation can show it; the number is
+   * already resolved here and nothing downstream may change it.
+   */
+  weakness: boolean
   killed: boolean
   biomassGained: number
   geneGained: GloamwoodPreyKind | null
@@ -204,13 +210,17 @@ export function stepGloamwoodNest(
     return { state: next, events }
   }
 
+  // Remember where each prey stood so the separation below can tell who caused
+  // an overlap. Correcting whoever moved is the same rule the chase already
+  // follows: a prey walking into a standing player moves only itself.
+  const previousPositions = new Map(next.prey.map((prey) => [prey.id, { x: prey.x, z: prey.z }]))
   next.prey = next.prey.map((prey) => {
     const frame = stepPrey(prey, delta, player)
     events.push(...frame.events)
     return frame.state
   })
   next.prey = separateLivingPrey(next.prey)
-  next.prey = resolveGloamwoodPreyAroundPlayer(next.prey, player, player.bodyRadius ?? 0)
+  next.prey = resolveGloamwoodPreyAroundPlayer(next.prey, player, player.bodyRadius ?? 0, previousPositions)
   if (next.prey.length > 0 && next.prey.every((prey) => prey.phase === 'dead')) {
     events.push({ type: 'wave-cleared', wave: next.wave })
     if (next.wave >= GLOAMWOOD_NEST.waveCount) {
@@ -232,7 +242,7 @@ export function damageGloamwoodNestPrey(
   knockback: number,
 ): GloamwoodPreyDamageResult {
   const target = state.prey.find((prey) => prey.id === preyId)
-  if (!target || target.phase === 'dead') return { state, effectiveDamage: 0, blocked: false, killed: false, biomassGained: 0, geneGained: null }
+  if (!target || target.phase === 'dead') return { state, effectiveDamage: 0, blocked: false, weakness: false, killed: false, biomassGained: 0, geneGained: null }
   const spec = GLOAMWOOD_PREY[target.kind]
   const attackerFacing = Math.atan2(-(attacker.z - target.z), attacker.x - target.x)
   const frontalError = Math.abs(shortestAngle(target.facingRadians, attackerFacing))
@@ -260,6 +270,7 @@ export function damageGloamwoodNestPrey(
     state: { ...state, prey: nextPrey, kills: state.kills + Number(killed), biomass: state.biomass + biomassGained, genes, recentHunts },
     effectiveDamage,
     blocked: shellFront,
+    weakness: !shellFront && multiplier > 1,
     killed,
     biomassGained,
     geneGained: killed ? spec.gene : null,
@@ -392,10 +403,21 @@ export function resolveGloamwoodPlayerPreyCollision(
   return { x, z, contacts, minimumClearance: inspectGloamwoodPlayerPreyClearance({ x, z }, playerBodyRadius, prey) }
 }
 
+/**
+ * Hold prey out at their action ring, but only against prey that closed the gap
+ * themselves.
+ *
+ * The ring includes action space and is therefore wider than the body-to-body
+ * distance the player is blocked at, so applying it unconditionally let a player
+ * walking forward shove prey ahead of them like a plough. A prey that did not
+ * move is left where it stands; the player's own resolution stops them at its
+ * surface instead.
+ */
 export function resolveGloamwoodPreyAroundPlayer(
   prey: readonly GloamwoodNestPrey[],
   player: { x: number; z: number },
   playerBodyRadius: number,
+  previousPositions?: ReadonlyMap<string, { x: number; z: number }>,
 ) {
   return prey.map((target) => {
     if (target.phase === 'dead') return target
@@ -404,6 +426,13 @@ export function resolveGloamwoodPreyAroundPlayer(
     let distance = Math.hypot(dx, dz)
     const minimum = gloamwoodPreyStopDistance(target.kind, playerBodyRadius)
     if (distance >= minimum - 0.000001) return target
+    const previous = previousPositions?.get(target.id)
+    if (previous) {
+      const previousDistance = Math.hypot(previous.x - player.x, previous.z - player.z)
+      // Already inside the ring and not closing: the player walked in, so the
+      // player is the one who gets corrected.
+      if (previousDistance <= distance + 0.000001 && previousDistance < minimum) return target
+    }
     if (distance < 0.000001) {
       const angle = (target.slot + 1) * 2.399
       dx = Math.cos(angle)

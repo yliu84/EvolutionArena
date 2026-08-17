@@ -1915,7 +1915,7 @@ class Gloamwood3DHunt {
     this.spawnDamageNumber(
       new THREE.Vector3(target.x, gloamwoodCharacterWorldHeight(1) * 0.9, target.z),
       damage.effectiveDamage,
-      damage.killed ? 'kill' : damage.blocked ? 'blocked' : 'hit',
+      damage.killed ? 'kill' : damage.blocked ? 'blocked' : damage.weakness ? 'weakness' : 'hit',
     )
     if (damage.killed) {
       this.combatMessage = target.id === GLOAMWOOD_NEST_GUARDIAN.id
@@ -3078,7 +3078,7 @@ class Gloamwood3DHunt {
    * @param amount authoritative effective damage, already decided
    * @param tone   presentation only; picks colour and weight, never the number
    */
-  private spawnDamageNumber(world: THREE.Vector3, amount: number, tone: 'hit' | 'blocked' | 'kill' | 'player') {
+  private spawnDamageNumber(world: THREE.Vector3, amount: number, tone: 'hit' | 'weakness' | 'blocked' | 'kill' | 'player') {
     if (!this.damageLayer) return
     const element = document.createElement('span')
     element.className = 'g3d-damage-number'
