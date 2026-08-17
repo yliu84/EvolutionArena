@@ -1386,7 +1386,10 @@ class Gloamwood3DHunt {
     this.characterRoot.add(gltf.scene)
     this.mixer = new THREE.AnimationMixer(gltf.scene)
     for (const sourceClip of gltf.animations) {
-      const clip = stage === 1 ? stabilizeScarletGeckoLocomotionClip(sourceClip) : sourceClip
+      // The yaw/roll damping is a scarlet-gecko-specific repair for its source
+      // Run's excessive torso sway. It must follow that form, not the stage, or
+      // it flattens the authored motion of every other stage-1 body.
+      const clip = asset.formId === 'scarlet-gecko' ? stabilizeScarletGeckoLocomotionClip(sourceClip) : sourceClip
       this.actions.set(clip.name, this.mixer.clipAction(clip))
     }
     this.modelReady = true

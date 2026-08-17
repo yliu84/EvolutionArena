@@ -10,7 +10,7 @@ export type Quality3DFormFamily = 'fang' | 'shell' | 'swarm'
 
 export interface Quality3DGLBAsset {
   stage: 0 | 1 | 2 | 3 | 6
-  formId: 'coral-gecko' | 'scarlet-gecko' | 'scarlet-hunter' | 'azure-wyvern' | 'golden-ancient'
+  formId: 'coral-gecko' | 'scarlet-gecko' | 'scarlet-hunter' | 'stone-pangolin' | 'azure-wyvern' | 'golden-ancient'
   /** Undefined means the form is route-independent and serves every family. */
   family?: Quality3DFormFamily
   url: string
@@ -71,6 +71,26 @@ export const QUALITY_3D_GLB_ASSETS: readonly Quality3DGLBAsset[] = [
       tail: ['tail1', 'tail2', 'tail3'],
     },
     'fang',
+  ),
+  // Shell stage 1. Same 27-bone Meshy quadruped template as the Fang form, so
+  // the rig mapping matches; the chain is Bite -> Slam -> TailSwipe because a
+  // low head and short stout forelimbs cannot sell a leap.
+  asset(
+    1,
+    'stone-pangolin',
+    '/assets/quality-3d/models/stone-pangolin-rigged-runtime-v1.glb?v=shell-stage1-v1',
+    SCARLET_GECKO_PRESENTATION.displayScale,
+    ['StonePangolinMesh', 'Hips', 'chest', 'head', 'frontleg', 'frontleg2', 'R_frontleg', 'R_frontleg2', 'backleg', 'backleg2', 'R_backleg', 'R_backleg2', 'tail', 'tail3'],
+    'embedded',
+    Math.PI / 2,
+    ['Idle', 'Walk', 'Run', 'Turn', 'Bite', 'Slam', 'TailSwipe', 'Hit', 'Death'],
+    {
+      body: 'chest',
+      head: 'head',
+      feet: ['frontleg2', 'R_frontleg2', 'backleg2', 'R_backleg2'],
+      tail: ['tail1', 'tail2', 'tail3'],
+    },
+    'shell',
   ),
   asset(3, 'azure-wyvern', '/assets/quality-3d/models/azure-wyvern-v1.glb', 0.68, ['Body', 'Head', 'LegBL', 'LegBR', 'WingL', 'WingR', 'Tail_0']),
   asset(6, 'golden-ancient', '/assets/quality-3d/models/golden-ancient-v1.glb', 0.74, ['Body', 'Head', 'LegFL', 'LegFR', 'LegBL', 'LegBR', 'WingL', 'WingR', 'Tail_0']),

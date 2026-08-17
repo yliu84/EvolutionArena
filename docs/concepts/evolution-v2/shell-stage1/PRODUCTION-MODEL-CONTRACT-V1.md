@@ -106,6 +106,27 @@ A low wide creature normalised to 2.16 height becomes proportionally longer and 
 
 If traversal proves hostile, the correction is a form-specific world height recorded here as an intentional deviation — never a silent change to collision or attack range.
 
+### Measured result, 2026-08-17 — the predicted risk is real
+
+Runtime GLBs measured in Blender and converted to world units at each form's stage height:
+
+| Form | Width | Length | Height |
+|---|---|---|---|
+| coral-gecko (stage 0) | 1.72 | 3.94 | 1.80 |
+| scarlet-gecko (Fang stage 1) | 1.56 | 3.99 | 2.16 |
+| **stone-pangolin (Shell stage 1)** | **2.16** | **6.98** | **2.16** |
+
+Normalising this body to 2.16 height makes it **1.38× wider and 1.75× longer** than the Fang form. Its raw proportions are 1 : 3.23 : 1 (w : l : h) against the gecko's 0.72 : 1.85 : 1 — the elongation accepted at source review, which was judged on silhouette readability, turns into footprint here.
+
+The collision profile is still the stage-based Fang value (radius 0.62, front 0.58, rear 0.66), giving a roughly 2.48-unit collision extent against a 6.98-unit body: about 36% coverage, against 62% for the gecko. A typed Shell body radius is therefore required, not optional.
+
+**Open decision, blocking runtime acceptance.** Two admissible corrections:
+
+1. Keep 2.16 height, define a Shell-specific body radius near 1.05–1.30, and accept a visibly large creature.
+2. Give Shell stage 1 a form-specific world height below 2.16 so length lands near the gecko's 4.0–4.6, expressing its growth as breadth and mass rather than height. This is the deviation this section already permits, and suits an armoured form that should grow heavier rather than taller.
+
+Traversal against the 82 obstacles, the nest's 6.4 clear radius and the Boss arena's 4.2/7.8 radii has **not yet been run** — an in-session attempt could not drive the player during the guardian phase. It must be completed before either option is committed.
+
 ## Rig, budget and deformation
 
 | Item | Contract |

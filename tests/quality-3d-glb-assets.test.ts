@@ -12,9 +12,12 @@ import { SCARLET_HUNTER_PRESENTATION } from '../src/scarlet-hunter-character-pre
 
 describe('quality 3D GLB vertical slice assets', () => {
   it('defines independent stage-0, first-evolution, second-evolution, wyvern and ancient assets', () => {
-    expect(QUALITY_3D_GLB_ASSETS.map((asset) => asset.stage)).toEqual([0, 1, 2, 3, 6])
-    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.formId)).size).toBe(5)
-    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.url)).size).toBe(5)
+    // Stage 1 now carries two bodies: the Fang scarlet-gecko and the Shell stone-pangolin.
+    expect(QUALITY_3D_GLB_ASSETS.map((asset) => asset.stage)).toEqual([0, 1, 2, 1, 3, 6])
+    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.formId)).size).toBe(6)
+    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.url)).size).toBe(6)
+    // Every form still owns a distinct GLB; none may share a runtime file.
+    expect(QUALITY_3D_GLB_ASSETS).toHaveLength(6)
   })
 
   it('keys evolved forms by gene family so routes can own separate bodies', () => {
@@ -29,13 +32,30 @@ describe('quality 3D GLB vertical slice assets', () => {
     expect(fang.asset?.formId).toBe('scarlet-gecko')
     expect(fang.matchedFamily).toBe(true)
 
-    // No Shell stage-1 model exists yet, so it borrows Fang's - but must say so.
+    // Shell now has its own stage-1 body rather than wearing the Fang one.
     const shell = resolveQuality3DGLBAsset(1, 'shell')
-    expect(shell.asset?.formId).toBe('scarlet-gecko')
-    expect(shell.matchedFamily).toBe(false)
+    expect(shell.asset?.formId).toBe('stone-pangolin')
+    expect(shell.matchedFamily).toBe(true)
+
+    // Swarm still has none, so it borrows - and must say so.
+    const swarm = resolveQuality3DGLBAsset(1, 'swarm')
+    expect(swarm.matchedFamily).toBe(false)
 
     // Stage 0 serves every route, so it is not a substitution.
     expect(resolveQuality3DGLBAsset(0, 'shell').matchedFamily).toBe(true)
+  })
+
+  it('gives the Shell stage-1 form its own chain and mesh, sharing the rig template', () => {
+    const shell = resolveQuality3DGLBAsset(1, 'shell').asset
+    // The runtime serves the texture-optimized variant, not the authoring master.
+    expect(shell?.url).toContain('stone-pangolin-rigged-runtime-v1.glb')
+    // Slam replaces Pounce: short stout forelimbs cannot support a leap.
+    expect(shell?.requiredClips).toContain('Slam')
+    expect(shell?.requiredClips).not.toContain('Pounce')
+    expect(shell?.requiredClips).not.toContain('Claw')
+    // Same 27-bone Meshy quadruped template as the accepted Fang stage-1 rig.
+    expect(shell?.rig).toEqual(resolveQuality3DGLBAsset(1, 'fang').asset?.rig)
+    expect(shell?.requiredNodes).toContain('StonePangolinMesh')
   })
 
   it('keeps the family-less lookup resolving exactly as before', () => {
