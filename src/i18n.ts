@@ -342,6 +342,21 @@ const STRINGS = {
 
   // ---- document chrome ----------------------------------------------------
   'document.title': { en: 'Evolution Arena Lite · Gloamwood', zh: '进化竞技场 Lite · 幽影林地 3D 重制' },
+
+  // ---- boot screen --------------------------------------------------------
+  // The first thing anyone sees. It renders before the hunt module loads, so it
+  // has to resolve its own locale rather than wait for the game to do it.
+  'boot.eyebrow': { en: 'LOADING / GLOAMWOOD', zh: 'LOADING / 幽影林地' },
+  'boot.title': { en: 'Waking the hunting grounds', zh: '正在唤醒狩猎世界' },
+  'boot.body': { en: 'Loading your creature, the forest and the combat systems…', zh: '加载角色、环境与战斗系统…' },
+  'boot.failEyebrow': { en: 'LOAD FAILED / CANNOT HUNT', zh: 'LOAD FAILED / 无法进入狩猎' },
+  'boot.failTitle': { en: 'The world did not load completely', zh: '世界资源没有完整加载' },
+  'boot.retry': { en: 'Reload this run', zh: '重新加载本局' },
+  'boot.failHelp': {
+    en: 'If this keeps happening, check your connection or refresh. The run has not started, so no progress is lost.',
+    zh: '如果问题持续，请检查网络或刷新浏览器；本局尚未开始，不会产生错误进度。',
+  },
+  'boot.failUnknown': { en: 'Unknown loading error', zh: '未知加载错误' },
 } as const satisfies Record<string, LocalisedString>
 
 export type TranslationKey = keyof typeof STRINGS

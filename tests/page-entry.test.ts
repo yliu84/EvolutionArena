@@ -54,18 +54,14 @@ describe('browser page entry', () => {
     expect(entry).not.toMatch(/^import .*legacy-main/m)
   })
 
-  it('ships only runtime character GLBs while preserving authoring masters in public', () => {
+  it('keeps the served payload governed by the runtime registry, not a hand list', () => {
+    // This test used to assert the five model names in a build-time allowlist.
+    // It passed for the whole life of the Shell first evolution while that form
+    // was being deleted from every production build, because it checked that
+    // the mechanism existed rather than that the right files shipped.
+    // tests/public-payload.test.ts now compares public/ against the registry.
     const config = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8')
-    for (const runtimeModel of [
-      'coral-gecko-rigged-runtime-v1.glb',
-      'scarlet-gecko-rigged-runtime-v1.glb',
-      'scarlet-hunter-quadruped-runtime-v1.glb',
-      'azure-wyvern-v1.glb',
-      'golden-ancient-v1.glb',
-    ]) {
-      expect(config).toContain(runtimeModel)
-    }
-    expect(config).toMatch(/closeBundle/)
-    expect(config).toMatch(/Authoring masters stay intact/)
+    expect(config).not.toContain('.glb')
+    expect(config).toContain('art-source/')
   })
 })

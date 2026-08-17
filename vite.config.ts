@@ -1,32 +1,16 @@
-import { existsSync, readdirSync, rmSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { defineConfig, type Plugin } from 'vite'
-
-const RUNTIME_CHARACTER_MODELS = new Set([
-  'coral-gecko-rigged-runtime-v1.glb',
-  'scarlet-gecko-rigged-runtime-v1.glb',
-  'scarlet-hunter-quadruped-runtime-v1.glb',
-  'azure-wyvern-v1.glb',
-  'golden-ancient-v1.glb',
-])
-
-function pruneAuthoringCharacterModels(): Plugin {
-  return {
-    name: 'prune-authoring-character-models',
-    apply: 'build',
-    closeBundle() {
-      const outputDirectory = resolve('dist/assets/quality-3d/models')
-      if (!existsSync(outputDirectory)) return
-      for (const filename of readdirSync(outputDirectory)) {
-        if (filename.endsWith('.glb') && !RUNTIME_CHARACTER_MODELS.has(filename)) {
-          // dist is generated output. Authoring masters stay intact under public/.
-          rmSync(resolve(outputDirectory, filename))
-        }
-      }
-    },
-  }
-}
+import { defineConfig } from 'vite'
 
 export default defineConfig({
-  plugins: [pruneAuthoringCharacterModels()],
+  // `public/` is the shipped payload: everything in it is copied verbatim into
+  // dist and served to players. Authoring intermediates - Meshy exports, rig
+  // iterations, superseded map bakes - live in `art-source/`, which is tracked
+  // but never built.
+  //
+  // A build-time prune plugin used to keep the two mixed together behind a
+  // hand-written allowlist of runtime models. The list drifted: the Shell first
+  // evolution shipped and was never added, so every production build deleted
+  // the Stone Pangolin runtime model and the accepted form 404'd for players.
+  // Dev never showed it, because dev serves public/ directly. The directory
+  // split removes the drift surface instead of maintaining the list;
+  // tests/public-payload.test.ts holds the two in agreement.
 })

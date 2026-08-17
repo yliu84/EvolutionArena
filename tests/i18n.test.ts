@@ -69,6 +69,7 @@ describe('MapLab 5 player-facing text is fully localised', () => {
     'gloamwood-3d-onboarding.ts',
     'gloamwood-3d-evolution.ts',
     'gloamwood-input-settings.ts',
+    'main.ts',
   ]
 
   it('holds no Han characters anywhere in the live body', () => {
@@ -196,5 +197,24 @@ describe('Language switch', () => {
     // A player whose browser is set to the other language needs a way out.
     expect(module).toContain('storedLocale() ?? detectLocale(languages)')
     expect(module).toContain('export function persistLocale')
+  })
+})
+
+describe('Boot screen', () => {
+  const source = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+
+  it('resolves the locale before the hunt module is fetched', () => {
+    // The loading and load-failure screens render while gloamwood-3d-hunt is
+    // still downloading, so waiting for the game to set the locale showed an
+    // English player a Chinese screen for the whole of the first load.
+    expect(source).toContain('applyDocumentLocale()')
+    expect(source).toContain("t('boot.title')")
+    expect(source).toContain("t('boot.failTitle')")
+  })
+
+  it('escapes every boot string, since one of them is an error message', () => {
+    for (const key of ['boot.eyebrow', 'boot.title', 'boot.body', 'boot.failEyebrow', 'boot.failTitle', 'boot.retry', 'boot.failHelp']) {
+      expect(source).toContain(`escapeHtml(t('${key}'))`)
+    }
   })
 })
