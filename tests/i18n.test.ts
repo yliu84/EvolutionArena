@@ -89,19 +89,20 @@ describe('MapLab 5 player-facing text is fully localised', () => {
 
 describe('Evolution choice card', () => {
   const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
-  const silhouettes = readFileSync(new URL('../src/gloamwood-family-silhouettes.ts', import.meta.url), 'utf8')
+  const portraits = readFileSync(new URL('../src/gloamwood-family-portraits.ts', import.meta.url), 'utf8')
 
-  it('leads with a route silhouette instead of prose', () => {
-    expect(source).toContain('gloamwoodFamilySilhouette(candidate.family)')
-    // The prose description restated the stat line and is gone.
+  it('leads with a route still instead of prose', () => {
+    expect(source).toContain('gloamwoodFamilyPortrait(candidate.family)')
     expect(source).not.toContain('candidate.description')
+    expect(source).not.toContain('candidate.reason')
     for (const family of ['fang', 'shell', 'swarm']) {
-      expect(silhouettes).toContain(family)
+      expect(portraits).toContain(`${family}.png`)
     }
   })
 
-  it('keeps the numbers and the causal line, which the playtest measures', () => {
+  it('keeps the name, the numbers and the hunt weight', () => {
+    expect(source).toContain('candidate.name')
     expect(source).toContain('candidate.statLine')
-    expect(source).toContain('candidate.reason')
+    expect(source).toContain('candidate.probability')
   })
 })

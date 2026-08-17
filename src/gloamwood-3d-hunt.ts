@@ -10,7 +10,7 @@ import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import { resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
 import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presentation'
 import { applyDocumentLocale, t } from './i18n'
-import { gloamwoodFamilySilhouette } from './gloamwood-family-silhouettes'
+import { gloamwoodFamilyPortrait } from './gloamwood-family-portraits'
 import { CORAL_GECKO_PRESENTATION } from './quality-3d-character-presentation'
 import {
   applyScarletGeckoSurfaceGrade,
@@ -2528,19 +2528,17 @@ class Gloamwood3DHunt {
       '<div class="g3d-evolution-choices">',
       ...this.evolutionState.candidates.map((candidate, index) => [
         `<button data-evolution-choice="${index}" data-family="${candidate.family}">`,
-        `<span><kbd>${index + 1}</kbd>${t('evo.routeLine', { family: candidate.familyName, probability: candidate.probability })}</span>`,
-        // The silhouette reads the route, which is what actually differs; both
-        // candidates in a family share one body, so a creature image cannot.
-        gloamwoodFamilySilhouette(candidate.family),
+        `<span><kbd>${index + 1}</kbd>${t('evo.routeChip', { family: candidate.familyName, probability: candidate.probability })}</span>`,
+        // The still reads the route. Both candidates in a family share one body,
+        // so a unique creature picture would imply a difference that does not exist.
+        gloamwoodFamilyPortrait(candidate.family),
         `<strong>${candidate.name}</strong>`,
         `<b>${candidate.statLine}</b>`,
-        `<small>${candidate.reason}</small>`,
         '</button>',
       ].join('')),
       '</div>',
       '<footer>',
       `<button data-evolution-refresh ${this.evolutionState.refreshesRemaining <= 0 ? 'disabled' : ''}>${t('evo.rerollBtn', { count: this.evolutionState.refreshesRemaining })}</button>`,
-      `<p>${t('evo.footer')}</p>`,
       '</footer>',
       '</div>',
     ].join('')
@@ -2753,8 +2751,6 @@ class Gloamwood3DHunt {
       `<label><span data-g3d-target-label>${t('hud.noTargetLabel')}</span> <b data-g3d-enemy-health>--</b><i><em data-g3d-enemy-bar></em></i></label>`,
       '</div>',
       `<div class="g3d-nest-resources"><b data-g3d-remaining>${t('hud.undisturbed')}</b><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
-      `<p data-g3d-controls><kbd data-g3d-move-label>${t('hud.moveKeys')}</kbd> ${t('hud.moveLabel')} · <kbd data-g3d-lock-label>${t('hud.lockKeys')}</kbd> ${t('hud.lockLabel')} · <kbd data-g3d-attack-label>${t('hud.attackKeys')}</kbd> ${t('hud.attackLabel')}</p>`,
-      `<small data-g3d-state>${t('hud.stateLine')}</small>`,
       `<button class="g3d-hud-details-toggle" type="button" data-g3d-hud-details aria-expanded="false">${t('hud.expand')}</button>`,
       `<button class="g3d-fullscreen-toggle" type="button" data-g3d-fullscreen>${t('fs.enter')}</button>`,
       `<button class="g3d-settings-toggle" type="button" data-g3d-settings-toggle>${t('hud.settings')}</button>`,
@@ -3252,14 +3248,6 @@ class Gloamwood3DHunt {
     setText('[data-g3d-fang]', `${this.nestState.genes.fang}`)
     setText('[data-g3d-shell]', `${this.nestState.genes.shell}`)
     setText('[data-g3d-swarm]', `${this.nestState.genes.swarm}`)
-    setText('[data-g3d-state]', bossTargeted
-      ? this.bossState.pattern === 'root-slam' ? t('boss.hint.rootSlam')
-        : this.bossState.pattern === 'thorn-charge' ? t('boss.hint.thornCharge')
-          : t('boss.hint.sporeRing')
-      : target ? t('hud.targetFull', { phase: this.enemyPhaseName(target), weakness: target.kind === 'shell' ? t('weak.shell') : target.kind === 'swarm' ? t('weak.swarm') : t('weak.fang') }) : t('hud.noTargetHint'))
-    setText('[data-g3d-move-label]', t('hud.moveKeysDyn', { keys: gloamwoodMovementBindingLabel(this.inputBindings) }))
-    setText('[data-g3d-lock-label]', t('hud.lockKeysDyn', { key: formatGloamwoodInputCode(this.inputBindings.lock) }))
-    setText('[data-g3d-attack-label]', t('hud.attackKeysDyn', { key: formatGloamwoodInputCode(this.inputBindings.attack) }))
     setText('[data-g3d-settings-toggle]', t('hud.settingsKey', { key: formatGloamwoodInputCode(this.inputBindings.pause) }))
     this.renderPerformanceReadout()
     const playerBar = this.hud.querySelector<HTMLElement>('[data-g3d-player-bar]')
@@ -3313,12 +3301,6 @@ class Gloamwood3DHunt {
     if (progress) progress.style.width = `${Math.max(1, step.step) / step.totalSteps * 100}%`
   }
 
-  private enemyPhaseName(prey: GloamwoodNestPrey) {
-    const names: Record<string, string> = {
-      chase: t('enemy.chase'), telegraph: t('enemy.telegraph'), strike: t('enemy.strike'), recover: t('enemy.recover'), stunned: t('enemy.stunned'), dead: t('enemy.dead'),
-    }
-    return names[prey.phase] ?? prey.phase
-  }
 
   private preyName(prey: GloamwoodNestPrey) {
     if (prey.id === GLOAMWOOD_NEST_GUARDIAN.id) return t('creature.guardian')
