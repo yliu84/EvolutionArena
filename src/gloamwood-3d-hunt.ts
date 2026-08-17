@@ -9,7 +9,7 @@ import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 
 import { resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
 import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presentation'
-import { applyDocumentLocale, t } from './i18n'
+import { applyDocumentLocale, getLocale, persistLocale, setLocale, t, type Locale } from './i18n'
 import { gloamwoodFamilyPortrait } from './gloamwood-family-portraits'
 import { CORAL_GECKO_PRESENTATION } from './quality-3d-character-presentation'
 import {
@@ -3025,6 +3025,43 @@ class Gloamwood3DHunt {
     this.fullscreenToggle.setAttribute('aria-label', active ? t('fs.exit') : t('fs.enterAria'))
   }
 
+  /**
+   * Swap language and rebuild the chrome.
+   *
+   * The HUD, guide, settings and touch controls bake their copy in at creation,
+   * so a live switch has to recreate them; per-frame text alone would leave the
+   * static labels in the old language. The panel is reopened afterwards because
+   * the player is standing in it when they press the button.
+   */
+  private toggleLocale() {
+    const next: Locale = getLocale() === 'en' ? 'zh' : 'en'
+    setLocale(next)
+    persistLocale(next)
+    document.documentElement.lang = next === 'zh' ? 'zh-CN' : 'en'
+    document.documentElement.dataset.locale = next
+    document.title = t('document.title')
+
+    const settingsWereOpen = this.settingsPanel ? !this.settingsPanel.hidden : false
+    this.hud?.remove()
+    this.onboardingHud?.remove()
+    this.settingsPanel?.remove()
+    this.orientationGate?.remove()
+    this.homeScreenTip?.remove()
+    this.damageLayer?.remove()
+    this.container.querySelector('.gloamwood-3d-touch')?.remove()
+    this.damageNumbers.length = 0
+    this.targetBar = undefined
+    this.fullscreenToggle = undefined
+
+    this.createHud()
+    if (this.evolutionOverlay && !this.evolutionOverlay.hidden) this.renderEvolutionOffer()
+    if (settingsWereOpen && this.settingsPanel) {
+      this.settingsPanel.hidden = false
+      this.settingsPanel.dataset.page = 'feedback'
+    }
+    this.updateHud()
+  }
+
   private createDamageLayer() {
     const layer = document.createElement('div')
     layer.className = 'gloamwood-damage-layer'
@@ -3172,6 +3209,7 @@ class Gloamwood3DHunt {
       `<button type="button" data-g3d-setting="shake">${t('settings.shakeLabel', { state: t('toggle.on') })}</button>`,
       `<button type="button" data-g3d-setting="flash">${t('settings.flashLabel', { state: t('toggle.on') })}</button>`,
       `<button type="button" data-g3d-setting="volume">${t('settings.volumeLabel', { value: 60 })}</button>`,
+      `<button type="button" data-g3d-setting="language">${t('settings.language')}</button>`,
       `<button type="button" data-g3d-input-open>${t('settings.openInput')}</button>`,
       `<button class="primary" type="button" data-g3d-settings-resume>${t('settings.resume')}</button>`,
       `<output class="g3d-performance-readout" data-g3d-performance hidden>${t('settings.perfWaiting')}</output>`,
@@ -3253,6 +3291,9 @@ class Gloamwood3DHunt {
   }
 
   private cycleFeedbackSetting(setting: string) {
+    // Language rebuilds the chrome rather than writing a feedback value, so it
+    // returns before the persistence below.
+    if (setting === 'language') return this.toggleLocale()
     if (setting === 'shake') this.feedbackSettings.shake = !this.feedbackSettings.shake
     else if (setting === 'flash') this.feedbackSettings.flash = !this.feedbackSettings.flash
     else if (setting === 'volume') this.feedbackSettings.volume = cycleFeedbackVolume(this.feedbackSettings.volume)
@@ -3273,6 +3314,9 @@ class Gloamwood3DHunt {
     if (shake) shake.textContent = t('settings.shakeLabel', { state: this.feedbackSettings.shake ? t('toggle.on') : t('toggle.off') })
     if (flash) flash.textContent = t('settings.flashLabel', { state: this.feedbackSettings.flash ? t('toggle.on') : t('toggle.off') })
     if (volume) volume.textContent = t('settings.volumeLabel', { value: Math.round(this.feedbackSettings.volume * 100) })
+    // Labelled in its own language, so it reads as the language you would get.
+    const language = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="language"]')
+    if (language) language.textContent = t('settings.language')
     const summary = this.settingsPanel.querySelector<HTMLElement>('[data-g3d-settings-summary]')
     if (summary) summary.textContent = t('settings.summaryDyn', { pause: formatGloamwoodInputCode(this.inputBindings.pause), move: gloamwoodMovementBindingLabel(this.inputBindings), lock: formatGloamwoodInputCode(this.inputBindings.lock), attack: formatGloamwoodInputCode(this.inputBindings.attack) })
     this.renderPerformanceReadout()

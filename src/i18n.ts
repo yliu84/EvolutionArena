@@ -338,6 +338,8 @@ const STRINGS = {
   'enemy.strike': { en: 'Strike', zh: '攻击' },
   'enemy.watch': { en: 'Watching', zh: '观察' },
 
+  'settings.language': { en: 'Language: English', zh: '语言：中文' },
+
   // ---- document chrome ----------------------------------------------------
   'document.title': { en: 'Evolution Arena Lite · Gloamwood', zh: '进化竞技场 Lite · 幽影林地 3D 重制' },
 } as const satisfies Record<string, LocalisedString>
@@ -386,9 +388,35 @@ export const t = translate
  * Resolve the locale from the browser, allow ?lang= to override it for testing,
  * and stamp the document so CSS and assistive tech agree with the copy.
  */
+export const LOCALE_STORAGE_KEY = 'evolution-arena:locale'
+
+function storedLocale(): Locale | null {
+  try {
+    const value = localStorage.getItem(LOCALE_STORAGE_KEY)
+    return value === 'en' || value === 'zh' ? value : null
+  } catch {
+    return null
+  }
+}
+
+export function persistLocale(locale: Locale) {
+  try {
+    localStorage.setItem(LOCALE_STORAGE_KEY, locale)
+  } catch {
+    // Private browsing can refuse storage; the choice still applies this session.
+  }
+}
+
+/**
+ * Precedence: an explicit ?lang= for testing, then the player's saved choice,
+ * then the browser. A player whose browser is set to the other language needs a
+ * way out, so a saved choice always beats detection.
+ */
 export function applyDocumentLocale(search = window.location.search, languages = navigator.languages ?? [navigator.language]) {
   const requested = new URLSearchParams(search).get('lang')
-  const locale = requested === 'en' || requested === 'zh' ? requested : detectLocale(languages)
+  const locale = requested === 'en' || requested === 'zh'
+    ? requested
+    : storedLocale() ?? detectLocale(languages)
   setLocale(locale)
   document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en'
   document.documentElement.dataset.locale = locale

@@ -179,3 +179,22 @@ describe('Arriving opens the chain', () => {
     expect(chain).toContain('if (state.action) return { ...state, buffered: true }')
   })
 })
+
+describe('Language switch', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+  const module = readFileSync(new URL('../src/i18n.ts', import.meta.url), 'utf8')
+
+  it('offers the switch in settings and rebuilds the chrome', () => {
+    expect(source).toContain('data-g3d-setting="language"')
+    expect(source).toContain('private toggleLocale()')
+    // The HUD and guide bake their copy in at creation, so a live switch has to
+    // recreate them or the static labels stay in the old language.
+    expect(source).toMatch(/private toggleLocale\(\)[\s\S]*?this\.createHud\(\)/)
+  })
+
+  it('lets a saved choice beat browser detection', () => {
+    // A player whose browser is set to the other language needs a way out.
+    expect(module).toContain('storedLocale() ?? detectLocale(languages)')
+    expect(module).toContain('export function persistLocale')
+  })
+})
