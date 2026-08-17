@@ -126,7 +126,7 @@ The Quality 3D presentation now uses a 48-degree perspective camera at a 29-degr
 
 The first non-Fang player form, and the first creature produced specifically to measure the production line's real cost.
 
-- form: `stone-pangolin` / 叠岩甲蜥 (Chinese name still provisional)
+- form: `stone-pangolin` / 叠岩甲蜥
 - character baseline: `stone-pangolin-shell-first-evolution-master-v1`
 - combat profile: `stone-pangolin-combat-master-v1`
 - runtime model: `public/assets/quality-3d/models/stone-pangolin-rigged-runtime-v2.glb`
@@ -266,7 +266,6 @@ The Shell first evolution was completed and accepted on 2026-08-17 as the first 
 Open and unclosed, carried forward:
 
 - Meshy commercial licence evidence is still unarchived. The Shell job selected the private licence; record it in `docs/concepts/evolution-v2/shell-stage1/source/SOURCE.md`. This is a release blocker, not a technical one.
-- The Chinese name `叠岩甲蜥` is provisional and must not enter runtime strings until confirmed.
 - A small static seam remains between two plates at the top of the Shell body. It is a mesh seam present in the rest pose, not a rigging fault, and is not resolvable at the 13.3% screen height the standard records.
 
 Per the user's standing instruction, do not modify the map environment, assets, shrine, lighting or vegetation; that is an independent workflow. Skills remain disabled.

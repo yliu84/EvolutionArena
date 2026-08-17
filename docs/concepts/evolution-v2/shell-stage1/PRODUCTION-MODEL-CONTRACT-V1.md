@@ -23,7 +23,7 @@ Preserved first draft (legs hidden under the plate skirt, superseded):
 
 `docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/shell-stage1-concept-b-stone-pangolin.png`
 
-Provisional names: `stone-pangolin` / 叠岩甲蜥. The Chinese name is not yet confirmed by the user and must not be written into runtime strings until it is.
+Names: `stone-pangolin` / **叠岩甲蜥**. The Chinese name was confirmed by the user on 2026-08-17 and may now be used in runtime strings.
 
 ## Why this form exists
 
