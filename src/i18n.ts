@@ -58,12 +58,12 @@ const STRINGS = {
 
   'guide.attack.title': { en: 'Lock on, then run the one-button combo', zh: '锁定目标，发动一键连招' },
   'guide.attack.instruction': {
-    en: 'The nearest threat locks automatically; {lock} switches. Press {attack}, or hold Attack, for the three-step chain.',
-    zh: '最近威胁会自动锁定；{lock}可切换。按{attack}或右侧“攻击”发动三段普通攻击。',
+    en: 'Press {attack} and you close in and keep attacking on your own. Steer at any time to take over.',
+    zh: '按{attack}会自动接近并持续攻击。任何时候推方向键都可以自己接管。',
   },
   'guide.attack.reason': {
-    en: 'Attacks need range and facing on the locked target. Past 8° off-aim, nothing lands.',
-    zh: '攻击必须在有效距离内朝向锁定目标；接触角超过8°不会命中。',
+    en: 'Closing in is automatic, the angle is yours, and contact still needs the locked target within 8° of your facing.',
+    zh: '接近是自动的，角度归你；命中仍要求锁定目标在朝向 8° 以内。',
   },
   'guide.attack.progress': { en: 'Target locked', zh: '目标已锁定' },
 

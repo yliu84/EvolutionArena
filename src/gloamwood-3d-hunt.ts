@@ -395,6 +395,17 @@ class Gloamwood3DHunt {
   private characterFamilyMatched = true
   private lockedPreyId: string | null = null
   private primaryHeld = false
+  /**
+   * Standing order to close on the locked target and keep swinging.
+   *
+   * It only automates distance and repetition. The approach runs along the
+   * player's current bearing rather than pathing to the nearest reachable face,
+   * because walking to the closest point would deliver them onto the Carapace
+   * family's armoured front - the one angle the guide tells them to avoid.
+   * Angle stays a manual decision; steering cancels the automation but keeps
+   * the lock, so flanking costs no extra input.
+   */
+  private autoEngage = false
   private touchMoveX = 0
   private touchMoveZ = 0
   private movementInputStrength = 0
@@ -411,6 +422,7 @@ class Gloamwood3DHunt {
   private fullscreenToggle?: HTMLButtonElement
   private homeScreenTip?: HTMLElement
   private damageLayer?: HTMLElement
+  private targetBar?: HTMLElement
   /**
    * Floating damage readouts. Pure presentation: each entry is spawned from an
    * already-resolved authoritative result and never feeds back into combat.
@@ -1559,6 +1571,7 @@ class Gloamwood3DHunt {
     this.foliageTime.value += delta
     this.updateFeedback(delta)
     this.updateDamageNumbers(delta)
+    this.updateTargetBar()
     if (this.paused) {
       this.renderer.render(this.scene, this.camera)
       this.updateHud()
@@ -1596,11 +1609,18 @@ class Gloamwood3DHunt {
   }
 
   private updatePlayer(delta: number) {
+    this.updateAutoEngage()
     const inputX = Number(this.keys.has(this.inputBindings.moveRight) || this.keys.has('ArrowRight')) - Number(this.keys.has(this.inputBindings.moveLeft) || this.keys.has('ArrowLeft')) + this.touchMoveX
     const inputZ = Number(this.keys.has(this.inputBindings.moveDown) || this.keys.has('ArrowDown')) - Number(this.keys.has(this.inputBindings.moveUp) || this.keys.has('ArrowUp')) + this.touchMoveZ
     const cameraRelativeInput = gloamwoodScreenMovementVector(inputX, inputZ)
     this.movement.set(cameraRelativeInput.x, 0, cameraRelativeInput.z)
     if (this.movement.lengthSq() > 0) {
+      // Steering is the player taking the angle back. Drop the automation but
+      // keep the lock, or flanking would cost a re-select every time.
+      if (this.autoEngage) {
+        this.autoEngage = false
+        this.primaryHeld = false
+      }
       this.movementInputStrength = Math.min(1, this.movement.length())
       this.movement.normalize()
       this.target.copy(this.playerRoot.position).addScaledVector(this.movement, 1.8)
@@ -1645,6 +1665,57 @@ class Gloamwood3DHunt {
     this.setAction(this.turning ? 'Turn' : this.moving ? 'Run' : 'Idle')
   }
 
+  /** Shortest reach in the current form's chain, so approach stops where the
+   *  opener can actually land rather than where the longest step could. */
+  private primaryAttackReach() {
+    const feedback = this.combatHitFeedback()
+    return Math.min(feedback.biteRange, feedback.pounceRange, feedback.tailSwipeRange)
+  }
+
+  private cancelAutoEngage() {
+    this.autoEngage = false
+  }
+
+  /**
+   * Close on the locked target along the current bearing and keep the chain
+   * running. Never re-aims the approach, and never decides a hit: contact still
+   * goes through the same range, live-target and eight-degree checks.
+   */
+  private updateAutoEngage() {
+    if (!this.autoEngage) return
+    if (!this.playerCombat.alive || this.paused || this.evolutionState.phase === 'choosing') return this.cancelAutoEngage()
+    const target = this.bossActive() && this.bossLocked
+      ? { x: this.bossState.x, z: this.bossState.z, radius: GLOAMWOOD_BOSS.bodyRadius }
+      : (() => {
+          const prey = this.lockedPrey()
+          return prey && prey.phase !== 'dead'
+            ? { x: prey.x, z: prey.z, radius: gloamwoodPreyBodyRadius(prey) }
+            : null
+        })()
+    if (!target) return this.cancelAutoEngage()
+
+    const dx = target.x - this.playerRoot.position.x
+    const dz = target.z - this.playerRoot.position.z
+    const centreDistance = Math.hypot(dx, dz)
+    // Reach is measured to the hurt surface, so the stop line follows the same rule.
+    const surfaceDistance = centreDistance - target.radius
+    // A stray press must not walk the player across the map.
+    if (centreDistance > GLOAMWOOD_NEST.activationRadius * 1.5) return this.cancelAutoEngage()
+
+    const reach = this.primaryAttackReach()
+    if (surfaceDistance > reach - 0.35) {
+      // Approach only closes distance; bearing is whatever the player chose.
+      this.target.set(
+        target.x - dx / centreDistance * (target.radius + reach - 0.5),
+        0,
+        target.z - dz / centreDistance * (target.radius + reach - 0.5),
+      )
+      return
+    }
+    this.target.copy(this.playerRoot.position)
+    this.primaryHeld = true
+  }
+
   private requestPrimaryAttack() {
     if (this.evolutionState.phase === 'choosing') return
     if (!this.playerCombat.alive) return
@@ -1653,6 +1724,8 @@ class Gloamwood3DHunt {
       return
     }
     if (this.runPhase === 'victory' || this.runPhase === 'defeat') return
+    // Pressing attack re-opens the standing order after a manual reposition.
+    this.autoEngage = true
     if (this.bossActive()) {
       this.bossLocked = true
       this.lockedPreyId = null
@@ -2747,7 +2820,6 @@ class Gloamwood3DHunt {
       `<header><span data-g3d-nest-title>${t('hud.nestTitle')}</span><strong data-g3d-message>${t('hud.initialMsg')}</strong></header>`,
       '<div class="g3d-combat-bars">',
       `<label>${t('hud.health')} <b data-g3d-player-health>100 / 100</b><i><em data-g3d-player-bar></em></i></label>`,
-      `<label><span data-g3d-target-label>${t('hud.noTargetLabel')}</span> <b data-g3d-enemy-health>--</b><i><em data-g3d-enemy-bar></em></i></label>`,
       '</div>',
       `<div class="g3d-nest-resources"><b data-g3d-remaining>${t('hud.undisturbed')}</b><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
       `<button class="g3d-hud-details-toggle" type="button" data-g3d-hud-details aria-expanded="false">${t('hud.expand')}</button>`,
@@ -2935,6 +3007,46 @@ class Gloamwood3DHunt {
     layer.setAttribute('aria-hidden', 'true')
     this.damageLayer = layer
     this.container.append(layer)
+
+    // Health for the locked target rides above its head rather than sitting in
+    // the HUD corner, for the same reason the damage numbers moved: that is
+    // where the player is already looking. It also doubles as confirmation of
+    // which enemy is selected, so only the locked one ever shows a bar.
+    const bar = document.createElement('div')
+    bar.className = 'g3d-target-bar'
+    bar.hidden = true
+    bar.innerHTML = '<b data-g3d-target-name></b><i><em data-g3d-target-fill></em></i>'
+    this.targetBar = bar
+    layer.append(bar)
+  }
+
+  private updateTargetBar() {
+    const bar = this.targetBar
+    if (!bar) return
+    const boss = this.bossActive() && this.bossLocked
+    const prey = boss ? null : this.lockedPrey()
+    const live = boss
+      ? { x: this.bossState.x, z: this.bossState.z, top: GLOAMWOOD_BOSS.bodyRadius * 1.9, health: this.bossState.health, max: this.bossState.maxHealth, name: t('creature.boss') }
+      : prey && prey.phase !== 'dead'
+        ? { x: prey.x, z: prey.z, top: gloamwoodPreyBodyRadius(prey) * 1.7, health: prey.health, max: prey.maxHealth, name: this.preyName(prey) }
+        : null
+    if (!live) {
+      bar.hidden = true
+      return
+    }
+    const projected = new THREE.Vector3(live.x, live.top, live.z).project(this.camera)
+    if (projected.z > 1) {
+      bar.hidden = true
+      return
+    }
+    bar.hidden = false
+    const x = (projected.x * 0.5 + 0.5) * this.container.clientWidth
+    const y = (-projected.y * 0.5 + 0.5) * this.container.clientHeight
+    bar.style.transform = `translate(-50%, -100%) translate(${x}px, ${y}px)`
+    const name = bar.querySelector<HTMLElement>('[data-g3d-target-name]')
+    if (name && name.textContent !== live.name) name.textContent = live.name
+    const fill = bar.querySelector<HTMLElement>('[data-g3d-target-fill]')
+    if (fill) fill.style.width = `${Math.max(0, Math.min(1, live.health / Math.max(1, live.max))) * 100}%`
   }
 
   /**
@@ -3284,9 +3396,6 @@ class Gloamwood3DHunt {
   private updateHud() {
     if (!this.hud) return
     const playerRatio = this.playerCombat.health / this.playerCombat.maxHealth
-    const target = this.lockedPrey()
-    const bossTargeted = this.bossActive() && this.bossLocked
-    const enemyRatio = bossTargeted ? this.bossState.health / this.bossState.maxHealth : target ? target.health / target.maxHealth : 0
     const setText = (selector: string, value: string) => {
       const element = this.hud?.querySelector<HTMLElement>(selector)
       if (element && element.textContent !== value) element.textContent = value
@@ -3300,8 +3409,6 @@ class Gloamwood3DHunt {
         ? t('hud.titleVictory')
         : this.nestState.phase === 'cleared' ? t('hud.titleCleared') : t('hud.titleNest', { suffix: this.nestState.wave ? t('hud.waveSuffix', { wave: this.nestState.wave, total: GLOAMWOOD_NEST.waveCount }) : '' }))
     setText('[data-g3d-player-health]', `${this.playerCombat.health} / ${this.playerCombat.maxHealth}`)
-    setText('[data-g3d-target-label]', bossTargeted ? t('creature.boss') : target ? this.preyName(target) : t('hud.noTargetLabel'))
-    setText('[data-g3d-enemy-health]', bossTargeted ? `${this.bossState.health} / ${this.bossState.maxHealth}` : target ? `${target.health} / ${target.maxHealth}` : '--')
     setText('[data-g3d-remaining]', this.runPhase === 'boss'
       ? `${this.bossPatternName(this.bossState.pattern)} · ${this.bossState.state === 'telegraph' ? t('enemy.telegraph') : this.bossState.state === 'attack' ? t('enemy.strike') : t('enemy.watch')}`
       : this.nestState.phase === 'dormant' ? t('hud.undisturbed') : this.nestState.phase === 'intermission' ? t('hud.incoming') : this.nestState.phase === 'cleared' ? t('hud.clearedKills', { kills: this.nestState.kills }) : t('hud.waveRemaining', { count: this.livePrey().length }))
@@ -3312,9 +3419,7 @@ class Gloamwood3DHunt {
     setText('[data-g3d-settings-toggle]', t('hud.settingsKey', { key: formatGloamwoodInputCode(this.inputBindings.pause) }))
     this.renderPerformanceReadout()
     const playerBar = this.hud.querySelector<HTMLElement>('[data-g3d-player-bar]')
-    const enemyBar = this.hud.querySelector<HTMLElement>('[data-g3d-enemy-bar]')
     if (playerBar) playerBar.style.width = `${Math.max(0, playerRatio) * 100}%`
-    if (enemyBar) enemyBar.style.width = `${Math.max(0, enemyRatio) * 100}%`
     this.hud.dataset.critical = playerRatio <= 0.3 ? 'true' : 'false'
     this.updateOnboardingHud()
   }

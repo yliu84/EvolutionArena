@@ -106,3 +106,33 @@ describe('Evolution choice card', () => {
     expect(source).toContain('candidate.probability')
   })
 })
+
+describe('Auto-engage and target bar', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+
+  it('closes along the current bearing rather than pathing to the nearest face', () => {
+    // Walking to the closest reachable point would deliver the player onto the
+    // Carapace family's armoured front, defeating the flank the guide teaches.
+    expect(source).toContain('private updateAutoEngage()')
+    expect(source).toContain('target.x - dx / centreDistance')
+    expect(source).toContain('target.z - dz / centreDistance')
+  })
+
+  it('lets steering drop the automation while keeping the lock', () => {
+    expect(source).toMatch(/if \(this\.autoEngage\) \{\s*\n\s*this\.autoEngage = false/)
+    // Cancelling must not clear lockedPreyId, or flanking costs a re-select.
+    expect(source).not.toMatch(/this\.autoEngage = false\s*\n\s*this\.lockedPreyId = null/)
+  })
+
+  it('bounds the approach so a stray press cannot cross the map', () => {
+    expect(source).toContain('GLOAMWOOD_NEST.activationRadius * 1.5')
+  })
+
+  it('shows health above the locked target instead of in the HUD corner', () => {
+    expect(source).toContain('private updateTargetBar()')
+    expect(source).toContain('g3d-target-bar')
+    // The HUD enemy row is gone; only the locked target carries a bar.
+    expect(source).not.toContain('data-g3d-enemy-bar')
+    expect(source).not.toContain('data-g3d-enemy-health')
+  })
+})

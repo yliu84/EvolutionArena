@@ -1008,6 +1008,42 @@ body.is-gloamwood-3d * {
   .g3d-damage-number[data-tone="blocked"] { font-size: 15px; }
 }
 
+/* Locked-target health, carried above the enemy rather than in the HUD corner.
+   Only the locked target ever shows one, so it doubles as selection feedback. */
+.g3d-target-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 116px;
+  padding-bottom: 12px;
+  text-align: center;
+  pointer-events: none;
+}
+.g3d-target-bar[hidden] { display: none; }
+.g3d-target-bar b {
+  display: block;
+  margin-bottom: 4px;
+  color: #f0e5c4;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .01em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .8);
+}
+.g3d-target-bar i {
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, .55);
+  border-radius: 999px;
+  background: rgba(6, 12, 8, .78);
+}
+.g3d-target-bar em { display: block; height: 100%; background: linear-gradient(90deg, #d8663f, #e9b95c); transition: width .12s linear; }
+@media (max-width: 900px) and (orientation: landscape), (max-height: 520px) and (orientation: landscape) {
+  .g3d-target-bar { width: 92px; padding-bottom: 9px; }
+  .g3d-target-bar b { font-size: 9px; }
+  .g3d-target-bar i { height: 5px; }
+}
+
 .gloamwood-3d-hud {
   position: absolute;
   top: max(18px, env(safe-area-inset-top));
