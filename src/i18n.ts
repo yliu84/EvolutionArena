@@ -213,13 +213,12 @@ const STRINGS = {
 
   // ---- combat and run messages -------------------------------------------
   'hud.msg.locked': { en: 'Locked · {name}', zh: '已锁定 · {name}' },
-  'hud.msg.attacking': { en: 'Attacking · {name}', zh: '攻击 · {name}' },
   'hud.msg.guardianDown': { en: '{name} has fallen · the Boss opens', zh: '{name}已倒下 · Boss 开启' },
   'hud.msg.kill': { en: 'Killed · {name} · +{biomass} Biomass · +1 {gene}', zh: '击杀 · {name} · +{biomass} 生物质 · +1 {gene}' },
   'hud.msg.blocked': { en: 'Blocked head-on · {damage} damage', zh: '正面格挡 · 仅 {damage} 伤害' },
-  'hud.msg.hit': { en: '{name} hit · {damage} damage', zh: '{name}命中 · {damage} 伤害' },
+  'hud.msg.hit': { en: 'Hit · {damage} damage', zh: '命中 · {damage} 伤害' },
   'hud.msg.bossDown': { en: '{name} has fallen · Gloamwood is clean', zh: '{name}已倒下 · 幽影林地已净化' },
-  'hud.msg.hitBoss': { en: '{name} hit the Boss · {damage} damage', zh: '{name}命中 Boss · {damage} 伤害' },
+  'hud.msg.hitBoss': { en: 'Boss hit · {damage} damage', zh: 'Boss 命中 · {damage} 伤害' },
   'hud.msg.waveStart': { en: 'Wave {wave} · {hint}', zh: '第 {wave} 波 · {hint}' },
   'hud.msg.waveClear': { en: 'Wave {wave} cleared · watch for reinforcements', zh: '第 {wave} 波清理完成 · 警惕增援' },
   'hud.msg.guardianBroken': { en: '{name} is broken', zh: '{name}已被击破' },

@@ -1731,7 +1731,6 @@ class Gloamwood3DHunt {
     this.attackUntil = now + this.attackDurationSeconds * 1000
     if (action === 'Pounce') this.leapBiteLandingResolved = false
     this.setAction(action, true)
-    this.combatMessage = t('hud.msg.attacking', { name: this.attackName(action) })
   }
 
   private resolvePlayerContact(action: FormalHuntBasicAttackAction) {
@@ -1814,7 +1813,7 @@ class Gloamwood3DHunt {
     } else if (damage.blocked) {
       this.combatMessage = t('hud.msg.blocked', { damage: damage.effectiveDamage })
     } else {
-      this.combatMessage = t('hud.msg.hit', { name: this.attackName(action), damage: damage.effectiveDamage })
+      this.combatMessage = t('hud.msg.hit', { damage: damage.effectiveDamage })
     }
   }
 
@@ -1860,7 +1859,7 @@ class Gloamwood3DHunt {
     this.spawnBossHitFeedback(action)
     this.combatMessage = result.defeated
       ? t('hud.msg.bossDown', { name: t('creature.boss') })
-      : t('hud.msg.hitBoss', { name: this.attackName(action), damage: result.effectiveDamage })
+      : t('hud.msg.hitBoss', { damage: result.effectiveDamage })
     if (result.defeated) this.completeRunVictory()
   }
 
@@ -2211,25 +2210,6 @@ class Gloamwood3DHunt {
     }
   }
 
-  private attackName(action: FormalHuntBasicAttackAction) {
-    if (this.stage === 0) {
-      if (action === 'Bite') return CORAL_GECKO_PRESENTATION.combat.attackNames.Bite
-      if (action === 'Pounce') return CORAL_GECKO_PRESENTATION.combat.attackNames.Pounce
-      if (action === 'TailSwipe') return CORAL_GECKO_PRESENTATION.combat.attackNames.TailSwipe
-    }
-    if (this.characterFamily === 'shell') {
-      if (action === 'Bite') return STONE_PANGOLIN_PRESENTATION.combat.attackNames.Bite
-      if (action === 'Pounce') return STONE_PANGOLIN_PRESENTATION.combat.attackNames.Slam
-      if (action === 'TailSwipe') return STONE_PANGOLIN_PRESENTATION.combat.attackNames.TailSwipe
-    }
-    if (this.stage === 1) {
-      if (action === 'Bite') return SCARLET_GECKO_PRESENTATION.combat.attackNames.Bite
-      if (action === 'Pounce') return SCARLET_GECKO_PRESENTATION.combat.attackNames.Pounce
-      if (action === 'TailSwipe') return SCARLET_GECKO_PRESENTATION.combat.attackNames.TailSwipe
-    }
-    if (action === 'Bite') return t('attack.bite')
-    return SCARLET_HUNTER_PRESENTATION.combat.attackNames[action]
-  }
 
   private livePrey() {
     return this.nestState.prey.filter((prey) => prey.phase !== 'dead')

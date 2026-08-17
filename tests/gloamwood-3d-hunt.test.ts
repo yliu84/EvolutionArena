@@ -137,7 +137,13 @@ describe('Shell attack chain', () => {
     expect(source).not.toMatch(/slamDamage|slamRange|slamDurationSeconds/)
   })
 
-  it('names the Shell chain after its own vocabulary', () => {
-    expect(source).toContain('STONE_PANGOLIN_PRESENTATION.combat.attackNames.Slam')
+  it('never names the chain steps on screen, because they are not skills', () => {
+    // One basic attack on one input. Printing "Bite hit" then "Slam hit" trains
+    // the player to read three abilities, which is the boundary AGENTS.md draws.
+    expect(source).not.toContain('attackName(action)')
+    expect(source).not.toMatch(/private attackName\(/)
+    // The vocabulary still lives in the presentation contract, just not in the HUD.
+    const presentation = readFileSync(new URL('../src/stone-pangolin-character-presentation.ts', import.meta.url), 'utf8')
+    expect(presentation).toContain("primaryCombo: ['Bite', 'Slam', 'TailSwipe']")
   })
 })
