@@ -982,6 +982,32 @@ body.is-gloamwood-3d * {
   -webkit-touch-callout: none;
 }
 .gloamwood-3d-canvas:focus-visible { box-shadow: inset 0 0 0 2px rgba(242, 202, 112, .75); }
+/* Floating damage readouts. Presentation only: each number is spawned from an
+   already-resolved authoritative result, so nothing here can change a hit. */
+.gloamwood-damage-layer { position: absolute; inset: 0; z-index: 20; overflow: hidden; pointer-events: none; }
+.g3d-damage-number {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 26px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  color: #f6e6b4;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .55), 0 0 14px rgba(0, 0, 0, .5);
+  will-change: transform, opacity;
+}
+.g3d-damage-number[data-tone="blocked"] { color: #9fb0a4; font-size: 20px; }
+.g3d-damage-number[data-tone="kill"] { color: #ffd76a; font-size: 34px; }
+/* Damage taken reads as a warning, and is the one number the player must not miss. */
+.g3d-damage-number[data-tone="player"] { color: #ff8b6b; }
+@media (prefers-reduced-motion: reduce) { .g3d-damage-number { transition: none; } }
+@media (max-width: 900px) and (orientation: landscape), (max-height: 520px) and (orientation: landscape) {
+  .g3d-damage-number { font-size: 19px; }
+  .g3d-damage-number[data-tone="kill"] { font-size: 25px; }
+  .g3d-damage-number[data-tone="blocked"] { font-size: 15px; }
+}
+
 .gloamwood-3d-hud {
   position: absolute;
   top: max(18px, env(safe-area-inset-top));

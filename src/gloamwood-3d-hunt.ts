@@ -410,6 +410,12 @@ class Gloamwood3DHunt {
   private orientationGate?: HTMLElement
   private fullscreenToggle?: HTMLButtonElement
   private homeScreenTip?: HTMLElement
+  private damageLayer?: HTMLElement
+  /**
+   * Floating damage readouts. Pure presentation: each entry is spawned from an
+   * already-resolved authoritative result and never feeds back into combat.
+   */
+  private readonly damageNumbers: { element: HTMLElement; world: THREE.Vector3; life: number; duration: number; drift: number }[] = []
   private onboardingAttackStarted = false
   private feedbackSettings: CombatFeedbackSettings = { ...DEFAULT_COMBAT_FEEDBACK_SETTINGS }
   private readonly audio: GloamwoodAudioBus
@@ -554,6 +560,7 @@ class Gloamwood3DHunt {
     this.settingsPanel?.remove()
     this.orientationGate?.remove()
     this.homeScreenTip?.remove()
+    this.damageLayer?.remove()
     this.evolutionOverlay?.remove()
     this.resultOverlay?.remove()
     document.querySelector('.gloamwood-3d-hud')?.remove()
@@ -1551,6 +1558,7 @@ class Gloamwood3DHunt {
     this.lastFrameAt = now
     this.foliageTime.value += delta
     this.updateFeedback(delta)
+    this.updateDamageNumbers(delta)
     if (this.paused) {
       this.renderer.render(this.scene, this.camera)
       this.updateHud()
@@ -1805,15 +1813,18 @@ class Gloamwood3DHunt {
       visual.impactStrength = action === 'TailSwipe' ? 1 : action === 'Pounce' ? 0.94 : 0.76
     }
     this.spawnSlashFeedback(action, target)
+    // Feedback goes where the player is looking - on the target - rather than
+    // into a corner of the HUD. The number is the resolved authoritative result.
+    this.spawnDamageNumber(
+      new THREE.Vector3(target.x, gloamwoodCharacterWorldHeight(1) * 0.9, target.z),
+      damage.effectiveDamage,
+      damage.killed ? 'kill' : damage.blocked ? 'blocked' : 'hit',
+    )
     if (damage.killed) {
       this.combatMessage = target.id === GLOAMWOOD_NEST_GUARDIAN.id
         ? t('hud.msg.guardianDown', { name: t('creature.guardian') })
         : t('hud.msg.kill', { name: this.preyName(target), biomass: displayedBiomass, gene: this.geneName(target.kind) })
       this.lockedPreyId = this.nearestLivePrey()?.id ?? null
-    } else if (damage.blocked) {
-      this.combatMessage = t('hud.msg.blocked', { damage: damage.effectiveDamage })
-    } else {
-      this.combatMessage = t('hud.msg.hit', { damage: damage.effectiveDamage })
     }
   }
 
@@ -1857,9 +1868,12 @@ class Gloamwood3DHunt {
     this.hitStopRemaining = result.defeated ? 0.13 : 0.065
     this.cameraTrauma = Math.min(1, this.cameraTrauma + (result.defeated ? 0.9 : 0.5))
     this.spawnBossHitFeedback(action)
-    this.combatMessage = result.defeated
-      ? t('hud.msg.bossDown', { name: t('creature.boss') })
-      : t('hud.msg.hitBoss', { damage: result.effectiveDamage })
+    this.spawnDamageNumber(
+      new THREE.Vector3(this.bossState.x, GLOAMWOOD_BOSS.bodyRadius * 1.35, this.bossState.z),
+      result.effectiveDamage,
+      result.defeated ? 'kill' : 'hit',
+    )
+    if (result.defeated) this.combatMessage = t('hud.msg.bossDown', { name: t('creature.boss') })
     if (result.defeated) this.completeRunVictory()
   }
 
@@ -1975,7 +1989,12 @@ class Gloamwood3DHunt {
         this.target.copy(this.playerRoot.position)
         this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.48)
         this.playerFlashRemaining = this.feedbackSettings.flash ? 0.18 : 0
-        this.combatMessage = this.playerCombat.alive ? t('hud.msg.tookDamage', { damage: receivedDamage }) : t('hud.msg.downed')
+        this.spawnDamageNumber(
+          new THREE.Vector3(this.playerRoot.position.x, gloamwoodCharacterWorldHeight(this.stage, this.characterFamily) * 1.05, this.playerRoot.position.z),
+          receivedDamage,
+          'player',
+        )
+        if (!this.playerCombat.alive) this.combatMessage = t('hud.msg.downed')
         if (!this.playerCombat.alive) {
           this.attackState = createFormalHuntBasicAttackState()
           this.lockedPreyId = null
@@ -2747,6 +2766,7 @@ class Gloamwood3DHunt {
     })
     document.addEventListener('fullscreenchange', this.fullscreenChanged)
     this.createHomeScreenTip()
+    this.createDamageLayer()
     this.updateFullscreenToggle()
     const onboarding = document.createElement('aside')
     onboarding.className = 'gloamwood-onboarding'
@@ -2907,6 +2927,67 @@ class Gloamwood3DHunt {
     this.fullscreenToggle.dataset.active = active ? 'true' : 'false'
     this.fullscreenToggle.textContent = active ? t('fs.exit') : t('fs.enter')
     this.fullscreenToggle.setAttribute('aria-label', active ? t('fs.exit') : t('fs.enterAria'))
+  }
+
+  private createDamageLayer() {
+    const layer = document.createElement('div')
+    layer.className = 'gloamwood-damage-layer'
+    layer.setAttribute('aria-hidden', 'true')
+    this.damageLayer = layer
+    this.container.append(layer)
+  }
+
+  /**
+   * @param world  where the hit landed, in world space
+   * @param amount authoritative effective damage, already decided
+   * @param tone   presentation only; picks colour and weight, never the number
+   */
+  private spawnDamageNumber(world: THREE.Vector3, amount: number, tone: 'hit' | 'blocked' | 'kill' | 'player') {
+    if (!this.damageLayer) return
+    const element = document.createElement('span')
+    element.className = 'g3d-damage-number'
+    element.dataset.tone = tone
+    element.textContent = String(amount)
+    this.damageLayer.append(element)
+    this.damageNumbers.push({
+      element,
+      world: world.clone(),
+      life: 0,
+      duration: tone === 'kill' ? 1.15 : 0.86,
+      // Spread repeated hits so a fast chain does not stack numbers in one spot.
+      drift: (Math.random() - 0.5) * 46,
+    })
+    // Bound the pool so a long fight cannot grow the DOM without limit.
+    while (this.damageNumbers.length > 24) {
+      const oldest = this.damageNumbers.shift()
+      oldest?.element.remove()
+    }
+  }
+
+  private updateDamageNumbers(delta: number) {
+    if (this.damageNumbers.length === 0) return
+    const width = this.container.clientWidth
+    const height = this.container.clientHeight
+    for (let index = this.damageNumbers.length - 1; index >= 0; index -= 1) {
+      const entry = this.damageNumbers[index]
+      entry.life += delta
+      const progress = entry.life / entry.duration
+      if (progress >= 1) {
+        entry.element.remove()
+        this.damageNumbers.splice(index, 1)
+        continue
+      }
+      const projected = entry.world.clone().project(this.camera)
+      // Behind the camera projects to a mirrored point; hide rather than draw it.
+      if (projected.z > 1) {
+        entry.element.style.opacity = '0'
+        continue
+      }
+      const x = (projected.x * 0.5 + 0.5) * width + entry.drift * progress
+      const y = (-projected.y * 0.5 + 0.5) * height - progress * 54
+      entry.element.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(${1 + (1 - progress) * 0.18})`
+      entry.element.style.opacity = String(progress < 0.72 ? 1 : (1 - progress) / 0.28)
+    }
   }
 
   private createHomeScreenTip() {
