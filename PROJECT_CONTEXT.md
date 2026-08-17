@@ -1,6 +1,6 @@
 # Evolution Arena Lite — Project Context
 
-Last updated: 2026-08-16
+Last updated: 2026-08-17
 Repository: `https://github.com/yliu84/EvolutionArena.git`  
 Project path: `/Users/yangliu/Documents/EvolutionArenaLite`  
 Branch: `main`  
@@ -64,7 +64,7 @@ The three attack animations are ordinary attacks, not skills. The skill-attack s
 ## Latest validation evidence
 
 - Production build passed; Vite still reports the existing chunks larger than 500 kB.
-- Vitest: 60 test files and 320 tests passed, including the 3D-map routing, signed camera-relative four-way movement, stage-aware oriented world and living-entity collision, turn-before-move/cardinal-facing rules, stage-1 core-spine locomotion stabilization, clamped one-shot cleanup before locomotion, presentation motion, deformation-safe stage-0/1 GLB contracts, ground-safe visible leap-bite envelope and full-spin tail-swipe envelope, route-specific combat styles, all 13 random-evolution endpoints and the complete three-wave ecological nest authority.
+- Vitest: 70 test files and 386 tests passed, including the 3D-map routing, signed camera-relative four-way movement, stage-aware oriented world and living-entity collision, turn-before-move/cardinal-facing rules, stage-1 core-spine locomotion stabilization, clamped one-shot cleanup before locomotion, presentation motion, deformation-safe stage-0/1 GLB contracts, ground-safe visible leap-bite envelope and full-spin tail-swipe envelope, route-specific combat styles, all 13 random-evolution endpoints and the complete three-wave ecological nest authority.
 - The native stage-2 source and rigged runtime GLBs both have zero glTF errors and warnings; the rigged candidate reports 14 non-blocking validator infos and zero hints.
 - Desktop 1440×900 passed at approximately 115–120 FPS; simulated mobile landscape 844×390 passed at approximately 69 FPS on the development machine, with no HUD overflow and 44-pixel-or-larger touch controls.
 - Browser console/page errors: zero in the latest accepted pass.
@@ -122,6 +122,30 @@ The completed second evolution is an independent stage-2 model and does not repl
 
 The Quality 3D presentation now uses a 48-degree perspective camera at a 29-degree pitch and 10.6-unit distance, with a critically damped player focus, camera leash and teleport snap. A soft player-following fill light, broken-waygate landmark and atmosphere motes improve volume and scene depth without changing the accepted GLBs. Valid stage-2 contacts add distinct pooled claw, bite and tail arcs plus brief visual hit stop; authoritative damage, selected-target facing, the 8-degree rule and disabled skills are unchanged.
 
+## Accepted Shell first evolution
+
+The first non-Fang player form, and the first creature produced specifically to measure the production line's real cost.
+
+- form: `stone-pangolin` / 叠岩甲蜥 (Chinese name still provisional)
+- character baseline: `stone-pangolin-shell-first-evolution-master-v1`
+- combat profile: `stone-pangolin-combat-master-v1`
+- runtime model: `public/assets/quality-3d/models/stone-pangolin-rigged-runtime-v2.glb`
+- contract: 20,391 triangles, 27 bones and the nine named clips, sharing the Meshy quadruped rig template and node names with the accepted stage-1 gecko
+- shape: a low, broad mound of overlapping stone plates covering back, flanks and tail, four legs clear of the plate skirt, head tucked under the leading rim
+- **form-specific sizing, not stage-based**: world height 1.80 rather than the stage-1 2.16, giving 1.58 x 4.57 against the Fang form's 1.56 x 3.99. Normalising a low, long body by height alone would otherwise inflate it to 6.98 long. Growth over stage 0 reads as breadth and mass at equal height, so evolving never looks like shrinking.
+- typed data: `GLOAMWOOD_3D_FORM_WORLD_HEIGHTS` and `GLOAMWOOD_PLAYER_FAMILY_COLLISION_PROFILES` carry the per-family overrides; the stage tables are unchanged for every other form
+- combat boundary: `Bite → Slam → TailSwipe` on the one primary input. Pounce is deliberately absent because short stout forelimbs and a low head cannot sell a leap. Slam is a clip redirect only; damage, range, timing and the eight-degree contact rule are the existing authority untouched. Skills remain disabled
+- production cost: 3 source attempts and 2 rig attempts to a usable asset, against 13 GLBs for the stage-2 hunter. The expensive part was integration, not modelling, and most of those fixes were architectural and are now reusable
+- contract: `docs/concepts/evolution-v2/shell-stage1/PRODUCTION-MODEL-CONTRACT-V1.md`
+
+## Evolution models are keyed by gene family
+
+`QUALITY_3D_GLB_ASSETS` carries an optional `family`, and `resolveQuality3DGLBAsset(stage, family)` prefers the exact family, then a route-independent form, then the stage default. It returns `matchedFamily`, which debug state reports, so a route wearing another family's body is visible rather than silent.
+
+Before this, choosing Shell or Swarm silently loaded the Fang body: three evolution choices presented one creature. Fang and Shell now own separate bodies; Swarm still borrows and still receives the procedural evolution accent, which is now created only when a route has no body of its own.
+
+Form-specific handling must key on `formId` or family, never on stage. Three separate defects came from stage-keyed branches: the scarlet-gecko locomotion stabiliser flattening other stage-1 motion, the scarlet-gecko material grade tinting and flattening the Shell body, and debug state reporting the wrong baseline and triangle count.
+
 ## Random branching species system v1
 
 The gameplay evolution graph is no longer a universal stage-only art ladder. `src/evolution-species.ts` defines 20 core species—one origin, six family lineages, six pure Apex species and seven curated hybrid Apex species—with 13 reachable endpoints.
@@ -130,13 +154,15 @@ The gameplay evolution graph is no longer a universal stage-only art ladder. `sr
 - direction source: recent hunts remain 60% of gene tendency and cumulative genes remain 40%; seeded mutation randomness and wild pressure are preserved
 - mechanics: every Apex has a distinct authoritative stat result plus a declared normal-attack profile, locomotion profile, passive and cost; route identity now selects the real melee, ranged or magic ordinary-attack authority used in combat
 - endpoint lock: the stage-6 species ID and capstone stats cannot be rewritten by later overgrowth genes
-- presentation: accepted stage-0 and Fang stage-1/2 GLBs remain immutable; other routes and all later endpoints currently use modular procedural validation silhouettes
+- presentation: accepted stage-0, Fang stage-1/2 and Shell stage-1 GLBs remain immutable; Swarm and all endpoints above stage 2 still use modular procedural validation silhouettes
 - skills: stage 0 and Fang stage 1 use `Bite → Pounce → TailSwipe`; Fang stage 2 uses `Claw → Pounce → TailSwipe`. All three share the deformation-safe leap/landing and 360-degree tail-spin presentation contracts while retaining stage-specific timing, damage and first-strike anatomy. They remain locked-target ordinary attacks with the 8-degree contact rule. Later route forms use their resolved melee, ranged or magic ordinary attack, while the separate skill-attack system remains disabled
 - detailed matrix: `docs/EvolutionArena-Project-Docs-v0.1/docs/design/20-RANDOM-EVOLUTION-SPECIES-MATRIX.md`
 
 ## Playable entries
 
 - Current commercial vertical-slice entry: `http://127.0.0.1:5174/?maplab=5&debug=1&evolutionRoute=fang&evolutionStage=2`
+- Shell first evolution, straight into the free-movement hunt: `http://127.0.0.1:5174/?maplab=5&debug=1&evolutionRoute=shell&evolutionStage=1`
+- MapLab 5 now reads `evolutionRoute` (`fang` / `shell` / `swarm`) as well as `evolutionStage`, so any form can be loaded for footprint and traversal checks without playing to the evolution
 - Current mother-monster combat demo: `http://127.0.0.1:5174/?quality3d=1&debug=1&combat=single-key-v3`
 - Formal mother-monster hunt candidate: `http://127.0.0.1:5174/?maplab=4&live=1&mother=1&debug=1&nest=thorn-burrow`
 - Evolution presentation: `http://127.0.0.1:5174/?quality3d=1&evolution=1&auto=1&debug=1`
@@ -181,7 +207,7 @@ Read these when their area is in scope:
 - The accepted mother-monster implementation and model are already on GitHub.
 - The former MapLab V4 formal-hunt map was rejected by the user and is no longer an acceptance or production base. Its code and assets remain only as recoverable historical tooling; do not resume polishing its stretched flat background.
 - Live `maplab=4` requests now route to a new same-world Three.js 3D map candidate. It uses separate immutable GLBs at stage 0, stage 1 and stage 2 in the same 3D coordinate system as terrain, props and shadows, eliminating the former transparent-overlay grounding mismatch.
-- Those three GLBs belong to the origin/Fang path only. Non-Fang routes and every stage above 2 deliberately fall back to route-aware procedural modular presentation until their own replacement GLBs pass the character baseline.
+- Stage 0 is the shared origin and the stage-1/2 GLBs belong to the Fang path; Shell now owns its own stage-1 body. Swarm and every stage above 2 deliberately fall back to route-aware procedural modular presentation until their own GLBs pass the character baseline.
 - Its single basic-attack input and debug QA trigger select the profile for the active form: stages 0 and 1 execute `Bite → Pounce → TailSwipe`, while stage 2 executes `Claw → Pounce → TailSwipe`. Pounce uses the shared terrain-safe leap/landing envelope, TailSwipe uses the shared -25° anticipation / 180° contact / 360° completion spin, and each form keeps its own timing, damage, scale and compatible authored clip. Every contact checks the same live selected target, action-specific range and the accepted 8-degree aim tolerance. Skills remain disabled.
 - No production deployment is involved; this is a local browser game prototype.
 - Preserve the accepted scarlet-gecko master while developing stage 2; do not reuse or overwrite its runtime GLB.
@@ -229,16 +255,18 @@ The MapLab 5 vertical slice now contains one complete clearable Corrupted Brood 
 
 ## Active next-stage decision
 
-Commercial vertical-slice Goals 1–4 are implemented and user-accepted. Goal 5 is active. Its first completed slice is a contextual seven-step hunter guide driven by authoritative MapLab 5 state: actual movement, nest activation/target lock, first one-button attack, Biomass/Gene collection, weighted random evolution, Guardian weakness, and the two Boss phases. The guide explains that Genes weight candidates instead of guaranteeing a fixed result, preserves the selected-target/8-degree contact rule, and changes Boss safe-space copy from the live attack pattern. It never calculates damage or progression.
+Commercial vertical-slice Goals 1-4 are user-accepted. Goal 5 is developed but **not closed**: `docs/GOAL-5-PLAYTEST-RECORD.md` still has no physical-device `PERF` reading and no outside no-instruction playtest. Those two remain the honest acceptance gates, and the roadmap makes them the input that decides whether the map and species lines expand at all.
 
-Goal 5 current evidence: 70 test files / 374 tests, TypeScript, `git diff --check` and Vite production build pass. Browser validation used real W and Space input to advance move → approach → attack → hunt guidance and produce authoritative damage; a Boss-gate visual pass confirmed live `root-slam` / `thorn-charge` guidance. Chrome 844×390 now uses a compact expandable combat HUD, a 118-pixel continuous left-thumb joystick and separate right-thumb lock / hold-to-combo controls without overlap. A 390×844 entry shows a tested landscape/fullscreen prompt with an explicit portrait fallback. The joystick moved the authoritative player and returned to neutral on release; keyboard and click movement remain available. A procedural Web Audio bus consumes authoritative footstep, attack, contact, damage, evolution, Boss and result events; persisted MapLab 5 settings control sound volume, camera shake and hit flash. Esc/HUD settings pause freezes simulation and run timing, the 844×390 pause panel fits the safe area, and all seven keyboard actions can be rebound with conflict swapping and persisted restoration.
+The Shell first evolution was completed and accepted on 2026-08-17 as the first measurement of production cost. Recommended order from here:
 
-Goal 5 loading/performance evidence: MapLab 5 now enters through a 4.09 kB loader and its own ~117 kB logic chunk rather than the 1.58 MB legacy Phaser chunk. It exposes a visible loading state and a tested recoverable failure screen. Current-stage-only runtime GLBs reduce stage 0/1/2 character delivery by 57.6%, 83.1% and 52.2% respectively while preserving the authoring masters, mesh, rig and clips; all validate with zero glTF errors/warnings and all three loaded correctly in browser. Production pruning excludes unused GLB candidates from generated `dist`, reducing it from ~177 MB to 92 MB without touching source assets. Runtime debug now records rolling FPS/P95 frame time, draw calls, triangles, GPU resource counts, viewport/DPR and available JS heap. A localhost production preview—not the dev server—measured 119.8 FPS / 8.7 ms P95 at 1280×720 DPR 1.65 and 120 FPS / 8.5–8.6 ms P95 at 844×390; both had zero console warnings/errors. The production resource inventory contained the six MapLab 5 chunks and current runtime GLB but no legacy-main chunk. The 844×390 production pause/settings and seven-action binding screens fit the safe area. In debug mode the pause panel now exposes a screenshot-ready FPS/P95/viewport/draw-call/triangle/heap line, so physical-phone evidence does not require remote developer tools. The remaining >500 kB warning belongs only to the independently loaded legacy route. A physical midrange-phone result and an outside no-instruction playtest remain the two honest Goal 5 acceptance gates.
+1. Close Goal 5 - capture the `PERF` line on a real mid-range phone, then run at least three strangers with only the URL. The key question is whether they notice their creature became a different animal.
+2. Only then decide the third evolution line. Swarm is the remaining route with no body of its own, and its identity - light, fast, fragile, symbiotic - contrasts most with the heavy Shell form. Being light and long-limbed it can keep `Bite → Pounce → TailSwipe`, so it needs no new attack chain.
+3. Producing Swarm gives the second data point, and two points give the slope that decides whether the species matrix is produced in full or cut.
 
-Per the user's explicit instruction, do not modify the current map environment, assets, shrine, lighting or vegetation while advancing the remaining Goal 5 player-experience systems. Next slices are audio/feedback, accessibility/settings, loading/performance/error recovery, and external no-instruction usability evidence. Skills remain disabled.
+Open and unclosed, carried forward:
 
-Goal 3 combat-control acceptance baseline: ordinary enemy body contact never translates a stationary player; only telegraphed attack hits apply bounded, family-scaled knockback with chained-hit resistance. New waves automatically lock the nearest live threat, Tab cycling uses stable spawn order, and an attacker assists lock only when no deliberate live target exists.
+- Meshy commercial licence evidence is still unarchived. The Shell job selected the private licence; record it in `docs/concepts/evolution-v2/shell-stage1/source/SOURCE.md`. This is a release blocker, not a technical one.
+- The Chinese name `叠岩甲蜥` is provisional and must not enter runtime strings until confirmed.
+- A small static seam remains between two plates at the top of the Shell body. It is a mesh seam present in the rest pose, not a rigging fault, and is not resolvable at the 13.3% screen height the standard records.
 
-Committed-facing rule: a prey family whose front is mechanically stronger must declare `commitsFacingWhileAttacking` in `src/gloamwood-3d-ecology.ts`. Such a creature keeps the facing chosen when its telegraph begins and only re-acquires the player on returning to `chase`, so the flank the onboarding asks for is actually reachable. The shell family and the nest guardian use it; Fang and Swarm keep per-frame tracking because they have no frontal multiplier. Turn speed, damage, range, collision and the distance-only prey contact check are unchanged — the rule alters when facing updates, never what an attack does.
-
-Large-target melee baseline: attack reach is measured to the target hurt surface rather than its transform centre. MapLab 5 prey use their family body radii, while the formal Rift Warden uses an explicit boss hurt radius; target lock, live-target validation and the eight-degree contact tolerance remain mandatory. This prevents large collision bodies from creating an unreachable melee dead zone and is covered by the 336-test local baseline.
+Per the user's standing instruction, do not modify the map environment, assets, shrine, lighting or vegetation; that is an independent workflow. Skills remain disabled.
