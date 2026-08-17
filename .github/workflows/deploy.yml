@@ -25,9 +25,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # deploy-pages fails with a bare 404 when the repository has no Pages site
+      # to deploy to. This asks GitHub to create one; `enablement` only works if
+      # the account permits it, otherwise Settings -> Pages -> Source must be
+      # set to "GitHub Actions" by hand once.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       # The suite is the gate. A build that ships a 404'ing creature model or
