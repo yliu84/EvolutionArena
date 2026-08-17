@@ -567,6 +567,12 @@ class Gloamwood3DHunt {
     sun.shadow.camera.near = 1
     sun.shadow.camera.far = 70
     sun.shadow.bias = -0.00035
+    // The 2048 map covers 60x48 world units, so a single armour plate on the
+    // Shell body spans roughly ten texels. Overlapping plate shells at that
+    // density self-shadow into black bands that read as holes in the back.
+    // normalBias offsets the lookup along the surface normal, which is the fix
+    // for grazing-angle acne; depth bias alone cannot reach it.
+    sun.shadow.normalBias = 0.03
     this.scene.add(sun)
     const fill = new THREE.DirectionalLight(0x5c9f91, 0.65)
     fill.position.set(14, 6, -18)
@@ -2773,6 +2779,10 @@ class Gloamwood3DHunt {
         chooseEvolution: (index: number) => this.chooseEvolution(index),
         refreshEvolution: () => this.refreshEvolution(),
         toggleSettings: (open: boolean) => this.toggleSettings(open),
+        // Separates self-shadow acne from real geometry gaps on plated bodies.
+        setCharacterShadowCasting: (enabled: boolean) => {
+          this.character?.traverse((node) => { node.castShadow = enabled })
+        },
         openEvolutionGate: () => this.openEvolutionGateForDebug(),
         startBoss: () => {
           if (this.evolutionState.phase !== 'selected') this.openEvolutionGateForDebug()
