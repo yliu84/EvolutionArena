@@ -9,6 +9,7 @@ import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 
 import { resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
 import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presentation'
+import { applyDocumentLocale, t } from './i18n'
 import { CORAL_GECKO_PRESENTATION } from './quality-3d-character-presentation'
 import {
   applyScarletGeckoSurfaceGrade,
@@ -325,7 +326,10 @@ export async function launchGloamwood3DHunt() {
   const container = document.querySelector<HTMLElement>('#game-container')
   if (!container) throw new Error('Missing #game-container for Gloamwood 3D hunt')
   document.body.classList.add('is-maplab', 'is-v4-live', 'is-gloamwood-3d')
-  document.title = '进化竞技场 Lite · 幽影林地 3D 重制'
+  // English is the primary market, so the locale is resolved from the browser
+  // before any player-facing string is built. ?lang=en|zh overrides for testing.
+  applyDocumentLocale()
+  document.title = t('document.title')
   const experience = new Gloamwood3DHunt(container)
   try {
     await experience.start()
@@ -398,7 +402,7 @@ class Gloamwood3DHunt {
   private playerFlashRemaining = 0
   private knockbackRecoverySeconds = 0
   private lastKnockbackDistance = 0
-  private combatMessage = '接近腐根孵育巢开始清理'
+  private combatMessage = t('hud.msg.approachNest')
   private hud?: HTMLElement
   private onboardingHud?: HTMLElement
   private settingsPanel?: HTMLElement
@@ -470,7 +474,7 @@ class Gloamwood3DHunt {
     this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.domElement.className = 'gloamwood-3d-canvas'
     this.renderer.domElement.tabIndex = 0
-    this.renderer.domElement.setAttribute('aria-label', '幽影林地 3D 狩猎地图')
+    this.renderer.domElement.setAttribute('aria-label', t('a11y.canvas'))
     this.container.append(this.renderer.domElement)
     this.playerRoot.add(this.characterRoot)
     this.scene.add(this.playerRoot)
@@ -1520,14 +1524,14 @@ class Gloamwood3DHunt {
     if (this.bossActive() && this.bossVisual && this.raycaster.intersectObject(this.bossVisual.root, true)[0]) {
       this.bossLocked = true
       this.lockedPreyId = null
-      this.combatMessage = `已锁定 · ${GLOAMWOOD_BOSS.name}`
+      this.combatMessage = t('hud.msg.locked', { name: t('creature.boss') })
       return
     }
     for (const prey of this.livePrey()) {
       const visual = this.preyVisuals.get(prey.id)
       if (visual && this.raycaster.intersectObject(visual.root, true)[0]) {
         this.lockedPreyId = prey.id
-        this.combatMessage = `已锁定 · ${this.preyName(prey)}`
+        this.combatMessage = t('hud.msg.locked', { name: this.preyName(prey) })
         return
       }
     }
@@ -1636,7 +1640,7 @@ class Gloamwood3DHunt {
     if (this.evolutionState.phase === 'choosing') return
     if (!this.playerCombat.alive) return
     if (this.nestState.phase === 'dormant') {
-      this.combatMessage = '靠近腐根孵育巢以开始清理'
+      this.combatMessage = t('hud.msg.nearNest')
       return
     }
     if (this.runPhase === 'victory' || this.runPhase === 'defeat') return
@@ -1644,12 +1648,12 @@ class Gloamwood3DHunt {
       this.bossLocked = true
       this.lockedPreyId = null
     } else if (this.nestState.phase === 'cleared') {
-      this.combatMessage = this.evolutionState.phase === 'selected' ? '荆心守卫即将苏醒' : '窝点已清理 · 请先选择进化'
+      this.combatMessage = this.evolutionState.phase === 'selected' ? t('hud.msg.bossWaking') : t('hud.msg.chooseEvolution')
       return
     }
     if (!this.bossActive() && !this.lockedPrey()) this.lockedPreyId = this.nearestLivePrey()?.id ?? null
     if (!this.bossLocked && !this.lockedPreyId) {
-      this.combatMessage = '增援正在逼近'
+      this.combatMessage = t('hud.msg.reinforcements')
       return
     }
     const now = performance.now()
@@ -1663,7 +1667,7 @@ class Gloamwood3DHunt {
     if (this.bossActive()) {
       this.bossLocked = true
       this.lockedPreyId = null
-      this.combatMessage = `已锁定 · ${GLOAMWOOD_BOSS.name}`
+      this.combatMessage = t('hud.msg.locked', { name: t('creature.boss') })
       return
     }
     const nextId = nextGloamwoodLockTarget(
@@ -1673,12 +1677,12 @@ class Gloamwood3DHunt {
     )
     if (!nextId) {
       this.lockedPreyId = null
-      this.combatMessage = this.nestState.phase === 'cleared' ? '窝点已清理' : '当前没有可锁定目标'
+      this.combatMessage = this.nestState.phase === 'cleared' ? t('hud.msg.nestCleared') : t('hud.msg.noTarget')
       return
     }
     const next = this.nestState.prey.find((prey) => prey.id === nextId)!
     this.lockedPreyId = nextId
-    this.combatMessage = `已锁定 · ${this.preyName(next)}`
+    this.combatMessage = t('hud.msg.locked', { name: this.preyName(next) })
   }
 
   private updateCombat(now: number, delta: number) {
@@ -1690,7 +1694,7 @@ class Gloamwood3DHunt {
       this.playerRoot.position.set(GLOAMWOOD_3D_COMBAT.playerSpawnX, 0, GLOAMWOOD_3D_COMBAT.playerSpawnZ)
       this.target.copy(this.playerRoot.position)
       this.attackState = createFormalHuntBasicAttackState()
-      this.combatMessage = '重新投入狩猎'
+      this.combatMessage = t('hud.msg.backToHunt')
       this.setAction('Idle', true)
     }
     if (!this.playerCombat.alive) return
@@ -1726,7 +1730,7 @@ class Gloamwood3DHunt {
     this.attackUntil = now + this.attackDurationSeconds * 1000
     if (action === 'Pounce') this.leapBiteLandingResolved = false
     this.setAction(action, true)
-    this.combatMessage = `攻击 · ${this.attackName(action)}`
+    this.combatMessage = t('hud.msg.attacking', { name: this.attackName(action) })
   }
 
   private resolvePlayerContact(action: FormalHuntBasicAttackAction) {
@@ -1736,7 +1740,7 @@ class Gloamwood3DHunt {
     }
     const target = this.lockedPrey()
     if (!target) {
-      this.combatMessage = '挥空 · 没有锁定目标'
+      this.combatMessage = t('hud.msg.missNoLock')
       return
     }
     const dx = target.x - this.playerRoot.position.x
@@ -1763,7 +1767,7 @@ class Gloamwood3DHunt {
       targetRadius,
     })
     if (!valid) {
-      this.combatMessage = surfaceDistance > range ? '挥空 · 目标超出攻击距离' : '挥空 · 接触角度超过 8°'
+      this.combatMessage = surfaceDistance > range ? t('hud.msg.missRange') : t('hud.msg.missAngle')
       return
     }
     const knockback = action === 'TailSwipe' ? 0.72 : action === 'Pounce' ? 0.52 : 0.34
@@ -1803,13 +1807,13 @@ class Gloamwood3DHunt {
     this.spawnSlashFeedback(action, target)
     if (damage.killed) {
       this.combatMessage = target.id === GLOAMWOOD_NEST_GUARDIAN.id
-        ? `破防 · ${GLOAMWOOD_NEST_GUARDIAN.displayName}已倒下 · 终局猎杀通道开启`
-        : `击杀 · ${this.preyName(target)} · +${displayedBiomass} 生物质 · +1 ${this.geneName(target.kind)}`
+        ? t('hud.msg.guardianDown', { name: t('creature.guardian') })
+        : t('hud.msg.kill', { name: this.preyName(target), biomass: displayedBiomass, gene: this.geneName(target.kind) })
       this.lockedPreyId = this.nearestLivePrey()?.id ?? null
     } else if (damage.blocked) {
-      this.combatMessage = `正面格挡 · 仅造成 ${damage.effectiveDamage} 伤害 · 绕到岩盾背后`
+      this.combatMessage = t('hud.msg.blocked', { damage: damage.effectiveDamage })
     } else {
-      this.combatMessage = `${this.attackName(action)}命中 · ${damage.effectiveDamage} 伤害`
+      this.combatMessage = t('hud.msg.hit', { name: this.attackName(action), damage: damage.effectiveDamage })
     }
   }
 
@@ -1836,7 +1840,7 @@ class Gloamwood3DHunt {
       targetRadius: GLOAMWOOD_BOSS.bodyRadius,
     })
     if (!valid) {
-      this.combatMessage = surfaceDistance > range ? '挥空 · Boss 超出攻击距离' : '挥空 · 接触角度超过 8°'
+      this.combatMessage = surfaceDistance > range ? t('hud.msg.missBossRange') : t('hud.msg.missAngle')
       return
     }
     const baseDamage = action === 'Pounce'
@@ -1854,8 +1858,8 @@ class Gloamwood3DHunt {
     this.cameraTrauma = Math.min(1, this.cameraTrauma + (result.defeated ? 0.9 : 0.5))
     this.spawnBossHitFeedback(action)
     this.combatMessage = result.defeated
-      ? `${GLOAMWOOD_BOSS.name}已倒下 · 幽影林地已净化`
-      : `${this.attackName(action)}命中 Boss · ${result.effectiveDamage} 伤害`
+      ? t('hud.msg.bossDown', { name: t('creature.boss') })
+      : t('hud.msg.hitBoss', { name: this.attackName(action), damage: result.effectiveDamage })
     if (result.defeated) this.completeRunVictory()
   }
 
@@ -1911,7 +1915,7 @@ class Gloamwood3DHunt {
     }
     for (const event of frame.events) {
       if (event.type === 'nest-started') {
-        this.combatMessage = '腐根孵育巢苏醒 · 第一波来袭'
+        this.combatMessage = t('hud.msg.nestAwake')
         continue
       }
       if (event.type === 'wave-started') {
@@ -1920,22 +1924,22 @@ class Gloamwood3DHunt {
           null,
           { x: this.playerRoot.position.x, z: this.playerRoot.position.z },
         )
-        this.combatMessage = `第 ${event.wave} 波 · ${this.waveHint(event.wave)}`
+        this.combatMessage = t('hud.msg.waveStart', { wave: event.wave, hint: this.waveHint(event.wave) })
         continue
       }
       if (event.type === 'wave-cleared') {
         this.lockedPreyId = null
-        this.combatMessage = event.wave >= GLOAMWOOD_NEST.waveCount ? '最后一波已击溃' : `第 ${event.wave} 波清理完成 · 警惕增援`
+        this.combatMessage = event.wave >= GLOAMWOOD_NEST.waveCount ? t('hud.msg.lastWave') : t('hud.msg.waveClear', { wave: event.wave })
         continue
       }
       if (event.type === 'nest-cleared') {
         this.lockedPreyId = null
         if (this.runPhase === 'guardian') {
-          this.combatMessage = `${GLOAMWOOD_NEST_GUARDIAN.displayName}已被击破 · 荒林中心出现异动`
+          this.combatMessage = t('hud.msg.guardianBroken', { name: t('creature.guardian') })
           this.startBossEncounter()
           continue
         }
-        this.combatMessage = `窝点清理完成 · ${event.biomass} 生物质 · 进化候选已形成`
+        this.combatMessage = t('hud.msg.nestDone', { biomass: event.biomass })
         this.evolutionState = openGloamwoodEvolutionOffer(this.evolutionState, this.nestState.genes, this.nestState.recentHunts)
         this.runPhase = 'evolution'
         this.showEvolutionOverlay()
@@ -1971,11 +1975,11 @@ class Gloamwood3DHunt {
         this.target.copy(this.playerRoot.position)
         this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.48)
         this.playerFlashRemaining = this.feedbackSettings.flash ? 0.18 : 0
-        this.combatMessage = this.playerCombat.alive ? `受到 ${receivedDamage} 伤害` : '倒下 · 即将重返狩猎'
+        this.combatMessage = this.playerCombat.alive ? t('hud.msg.tookDamage', { damage: receivedDamage }) : t('hud.msg.downed')
         if (!this.playerCombat.alive) {
           this.attackState = createFormalHuntBasicAttackState()
           this.lockedPreyId = null
-          if (this.runPhase === 'guardian') this.completeRunDefeat(`${GLOAMWOOD_NEST_GUARDIAN.displayName}的重击终结了本次狩猎`)
+          if (this.runPhase === 'guardian') this.completeRunDefeat(t('hud.msg.killedByGuardian', { name: t('creature.guardian') }))
           else this.resetLivePreyToNest()
         }
       }
@@ -2001,7 +2005,7 @@ class Gloamwood3DHunt {
     for (const event of frame.events) {
       if (event.type === 'phase-changed') {
         this.playSound('boss-phase')
-        this.combatMessage = `${GLOAMWOOD_BOSS.name}暴走 · 第二阶段攻势加快`
+        this.combatMessage = t('hud.msg.bossPhase2', { name: t('creature.boss') })
         this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.74)
         continue
       }
@@ -2022,9 +2026,9 @@ class Gloamwood3DHunt {
       this.playerFlashRemaining = this.feedbackSettings.flash ? 0.2 : 0
       this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.66)
       this.combatMessage = this.playerCombat.alive
-        ? `${this.bossPatternName(event.pattern)}命中 · 受到 ${receivedDamage} 伤害`
-        : `${this.bossPatternName(event.pattern)}致命 · 本局失败`
-      if (!this.playerCombat.alive) this.completeRunDefeat(`${this.bossPatternName(event.pattern)}命中时未离开预警区`)
+        ? t('hud.msg.bossHit', { name: this.bossPatternName(event.pattern), damage: receivedDamage })
+        : t('hud.msg.bossFatal', { name: this.bossPatternName(event.pattern) })
+      if (!this.playerCombat.alive) this.completeRunDefeat(t('hud.msg.killedByBoss', { name: this.bossPatternName(event.pattern) }))
     }
     this.syncBossVisual()
   }
@@ -2068,9 +2072,9 @@ class Gloamwood3DHunt {
   }
 
   private bossPatternName(pattern: GloamwoodBossState['pattern']) {
-    if (pattern === 'root-slam') return '根须震击'
-    if (pattern === 'thorn-charge') return '荆棘冲锋'
-    return '孢子环爆'
+    if (pattern === 'root-slam') return t('attack.rootSlam')
+    if (pattern === 'thorn-charge') return t('attack.thornCharge')
+    return t('attack.sporeRing')
   }
 
   private spawnSlashFeedback(action: FormalHuntBasicAttackAction, target: GloamwoodNestPrey) {
@@ -2222,7 +2226,7 @@ class Gloamwood3DHunt {
       if (action === 'Pounce') return SCARLET_GECKO_PRESENTATION.combat.attackNames.Pounce
       if (action === 'TailSwipe') return SCARLET_GECKO_PRESENTATION.combat.attackNames.TailSwipe
     }
-    if (action === 'Bite') return '撕咬'
+    if (action === 'Bite') return t('attack.bite')
     return SCARLET_HUNTER_PRESENTATION.combat.attackNames[action]
   }
 
@@ -2243,13 +2247,13 @@ class Gloamwood3DHunt {
   }
 
   private geneName(kind: GloamwoodPreyKind) {
-    return kind === 'fang' ? '裂牙基因' : kind === 'shell' ? '岩盾基因' : '群生基因'
+    return kind === 'fang' ? t('gene.fang') : kind === 'shell' ? t('gene.shell') : t('gene.swarm')
   }
 
   private waveHint(wave: number) {
-    if (wave === 1) return '快速裂牙会主动夹击'
-    if (wave === 2) return '绕开岩盾正面，先处理群虫'
-    return '混合生态群 · 选择正确攻击与站位'
+    if (wave === 1) return t('wave.fangPincer')
+    if (wave === 2) return t('wave.shellSwarm')
+    return t('wave.mixed')
   }
 
   private resetLivePreyToNest() {
@@ -2499,7 +2503,7 @@ class Gloamwood3DHunt {
       overlay.className = 'gloamwood-evolution-overlay'
       overlay.setAttribute('role', 'dialog')
       overlay.setAttribute('aria-modal', 'true')
-      overlay.setAttribute('aria-label', '选择第一次随机进化')
+      overlay.setAttribute('aria-label', t('evo.chooseTitle'))
       this.evolutionOverlay = overlay
       this.container.append(overlay)
     }
@@ -2518,12 +2522,12 @@ class Gloamwood3DHunt {
     if (!this.evolutionOverlay) return
     this.evolutionOverlay.innerHTML = [
       '<div class="g3d-evolution-panel">',
-      '<header><span>第一次进化 · 猎食塑形</span><h1>你吃掉了什么，身体就更可能成为什么</h1>',
-      `<p>本次种子 <code>${this.evolutionState.seed}</code> · 三项均为带代价的实战构筑，不是单纯换皮。</p></header>`,
+      `<header><span>${t('evo.eyebrow')}</span><h1>${t('evo.headline')}</h1>`,
+      `<p>${t('evo.seedNote', { seed: this.evolutionState.seed })}</p></header>`,
       '<div class="g3d-evolution-choices">',
       ...this.evolutionState.candidates.map((candidate, index) => [
         `<button data-evolution-choice="${index}" data-family="${candidate.family}">`,
-        `<span><kbd>${index + 1}</kbd>${candidate.familyName}路线 · 权重 ${candidate.probability}%</span>`,
+        `<span><kbd>${index + 1}</kbd>${t('evo.routeLine', { family: candidate.familyName, probability: candidate.probability })}</span>`,
         `<strong>${candidate.name}</strong>`,
         `<b>${candidate.statLine}</b>`,
         `<p>${candidate.description}</p>`,
@@ -2532,8 +2536,8 @@ class Gloamwood3DHunt {
       ].join('')),
       '</div>',
       '<footer>',
-      `<button data-evolution-refresh ${this.evolutionState.refreshesRemaining <= 0 ? 'disabled' : ''}>抗拒这组 <small>R · 剩余 ${this.evolutionState.refreshesRemaining} 次</small></button>`,
-      '<p>选择后立即进入一级形态；技能攻击仍保持关闭。</p>',
+      `<button data-evolution-refresh ${this.evolutionState.refreshesRemaining <= 0 ? 'disabled' : ''}>${t('evo.rerollBtn', { count: this.evolutionState.refreshesRemaining })}</button>`,
+      `<p>${t('evo.footer')}</p>`,
       '</footer>',
       '</div>',
     ].join('')
@@ -2547,7 +2551,7 @@ class Gloamwood3DHunt {
     const previous = this.evolutionState
     this.evolutionState = refreshGloamwoodEvolutionOffer(previous, this.nestState.genes, this.nestState.recentHunts)
     if (this.evolutionState === previous) return
-    this.combatMessage = '已抗拒一次 · 身体重新组合候选'
+    this.combatMessage = t('evo.rerolled')
     this.renderEvolutionOffer()
     this.evolutionOverlay?.querySelector<HTMLButtonElement>('[data-evolution-choice]')?.focus()
   }
@@ -2584,7 +2588,7 @@ class Gloamwood3DHunt {
     // already wears its identity, and bolting primitives onto it would be the
     // floating decoration the creature standard forbids.
     if (!this.characterFamilyMatched) this.createEvolutionAccent(candidate.family)
-    this.combatMessage = `进化完成 · ${candidate.name} · ${candidate.statLine}`
+    this.combatMessage = t('hud.msg.evolved', { name: candidate.name, stats: candidate.statLine })
     if (this.evolutionOverlay) {
       this.evolutionOverlay.hidden = true
       this.evolutionOverlay.dataset.busy = 'false'
@@ -2617,7 +2621,7 @@ class Gloamwood3DHunt {
     }
     this.target.copy(this.playerRoot.position)
     this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.56)
-    this.combatMessage = `${GLOAMWOOD_NEST_GUARDIAN.displayName}破土而出 · 正面甲壳减伤极高，绕后破防`
+    this.combatMessage = t('hud.msg.guardianRises', { name: t('creature.guardian') })
     this.syncPreyVisuals()
   }
 
@@ -2638,7 +2642,7 @@ class Gloamwood3DHunt {
     this.attackState = createFormalHuntBasicAttackState()
     this.syncBossVisual()
     this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.72)
-    this.combatMessage = `${GLOAMWOOD_BOSS.name}从腐根中苏醒 · 观察地面预警`
+    this.combatMessage = t('hud.msg.bossRises', { name: t('creature.boss') })
   }
 
   private completeRunVictory() {
@@ -2650,7 +2654,7 @@ class Gloamwood3DHunt {
     this.attackState = createFormalHuntBasicAttackState()
     this.cameraTrauma = 1
     this.playSound('victory')
-    this.showRunResult(true, '荆心守卫已倒下')
+    this.showRunResult(true, t('result.bossDown'))
   }
 
   private completeRunDefeat(reason: string) {
@@ -2681,17 +2685,17 @@ class Gloamwood3DHunt {
     const pace = classifyGloamwoodRunPace(elapsedSeconds, debugSkip)
     this.resultOverlay.innerHTML = [
       '<div class="g3d-result-panel">',
-      `<span>${victory ? '猎杀完成' : '猎杀失败'}</span>`,
-      `<h1>${victory ? '幽影林地已净化' : '荆心仍在跳动'}</h1>`,
+      `<span>${victory ? t('result.victory') : t('result.defeat')}</span>`,
+      `<h1>${victory ? t('result.victoryLead') : t('result.defeatLead')}</h1>`,
       `<p>${reason}</p>`,
       `<aside data-pace="${pace.pace}"><strong>${pace.label}</strong><span>${pace.detail}</span></aside>`,
       '<dl>',
-      `<div><dt>用时</dt><dd>${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, '0')}</dd></div>`,
-      `<div><dt>猎物</dt><dd>${this.nestState.kills}</dd></div>`,
-      `<div><dt>进化</dt><dd>${selected?.name ?? '未进化'}</dd></div>`,
+      `<div><dt>${t('result.time')}</dt><dd>${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, '0')}</dd></div>`,
+      `<div><dt>${t('result.prey')}</dt><dd>${this.nestState.kills}</dd></div>`,
+      `<div><dt>${t('result.evolution')}</dt><dd>${selected?.name ?? t('result.noEvolution')}</dd></div>`,
       `<div><dt>Boss</dt><dd>${this.bossState.health}/${this.bossState.maxHealth}</dd></div>`,
       '</dl>',
-      '<button data-run-restart>重新开始一局</button>',
+      `<button data-run-restart>${t('result.restart')}</button>`,
       '</div>',
     ].join('')
     this.resultOverlay.hidden = false
@@ -2740,17 +2744,17 @@ class Gloamwood3DHunt {
     const hud = document.createElement('section')
     hud.className = 'gloamwood-3d-hud'
     hud.innerHTML = [
-      '<header><span data-g3d-nest-title>幽影林地 · 腐根孵育巢</span><strong data-g3d-message>接近窝点开始清理</strong></header>',
+      `<header><span data-g3d-nest-title>${t('hud.nestTitle')}</span><strong data-g3d-message>${t('hud.initialMsg')}</strong></header>`,
       '<div class="g3d-combat-bars">',
-      '<label>生命 <b data-g3d-player-health>100 / 100</b><i><em data-g3d-player-bar></em></i></label>',
-      '<label><span data-g3d-target-label>尚未锁定猎物</span> <b data-g3d-enemy-health>--</b><i><em data-g3d-enemy-bar></em></i></label>',
+      `<label>${t('hud.health')} <b data-g3d-player-health>100 / 100</b><i><em data-g3d-player-bar></em></i></label>`,
+      `<label><span data-g3d-target-label>${t('hud.noTargetLabel')}</span> <b data-g3d-enemy-health>--</b><i><em data-g3d-enemy-bar></em></i></label>`,
       '</div>',
-      '<div class="g3d-nest-resources"><b data-g3d-remaining>未惊动</b><span>生物质 <strong data-g3d-biomass>0</strong></span><span>裂牙 <strong data-g3d-fang>0</strong></span><span>岩盾 <strong data-g3d-shell>0</strong></span><span>群生 <strong data-g3d-swarm>0</strong></span></div>',
-      '<p data-g3d-controls><kbd data-g3d-move-label>W/A/S/D / 触控</kbd> 移动 · <kbd data-g3d-lock-label>Tab / 锁定</kbd> 选敌 · <kbd data-g3d-attack-label>Space / 攻击</kbd> 单键连招</p>',
-      '<small data-g3d-state>技能关闭 · 三类猎物拥有不同弱点与基因</small>',
-      '<button class="g3d-hud-details-toggle" type="button" data-g3d-hud-details aria-expanded="false">展开信息</button>',
-      '<button class="g3d-fullscreen-toggle" type="button" data-g3d-fullscreen>全屏游戏</button>',
-      '<button class="g3d-settings-toggle" type="button" data-g3d-settings-toggle>体验设置 · Esc</button>',
+      `<div class="g3d-nest-resources"><b data-g3d-remaining>${t('hud.undisturbed')}</b><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
+      `<p data-g3d-controls><kbd data-g3d-move-label>${t('hud.moveKeys')}</kbd> ${t('hud.moveLabel')} · <kbd data-g3d-lock-label>${t('hud.lockKeys')}</kbd> ${t('hud.lockLabel')} · <kbd data-g3d-attack-label>${t('hud.attackKeys')}</kbd> ${t('hud.attackLabel')}</p>`,
+      `<small data-g3d-state>${t('hud.stateLine')}</small>`,
+      `<button class="g3d-hud-details-toggle" type="button" data-g3d-hud-details aria-expanded="false">${t('hud.expand')}</button>`,
+      `<button class="g3d-fullscreen-toggle" type="button" data-g3d-fullscreen>${t('fs.enter')}</button>`,
+      `<button class="g3d-settings-toggle" type="button" data-g3d-settings-toggle>${t('hud.settings')}</button>`,
     ].join('')
     this.hud = hud
     hud.dataset.mobileExpanded = 'false'
@@ -2770,10 +2774,10 @@ class Gloamwood3DHunt {
     onboarding.dataset.tone = 'guide'
     onboarding.setAttribute('aria-live', 'polite')
     onboarding.innerHTML = [
-      '<header><span data-g3d-guide-eyebrow>猎手指引 · 1/7</span><b data-g3d-guide-progress>移动一小段开始狩猎</b></header>',
-      '<strong data-g3d-guide-title>先学会控制身体</strong>',
-      '<p data-g3d-guide-instruction>使用WASD、方向键或左侧触控移动；角色会先转身再前进。</p>',
-      '<small data-g3d-guide-reason>移动、锁定和攻击在键鼠与触控上遵循同一套规则。</small>',
+      `<header><span data-g3d-guide-eyebrow>${t('guide.eyebrow', { step: 1, total: 7 })}</span><b data-g3d-guide-progress>${t('guide.move.progress')}</b></header>`,
+      `<strong data-g3d-guide-title>${t('guide.move.title')}</strong>`,
+      `<p data-g3d-guide-instruction>${t('guide.move.instruction', { move: 'W/A/S/D' })}</p>`,
+      `<small data-g3d-guide-reason>${t('guide.move.reason')}</small>`,
       '<i aria-hidden="true"><em data-g3d-guide-bar></em></i>',
     ].join('')
     this.onboardingHud = onboarding
@@ -2836,16 +2840,16 @@ class Gloamwood3DHunt {
     const gate = document.createElement('section')
     gate.className = 'gloamwood-orientation-gate'
     gate.setAttribute('role', 'dialog')
-    gate.setAttribute('aria-label', '横屏游戏提示')
+    gate.setAttribute('aria-label', t('a11y.orientation'))
     gate.innerHTML = [
       '<div>',
       '<i aria-hidden="true"><span>↻</span></i>',
-      '<span>MOBILE PLAY / 手机试玩</span>',
-      '<h2>请把手机横过来</h2>',
-      '<p>横屏会保留更大的战斗视野，并把移动与攻击分到屏幕两侧。</p>',
-      '<button class="primary" type="button" data-g3d-landscape>进入全屏横屏</button>',
-      '<button type="button" data-g3d-portrait-continue>暂时以竖屏继续</button>',
-      '<small data-g3d-orientation-status>如果没有旋转，请先关闭手机的竖屏方向锁定，再手动横放。</small>',
+      `<span>${t('orient.eyebrow')}</span>`,
+      `<h2>${t('orient.title')}</h2>`,
+      `<p>${t('orient.body')}</p>`,
+      `<button class="primary" type="button" data-g3d-landscape>${t('orient.enter')}</button>`,
+      `<button type="button" data-g3d-portrait-continue>${t('orient.continue')}</button>`,
+      `<small data-g3d-orientation-status>${t('orient.status')}</small>`,
       '</div>',
     ].join('')
     gate.querySelector<HTMLButtonElement>('[data-g3d-landscape]')?.addEventListener('click', () => {
@@ -2863,10 +2867,10 @@ class Gloamwood3DHunt {
     const status = gate.querySelector<HTMLElement>('[data-g3d-orientation-status]')
     const { fullscreenAccepted, orientationAccepted } = await this.enterLandscapeFullscreen()
     if (status) status.textContent = orientationAccepted
-      ? '已请求横屏；如果画面未变化，请手动把手机横放。'
+      ? t('orient.rotated')
       : fullscreenAccepted
-        ? '已进入全屏。请关闭系统竖屏锁定，再把手机横放。'
-        : '浏览器不支持自动旋转；请关闭系统竖屏锁定并手动横放。'
+        ? t('orient.fsOnly')
+        : t('orient.unsupported')
   }
 
   /**
@@ -2916,14 +2920,14 @@ class Gloamwood3DHunt {
       // iPhone Safari exposes no Fullscreen API, so the button explains the only
       // route that removes the address bar instead of silently disappearing.
       this.fullscreenToggle.dataset.active = 'false'
-      this.fullscreenToggle.textContent = '全屏方法'
-      this.fullscreenToggle.setAttribute('aria-label', '查看如何全屏游玩，隐藏浏览器地址栏')
+      this.fullscreenToggle.textContent = t('fs.howTo')
+      this.fullscreenToggle.setAttribute('aria-label', t('fs.howToAria'))
       return
     }
     const active = document.fullscreenElement !== null
     this.fullscreenToggle.dataset.active = active ? 'true' : 'false'
-    this.fullscreenToggle.textContent = active ? '退出全屏' : '全屏游戏'
-    this.fullscreenToggle.setAttribute('aria-label', active ? '退出全屏' : '进入全屏，隐藏浏览器地址栏')
+    this.fullscreenToggle.textContent = active ? t('fs.exit') : t('fs.enter')
+    this.fullscreenToggle.setAttribute('aria-label', active ? t('fs.exit') : t('fs.enterAria'))
   }
 
   private createHomeScreenTip() {
@@ -2931,13 +2935,13 @@ class Gloamwood3DHunt {
     tip.className = 'gloamwood-homescreen-tip'
     tip.hidden = true
     tip.setAttribute('role', 'dialog')
-    tip.setAttribute('aria-label', '全屏游玩方法')
+    tip.setAttribute('aria-label', t('a11y.fsTip'))
     tip.innerHTML = [
       '<div>',
-      '<span>FULL SCREEN / 全屏游玩</span>',
-      '<p>此浏览器不支持网页全屏。点击底部的<b>分享</b>按钮，选择<b>添加到主屏幕</b>，之后从主屏图标启动，地址栏与标签栏都会消失。</p>',
-      '<small>横屏方向仍由系统控制；如果不旋转，请先关闭手机的竖屏方向锁定。</small>',
-      '<button type="button" data-g3d-tip-close>知道了</button>',
+      `<span>${t('fs.eyebrow')}</span>`,
+      `<p>${t('fs.tipBody')}</p>`,
+      `<small>${t('fs.tipNote')}</small>`,
+      `<button type="button" data-g3d-tip-close>${t('fs.tipClose')}</button>`,
       '</div>',
     ].join('')
     tip.querySelector<HTMLButtonElement>('[data-g3d-tip-close]')?.addEventListener('click', () => {
@@ -2966,31 +2970,31 @@ class Gloamwood3DHunt {
     panel.innerHTML = [
       '<div>',
       '<section data-g3d-settings-feedback>',
-      '<span>PAUSED / 体验设置</span>',
-      '<h2 id="g3d-settings-title">让反馈适合你的屏幕与设备</h2>',
-      '<p>设置即时生效并保存在本机；调整期间狩猎已暂停。</p>',
-      '<button type="button" data-g3d-setting="shake">镜头震动：开</button>',
-      '<button type="button" data-g3d-setting="flash">受击闪光：开</button>',
-      '<button type="button" data-g3d-setting="volume">音效音量：60%</button>',
-      '<button type="button" data-g3d-input-open>基础按键设置</button>',
-      '<button class="primary" type="button" data-g3d-settings-resume>继续狩猎</button>',
-      '<output class="g3d-performance-readout" data-g3d-performance hidden>PERF · 等待稳定采样</output>',
-      '<small data-g3d-settings-summary>键盘：Esc 暂停/继续 · 移动 W/A/S/D · 锁定 Tab · 普攻 Space</small>',
+      `<span>${t('settings.eyebrow')}</span>`,
+      `<h2 id="g3d-settings-title">${t('settings.title')}</h2>`,
+      `<p>${t('settings.body')}</p>`,
+      `<button type="button" data-g3d-setting="shake">${t('settings.shakeLabel', { state: t('toggle.on') })}</button>`,
+      `<button type="button" data-g3d-setting="flash">${t('settings.flashLabel', { state: t('toggle.on') })}</button>`,
+      `<button type="button" data-g3d-setting="volume">${t('settings.volumeLabel', { value: 60 })}</button>`,
+      `<button type="button" data-g3d-input-open>${t('settings.openInput')}</button>`,
+      `<button class="primary" type="button" data-g3d-settings-resume>${t('settings.resume')}</button>`,
+      `<output class="g3d-performance-readout" data-g3d-performance hidden>${t('settings.perfWaiting')}</output>`,
+      `<small data-g3d-settings-summary>${t('settings.summary')}</small>`,
       '</section>',
       '<section data-g3d-settings-input hidden>',
-      '<span>KEY BINDINGS / 基础按键</span>',
-      '<h2>选择动作，再按下新按键</h2>',
-      '<p>若新按键已经被占用，两个动作会自动交换；Esc取消当前录入。</p>',
+      `<span>${t('input.eyebrow')}</span>`,
+      `<h2>${t('input.title')}</h2>`,
+      `<p>${t('input.body')}</p>`,
       '<div class="g3d-input-bindings">',
-      '<button type="button" data-g3d-bind="moveUp">向上移动</button>',
-      '<button type="button" data-g3d-bind="moveDown">向下移动</button>',
-      '<button type="button" data-g3d-bind="moveLeft">向左移动</button>',
-      '<button type="button" data-g3d-bind="moveRight">向右移动</button>',
-      '<button type="button" data-g3d-bind="lock">锁定目标</button>',
-      '<button type="button" data-g3d-bind="attack">普通攻击</button>',
-      '<button type="button" data-g3d-bind="pause">暂停/继续</button>',
+      `<button type="button" data-g3d-bind="moveUp">${t('bind.moveUp')}</button>`,
+      `<button type="button" data-g3d-bind="moveDown">${t('bind.moveDown')}</button>`,
+      `<button type="button" data-g3d-bind="moveLeft">${t('bind.moveLeft')}</button>`,
+      `<button type="button" data-g3d-bind="moveRight">${t('bind.moveRight')}</button>`,
+      `<button type="button" data-g3d-bind="lock">${t('bind.lock')}</button>`,
+      `<button type="button" data-g3d-bind="attack">${t('bind.attack')}</button>`,
+      `<button type="button" data-g3d-bind="pause">${t('bind.pause')}</button>`,
       '</div>',
-      '<div class="g3d-input-footer"><button type="button" data-g3d-bind-reset>恢复默认</button><button class="primary" type="button" data-g3d-input-back>返回体验设置</button></div>',
+      `<div class="g3d-input-footer"><button type="button" data-g3d-bind-reset>${t('input.reset')}</button><button class="primary" type="button" data-g3d-input-back>${t('input.back')}</button></div>`,
       '</section>',
       '</div>',
     ].join('')
@@ -3025,7 +3029,7 @@ class Gloamwood3DHunt {
       const expanded = this.hud?.dataset.mobileExpanded !== 'true'
       if (this.hud) this.hud.dataset.mobileExpanded = String(expanded)
       button.setAttribute('aria-expanded', String(expanded))
-      button.textContent = expanded ? '收起信息' : '展开信息'
+      button.textContent = expanded ? t('hud.collapse') : t('hud.expand')
     })
     this.renderFeedbackSettings()
     this.renderInputBindings()
@@ -3070,11 +3074,11 @@ class Gloamwood3DHunt {
     const shake = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="shake"]')
     const flash = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="flash"]')
     const volume = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="volume"]')
-    if (shake) shake.textContent = `镜头震动：${this.feedbackSettings.shake ? '开' : '关'}`
-    if (flash) flash.textContent = `受击闪光：${this.feedbackSettings.flash ? '开' : '关'}`
-    if (volume) volume.textContent = `音效音量：${Math.round(this.feedbackSettings.volume * 100)}%`
+    if (shake) shake.textContent = t('settings.shakeLabel', { state: this.feedbackSettings.shake ? t('toggle.on') : t('toggle.off') })
+    if (flash) flash.textContent = t('settings.flashLabel', { state: this.feedbackSettings.flash ? t('toggle.on') : t('toggle.off') })
+    if (volume) volume.textContent = t('settings.volumeLabel', { value: Math.round(this.feedbackSettings.volume * 100) })
     const summary = this.settingsPanel.querySelector<HTMLElement>('[data-g3d-settings-summary]')
-    if (summary) summary.textContent = `键盘：${formatGloamwoodInputCode(this.inputBindings.pause)} 暂停/继续 · 移动 ${gloamwoodMovementBindingLabel(this.inputBindings)} · 锁定 ${formatGloamwoodInputCode(this.inputBindings.lock)} · 普攻 ${formatGloamwoodInputCode(this.inputBindings.attack)}`
+    if (summary) summary.textContent = t('settings.summaryDyn', { pause: formatGloamwoodInputCode(this.inputBindings.pause), move: gloamwoodMovementBindingLabel(this.inputBindings), lock: formatGloamwoodInputCode(this.inputBindings.lock), attack: formatGloamwoodInputCode(this.inputBindings.attack) })
     this.renderPerformanceReadout()
   }
 
@@ -3125,14 +3129,14 @@ class Gloamwood3DHunt {
   private renderInputBindings() {
     if (!this.settingsPanel) return
     const labels: Record<GloamwoodInputAction, string> = {
-      moveUp: '向上移动', moveDown: '向下移动', moveLeft: '向左移动', moveRight: '向右移动',
-      lock: '锁定目标', attack: '普通攻击', pause: '暂停/继续',
+      moveUp: t('bind.moveUp'), moveDown: t('bind.moveDown'), moveLeft: t('bind.moveLeft'), moveRight: t('bind.moveRight'),
+      lock: t('bind.lock'), attack: t('bind.attack'), pause: t('bind.pause'),
     }
     for (const button of this.settingsPanel.querySelectorAll<HTMLButtonElement>('[data-g3d-bind]')) {
       const action = button.dataset.g3dBind as GloamwoodInputAction
       const capturing = this.rebindingAction === action
       button.dataset.capturing = String(capturing)
-      button.textContent = capturing ? `${labels[action]}：请按新按键…` : `${labels[action]}：${formatGloamwoodInputCode(this.inputBindings[action])}`
+      button.textContent = capturing ? t('bind.capturing', { action: labels[action] }) : t('bind.current', { action: labels[action], key: formatGloamwoodInputCode(this.inputBindings[action]) })
     }
   }
 
@@ -3150,15 +3154,15 @@ class Gloamwood3DHunt {
   private createTouchControls() {
     const controls = document.createElement('section')
     controls.className = 'gloamwood-3d-touch'
-    controls.setAttribute('aria-label', '触控操作')
+    controls.setAttribute('aria-label', t('a11y.touch'))
     controls.innerHTML = [
-      '<div class="g3d-joystick" data-joystick role="application" aria-label="拖动虚拟摇杆移动">',
+      `<div class="g3d-joystick" data-joystick role="application" aria-label="${t('touch.joystickAria')}">`,
       '<i data-joystick-knob aria-hidden="true"></i>',
-      '<span aria-hidden="true">移动</span>',
+      `<span aria-hidden="true">${t('touch.move')}</span>`,
       '</div>',
       '<div class="g3d-actions">',
-      '<button data-lock aria-label="锁定目标">锁定</button>',
-      '<button class="primary" data-attack aria-label="按住执行普通攻击连招">攻击<small>按住连招</small></button>',
+      `<button data-lock aria-label="${t('bind.lock')}">${t('touch.lock')}</button>`,
+      `<button class="primary" data-attack aria-label="${t('touch.attackAria')}">${t('touch.attack')}<small>${t('touch.attackHint')}</small></button>`,
       '</div>',
     ].join('')
     const joystick = controls.querySelector<HTMLElement>('[data-joystick]')
@@ -3229,31 +3233,31 @@ class Gloamwood3DHunt {
     }
     setText('[data-g3d-message]', this.combatMessage)
     setText('[data-g3d-nest-title]', this.runPhase === 'boss'
-      ? `幽影林地 · ${GLOAMWOOD_BOSS.name} · 阶段 ${this.bossState.phase}/2`
+      ? t('hud.titleBoss', { name: t('creature.boss'), phase: this.bossState.phase })
       : this.runPhase === 'guardian'
-        ? `幽影林地 · ${GLOAMWOOD_NEST_GUARDIAN.displayName} · 窝点最后防线`
+        ? t('hud.titleGuardian', { name: t('creature.guardian') })
       : this.runPhase === 'victory'
-        ? '幽影林地 · 猎杀完成'
-        : this.nestState.phase === 'cleared' ? '幽影林地 · 窝点已净化' : `幽影林地 · 腐根孵育巢${this.nestState.wave ? ` · 第 ${this.nestState.wave}/${GLOAMWOOD_NEST.waveCount} 波` : ''}`)
+        ? t('hud.titleVictory')
+        : this.nestState.phase === 'cleared' ? t('hud.titleCleared') : t('hud.titleNest', { suffix: this.nestState.wave ? t('hud.waveSuffix', { wave: this.nestState.wave, total: GLOAMWOOD_NEST.waveCount }) : '' }))
     setText('[data-g3d-player-health]', `${this.playerCombat.health} / ${this.playerCombat.maxHealth}`)
-    setText('[data-g3d-target-label]', bossTargeted ? GLOAMWOOD_BOSS.name : target ? this.preyName(target) : '尚未锁定猎物')
+    setText('[data-g3d-target-label]', bossTargeted ? t('creature.boss') : target ? this.preyName(target) : t('hud.noTargetLabel'))
     setText('[data-g3d-enemy-health]', bossTargeted ? `${this.bossState.health} / ${this.bossState.maxHealth}` : target ? `${target.health} / ${target.maxHealth}` : '--')
     setText('[data-g3d-remaining]', this.runPhase === 'boss'
-      ? `${this.bossPatternName(this.bossState.pattern)} · ${this.bossState.state === 'telegraph' ? '预警' : this.bossState.state === 'attack' ? '攻击' : '观察'}`
-      : this.nestState.phase === 'dormant' ? '未惊动' : this.nestState.phase === 'intermission' ? '增援逼近' : this.nestState.phase === 'cleared' ? `清理完成 · ${this.nestState.kills} 击杀` : `本波剩余 ${this.livePrey().length}`)
+      ? `${this.bossPatternName(this.bossState.pattern)} · ${this.bossState.state === 'telegraph' ? t('enemy.telegraph') : this.bossState.state === 'attack' ? t('enemy.strike') : t('enemy.watch')}`
+      : this.nestState.phase === 'dormant' ? t('hud.undisturbed') : this.nestState.phase === 'intermission' ? t('hud.incoming') : this.nestState.phase === 'cleared' ? t('hud.clearedKills', { kills: this.nestState.kills }) : t('hud.waveRemaining', { count: this.livePrey().length }))
     setText('[data-g3d-biomass]', `${this.nestState.biomass}`)
     setText('[data-g3d-fang]', `${this.nestState.genes.fang}`)
     setText('[data-g3d-shell]', `${this.nestState.genes.shell}`)
     setText('[data-g3d-swarm]', `${this.nestState.genes.swarm}`)
     setText('[data-g3d-state]', bossTargeted
-      ? this.bossState.pattern === 'root-slam' ? '根须震击：离开内圈 · 技能关闭'
-        : this.bossState.pattern === 'thorn-charge' ? '荆棘冲锋：横向离开锁向通道 · 技能关闭'
-          : '孢子环爆：贴近内圈或退到外圈 · 技能关闭'
-      : target ? `目标 ${this.enemyPhaseName(target)} · ${target.kind === 'shell' ? '正面高减伤，绕后攻击' : target.kind === 'swarm' ? '尾扫伤害更高' : '爪击伤害更高'} · 技能关闭` : 'Tab 循环锁定 · 三类猎物拥有不同弱点 · 技能关闭')
-    setText('[data-g3d-move-label]', `${gloamwoodMovementBindingLabel(this.inputBindings)} / 触控`)
-    setText('[data-g3d-lock-label]', `${formatGloamwoodInputCode(this.inputBindings.lock)} / 锁定`)
-    setText('[data-g3d-attack-label]', `${formatGloamwoodInputCode(this.inputBindings.attack)} / 攻击`)
-    setText('[data-g3d-settings-toggle]', `体验设置 · ${formatGloamwoodInputCode(this.inputBindings.pause)}`)
+      ? this.bossState.pattern === 'root-slam' ? t('boss.hint.rootSlam')
+        : this.bossState.pattern === 'thorn-charge' ? t('boss.hint.thornCharge')
+          : t('boss.hint.sporeRing')
+      : target ? t('hud.targetFull', { phase: this.enemyPhaseName(target), weakness: target.kind === 'shell' ? t('weak.shell') : target.kind === 'swarm' ? t('weak.swarm') : t('weak.fang') }) : t('hud.noTargetHint'))
+    setText('[data-g3d-move-label]', t('hud.moveKeysDyn', { keys: gloamwoodMovementBindingLabel(this.inputBindings) }))
+    setText('[data-g3d-lock-label]', t('hud.lockKeysDyn', { key: formatGloamwoodInputCode(this.inputBindings.lock) }))
+    setText('[data-g3d-attack-label]', t('hud.attackKeysDyn', { key: formatGloamwoodInputCode(this.inputBindings.attack) }))
+    setText('[data-g3d-settings-toggle]', t('hud.settingsKey', { key: formatGloamwoodInputCode(this.inputBindings.pause) }))
     this.renderPerformanceReadout()
     const playerBar = this.hud.querySelector<HTMLElement>('[data-g3d-player-bar]')
     const enemyBar = this.hud.querySelector<HTMLElement>('[data-g3d-enemy-bar]')
@@ -3308,13 +3312,14 @@ class Gloamwood3DHunt {
 
   private enemyPhaseName(prey: GloamwoodNestPrey) {
     const names: Record<string, string> = {
-      chase: '追击', telegraph: '预警', strike: '攻击', recover: '恢复', stunned: '硬直', dead: '死亡',
+      chase: t('enemy.chase'), telegraph: t('enemy.telegraph'), strike: t('enemy.strike'), recover: t('enemy.recover'), stunned: t('enemy.stunned'), dead: t('enemy.dead'),
     }
     return names[prey.phase] ?? prey.phase
   }
 
   private preyName(prey: GloamwoodNestPrey) {
-    return prey.id === GLOAMWOOD_NEST_GUARDIAN.id ? GLOAMWOOD_NEST_GUARDIAN.displayName : GLOAMWOOD_PREY[prey.kind].displayName
+    if (prey.id === GLOAMWOOD_NEST_GUARDIAN.id) return t('creature.guardian')
+    return prey.kind === 'fang' ? t('creature.fang') : prey.kind === 'shell' ? t('creature.shell') : t('creature.swarm')
   }
 
   private getDebugState(): DebugState {

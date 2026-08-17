@@ -51,11 +51,13 @@ export function rebindGloamwoodInput(
 export function formatGloamwoodInputCode(code: string) {
   if (code.startsWith('Key')) return code.slice(3)
   if (code.startsWith('Digit')) return code.slice(5)
-  if (code.startsWith('Arrow')) return `方向${({ Up: '上', Down: '下', Left: '左', Right: '右' } as Record<string, string>)[code.slice(5)] ?? code.slice(5)}`
+  // Arrow keys read as an English glyph in both locales; the label is a key cap,
+  // not prose, so it stays language-neutral rather than being translated.
+  if (code.startsWith('Arrow')) return ({ Up: '↑', Down: '↓', Left: '←', Right: '→' } as Record<string, string>)[code.slice(5)] ?? code.slice(5)
   if (code === 'Space') return 'Space'
   if (code === 'Escape') return 'Esc'
   if (code === 'Tab') return 'Tab'
-  return code.replace('Left', '左').replace('Right', '右')
+  return code.replace('Left', ' L').replace('Right', ' R')
 }
 
 export function gloamwoodMovementBindingLabel(bindings: GloamwoodInputBindings) {

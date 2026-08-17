@@ -1,5 +1,8 @@
 :root {
-  font-family: "Avenir Next", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif;
+  /* Latin first for the primary market; the CJK faces only take over for the
+     characters the Latin stack cannot render, so neither locale falls back to a
+     default serif. */
+  font-family: "Avenir Next", "Trebuchet MS", ui-sans-serif, system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   color: #d9efe5;
   background: #030c0a;
   font-synthesis: none;
@@ -911,6 +914,11 @@ body.is-gloamwood-3d #game-container { position: relative; width: 100%; height: 
    wrapper at `auto`, which is how a tap landing beside the round attack button
    (inside its square box but outside the circle) still reached iOS zoom. */
 html.is-gloamwood-3d,
+html.is-gloamwood-3d {
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
 body.is-gloamwood-3d {
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
@@ -1286,7 +1294,17 @@ body.is-gloamwood-3d * {
     background: linear-gradient(135deg, rgba(5, 16, 11, .86), rgba(14, 26, 18, .67));
   }
   .gloamwood-3d-hud header span { display: none; }
-  .gloamwood-3d-hud header strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+  /* Combat messages carry the reason a hit missed or what a wave brings, so they
+     must stay readable. English runs roughly 1.7x the length of the Chinese the
+     single line was tuned for, which truncated it; allow a second line instead. */
+  .gloamwood-3d-hud header strong {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.25;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
   .g3d-combat-bars { grid-template-columns: 1fr; margin-top: 4px; gap: 2px; }
   .g3d-combat-bars label { gap: 2px 6px; font-size: 7px; }
   .g3d-combat-bars b { font-size: 7px; }

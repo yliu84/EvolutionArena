@@ -38,7 +38,7 @@ describe('Gloamwood weighted evolution gate', () => {
     expect(candidates.some((candidate) => candidate.modifiers.damageMultiplier > 1)).toBe(true)
     expect(candidates.some((candidate) => candidate.modifiers.maximumHealthBonus > 0)).toBe(true)
     expect(candidates.some((candidate) => candidate.modifiers.killHeal > 0)).toBe(true)
-    expect(candidates.every((candidate) => candidate.statLine.length > 0 && candidate.reason.includes('基因'))).toBe(true)
+    expect(candidates.every((candidate) => candidate.statLine.length > 0 && candidate.reason.includes('Genes'))).toBe(true)
   })
 
   it('allows one resistance refresh and locks the accepted candidate', () => {

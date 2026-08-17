@@ -1,4 +1,5 @@
 import { createSeededRandom, hashSeed } from './evolution'
+import { t } from './i18n'
 import type { GloamwoodGeneBank, GloamwoodPreyKind } from './gloamwood-3d-ecology'
 
 export type GloamwoodEvolutionFamily = GloamwoodPreyKind
@@ -34,47 +35,40 @@ export interface GloamwoodEvolutionState {
   selected: GloamwoodEvolutionCandidate | null
 }
 
-const FAMILY_NAMES: Record<GloamwoodEvolutionFamily, string> = {
-  fang: '裂牙',
-  shell: '岩盾',
-  swarm: '群生',
-}
+const FAMILY_KEYS = {
+  fang: 'family.fang',
+  shell: 'family.shell',
+  swarm: 'family.swarm',
+} as const
 
-const CANDIDATE_POOL: readonly Omit<GloamwoodEvolutionCandidate, 'reason' | 'probability'>[] = [
+/**
+ * Copy lives in the translation table and is resolved when candidates are
+ * generated, not here: this module is imported before the launcher picks the
+ * locale, so a literal captured at import time would freeze the wrong language.
+ */
+const CANDIDATE_POOL: readonly Pick<GloamwoodEvolutionCandidate, 'id' | 'family' | 'modifiers'>[] = [
   {
-    id: 'fang-serrated-pounce', family: 'fang', familyName: FAMILY_NAMES.fang, name: '锯齿扑爪',
-    description: '前肢长出锯齿骨刃，跃扑和整套普通攻击更具处决力。',
-    statLine: '普通攻击 +24% · 移速 +4%',
+    id: 'fang-serrated-pounce', family: 'fang',
     modifiers: { damageMultiplier: 1.24, moveSpeedMultiplier: 1.04, maximumHealthBonus: 0, damageReduction: 0, biomassMultiplier: 1, killHeal: 0 },
   },
   {
-    id: 'fang-execution-jaw', family: 'fang', familyName: FAMILY_NAMES.fang, name: '处决颚肌',
-    description: '强化颚部与肩带，以较低机动换取最重的近战爆发。',
-    statLine: '普通攻击 +32% · 移速 −6%',
+    id: 'fang-execution-jaw', family: 'fang',
     modifiers: { damageMultiplier: 1.32, moveSpeedMultiplier: 0.94, maximumHealthBonus: 0, damageReduction: 0, biomassMultiplier: 1, killHeal: 0 },
   },
   {
-    id: 'shell-reactive-plates', family: 'shell', familyName: FAMILY_NAMES.shell, name: '反应甲片',
-    description: '肩背甲片在受击时分散冲力，正面推进更稳定。',
-    statLine: '生命 +30 · 减伤 12% · 移速 −8%',
+    id: 'shell-reactive-plates', family: 'shell',
     modifiers: { damageMultiplier: 1, moveSpeedMultiplier: 0.92, maximumHealthBonus: 30, damageReduction: 0.12, biomassMultiplier: 1, killHeal: 0 },
   },
   {
-    id: 'shell-bastion-core', family: 'shell', familyName: FAMILY_NAMES.shell, name: '堡垒核心',
-    description: '骨盆与胸腔进一步增厚，牺牲追击速度换取最大容错。',
-    statLine: '生命 +45 · 减伤 8% · 移速 −12%',
+    id: 'shell-bastion-core', family: 'shell',
     modifiers: { damageMultiplier: 1, moveSpeedMultiplier: 0.88, maximumHealthBonus: 45, damageReduction: 0.08, biomassMultiplier: 1, killHeal: 0 },
   },
   {
-    id: 'swarm-symbiotic-brood', family: 'swarm', familyName: FAMILY_NAMES.swarm, name: '共生幼巢',
-    description: '伴生幼体回收倒下猎物，在连续战斗中维持宿主。',
-    statLine: '击杀恢复 7 · 生物质 +18% · 伤害 −6%',
+    id: 'swarm-symbiotic-brood', family: 'swarm',
     modifiers: { damageMultiplier: 0.94, moveSpeedMultiplier: 1, maximumHealthBonus: 0, damageReduction: 0, biomassMultiplier: 1.18, killHeal: 7 },
   },
   {
-    id: 'swarm-hunting-cloud', family: 'swarm', familyName: FAMILY_NAMES.swarm, name: '猎行菌群',
-    description: '轻化身体并让菌群协助分解，形成高机动成长路线。',
-    statLine: '移速 +14% · 生物质 +12% · 生命 −10',
+    id: 'swarm-hunting-cloud', family: 'swarm',
     modifiers: { damageMultiplier: 1, moveSpeedMultiplier: 1.14, maximumHealthBonus: -10, damageReduction: 0, biomassMultiplier: 1.12, killHeal: 3 },
   },
 ] as const
@@ -173,9 +167,18 @@ export function generateGloamwoodEvolutionCandidates(
     const geneCount = genes[candidate.family]
     const recentCount = recent[candidate.family]
     const probability = Math.round(familyWeights[candidate.family] / familyTotal * 100)
+    const family = t(FAMILY_KEYS[candidate.family])
     const reason = recentCount > 0
-      ? `最近吞噬 ${recentCount} 只${candidate.familyName}猎物，累计 ${geneCount} 份基因，提高了这条路线的出现权重。`
-      : `累计 ${geneCount} 份${candidate.familyName}基因；本次仍可能发生低权重异变。`
-    return { ...candidate, probability, reason }
+      ? t('evo.reason.recent', { recent: recentCount, family, genes: geneCount })
+      : t('evo.reason.none', { genes: geneCount, family })
+    return {
+      ...candidate,
+      familyName: family,
+      name: t(`evo.${candidate.id}.name` as never),
+      description: t(`evo.${candidate.id}.desc` as never),
+      statLine: t(`evo.${candidate.id}.stat` as never),
+      probability,
+      reason,
+    }
   })
 }

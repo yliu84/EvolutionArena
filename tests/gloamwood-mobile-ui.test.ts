@@ -24,7 +24,7 @@ describe('Gloamwood mobile HUD', () => {
     expect(source).toContain('data-g3d-landscape')
     expect(source).toContain('requestFullscreen')
     expect(source).toContain("orientation.lock('landscape')")
-    expect(source).toContain('浏览器不支持自动旋转')
+    expect(source).toContain('orient.unsupported')
     expect(css).toMatch(/orientation: portrait/)
   })
 
@@ -59,9 +59,9 @@ describe('Gloamwood mobile HUD', () => {
     expect(html).toContain('mobile-web-app-capable')
     expect(source).toContain('gloamwoodStandaloneDisplay')
     expect(source).toContain('navigator.standalone')
-    expect(source).toContain('添加到主屏幕')
+    expect(source).toContain('fs.tipBody')
     // The button must degrade to guidance, not vanish, when the API is missing.
-    expect(source).toContain("this.fullscreenToggle.textContent = '全屏方法'")
+    expect(source).toContain("this.fullscreenToggle.textContent = t('fs.howTo')")
     expect(source).toMatch(/if \(this\.fullscreenToggle && gloamwoodStandaloneDisplay\(\)\) this\.fullscreenToggle\.hidden = true/)
   })
 
@@ -79,7 +79,7 @@ describe('Gloamwood mobile HUD', () => {
   it('uses a continuous left joystick and a holdable one-button combo', () => {
     expect(source).toContain('data-joystick')
     expect(source).toContain('gloamwoodJoystickVector')
-    expect(source).toContain('按住执行普通攻击连招')
+    expect(source).toContain('touch.attackAria')
     expect(source).toContain('this.primaryHeld = true')
     expect(css).toMatch(/\.g3d-joystick[^}]*118px/s)
   })

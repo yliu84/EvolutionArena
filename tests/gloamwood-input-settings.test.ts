@@ -26,7 +26,8 @@ describe('Gloamwood input bindings', () => {
 
   it('formats keyboard codes for compact HUD and onboarding copy', () => {
     expect(formatGloamwoodInputCode('KeyW')).toBe('W')
-    expect(formatGloamwoodInputCode('ArrowLeft')).toBe('方向左')
+    // Key caps stay language-neutral glyphs rather than translated prose.
+    expect(formatGloamwoodInputCode('ArrowLeft')).toBe('←')
     expect(gloamwoodMovementBindingLabel(DEFAULT_GLOAMWOOD_INPUT_BINDINGS)).toBe('W/A/S/D')
   })
 })
