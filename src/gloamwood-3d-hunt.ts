@@ -1524,8 +1524,13 @@ class Gloamwood3DHunt {
     }
     if (event.code === this.inputBindings.attack) {
       event.preventDefault()
-      this.primaryHeld = true
-      if (!event.repeat) this.requestPrimaryAttack()
+      // Only the initial press arms the chain. Browsers repeat keydown while a
+      // key is held, and re-arming on every repeat put primaryHeld straight back
+      // after the order released it, so holding the key still cleared a pack.
+      if (!event.repeat) {
+        this.primaryHeld = true
+        this.requestPrimaryAttack()
+      }
     }
   }
 
@@ -1617,10 +1622,7 @@ class Gloamwood3DHunt {
     if (this.movement.lengthSq() > 0) {
       // Steering is the player taking the angle back. Drop the automation but
       // keep the lock, or flanking would cost a re-select every time.
-      if (this.autoEngageTargetId) {
-        this.cancelAutoEngage()
-        this.primaryHeld = false
-      }
+      if (this.autoEngageTargetId) this.cancelAutoEngage()
       this.movementInputStrength = Math.min(1, this.movement.length())
       this.movement.normalize()
       this.target.copy(this.playerRoot.position).addScaledVector(this.movement, 1.8)
@@ -1674,6 +1676,10 @@ class Gloamwood3DHunt {
 
   private cancelAutoEngage() {
     this.autoEngageTargetId = null
+    // The order drives the chain by holding primaryHeld down, so releasing the
+    // order has to release that too. Clearing only the bookkeeping left the
+    // chain running and one press still cleared a whole pack.
+    this.primaryHeld = false
   }
 
   /** Identity of whatever is locked right now, so a standing order can tell

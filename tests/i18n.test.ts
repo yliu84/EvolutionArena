@@ -119,7 +119,7 @@ describe('Auto-engage and target bar', () => {
   })
 
   it('lets steering drop the automation while keeping the lock', () => {
-    expect(source).toMatch(/if \(this\.autoEngageTargetId\) \{\s*\n\s*this\.cancelAutoEngage\(\)/)
+    expect(source).toContain('if (this.autoEngageTargetId) this.cancelAutoEngage()')
     // Cancelling must not clear lockedPreyId, or flanking costs a re-select.
     expect(source).not.toMatch(/cancelAutoEngage\(\)\s*\n\s*this\.lockedPreyId = null/)
   })
@@ -143,5 +143,21 @@ describe('Auto-engage and target bar', () => {
     // The HUD enemy row is gone; only the locked target carries a bar.
     expect(source).not.toContain('data-g3d-enemy-bar')
     expect(source).not.toContain('data-g3d-enemy-health')
+  })
+})
+
+describe('One press, one enemy', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+
+  it('releases the chain flag when the order ends', () => {
+    // primaryHeld is what continues the chain, so clearing only the bookkeeping
+    // left it running: the order ended but the character kept swinging.
+    expect(source).toMatch(/private cancelAutoEngage\(\) \{[\s\S]*?this\.primaryHeld = false/)
+  })
+
+  it('does not re-arm the chain on keyboard auto-repeat', () => {
+    // Holding the key fires keydown repeatedly; re-arming there put the flag
+    // straight back after a cancel and defeated the rule entirely.
+    expect(source).toMatch(/if \(!event\.repeat\) \{\s*\n\s*this\.primaryHeld = true/)
   })
 })
