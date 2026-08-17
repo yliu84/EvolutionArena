@@ -1,6 +1,18 @@
 import Phaser from 'phaser'
 import { RIFT_WARDEN, bossCooldown, bossPatternForTurn, bossPhase, type BossPattern, type BossState } from './boss'
 import { COMBAT_STYLES, attackDamage, type CombatStyle } from './combat'
+import {
+  canFormalHuntBasicAttackContact,
+  createFormalHuntBasicAttackState,
+  formalHuntAttackAimErrorDegrees,
+  formalHuntTargetSurfaceDistance,
+  requestFormalHuntBasicAttack,
+  turnFormalHuntAttackToward,
+  updateFormalHuntBasicAttack,
+  type FormalHuntBasicAttackAction,
+  type FormalHuntBasicAttackState,
+} from './formal-hunt-basic-attack'
+import { updateFormalHuntHud } from './formal-hunt-hud'
 import { resolveImpactFeedback, type ImpactFeedbackProfile } from './combat-impact-feedback'
 import {
   enemyReadabilityState,
@@ -67,9 +79,14 @@ import {
   type GloamwoodNestPhase,
 } from './gloamwood-nests'
 import { MONSTERS, type MonsterType } from './monsters'
-import { GENE_COLORS, createSeededRandom, evolutionRequirementForStage, evolutionScaleForStage, hashSeed } from './evolution'
+import { GENE_COLORS, GENE_FAMILIES, GENE_LABELS, createSeededRandom, evolutionRequirementForStage, evolutionScaleForStage, hashSeed, type GeneFamily } from './evolution'
 import { playerAnimationPose } from './player-animation'
 import { evolutionVisualFamily, playerEvolutionAppearance } from './player-evolution-visual'
+import { combatStyleForSpecies, quality3DAssetStageForSpecies, resolveEvolutionSpecies, speciesDebugContract } from './evolution-species'
+import { CORAL_GECKO_PRESENTATION } from './quality-3d-character-presentation'
+import type { MotherMonsterHuntOverlay } from './mother-monster-hunt-overlay'
+import { SCARLET_GECKO_PRESENTATION } from './scarlet-gecko-character-presentation'
+import { SCARLET_HUNTER_PRESENTATION } from './scarlet-hunter-character-presentation'
 import {
   bossSoulOrbDrop,
   eliteOrbBuffModifiers,
@@ -145,6 +162,20 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
   private playerAttackVisualUntil = 0
   private playerAttackVisualStyle: CombatStyle = 'ranged'
   private playerHitVisualUntil = 0
+  private motherMonsterEnabled = false
+  private motherMonsterOverlay?: MotherMonsterHuntOverlay
+  private motherMonsterAttack: FormalHuntBasicAttackState = createFormalHuntBasicAttackState()
+  private motherMonsterAimErrorDegrees = 0
+  private motherMonsterLastContact?: {
+    action: FormalHuntBasicAttackAction
+    targetId: string | null
+    hit: boolean
+    reason: 'hit' | 'no-lock' | 'unavailable' | 'out-of-range' | 'off-angle'
+    distance: number
+    aimErrorDegrees: number
+    at: number
+  }
+  private frameDeltaSeconds = 1 / 60
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
   private keys!: Record<'W' | 'A' | 'S' | 'D' | 'SPACE' | 'TAB' | 'ONE' | 'TWO' | 'THREE' | 'T' | 'R', Phaser.Input.Keyboard.Key>
   private moveTarget: Phaser.Math.Vector2 | null = null
@@ -293,9 +324,12 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     this.seed = explorationSeedFromSearch()
     this.runStartedAt = this.time.now
     this.liveRunEnabled = new URLSearchParams(window.location.search).get('live') === '1'
+    this.motherMonsterEnabled = this.liveRunEnabled
+      && new URLSearchParams(window.location.search).get('mother') === '1'
     const requestedStarter = new URLSearchParams(window.location.search).get('starter')
     this.starter = STARTER_VARIANTS[isStarterVariantId(requestedStarter) ? requestedStarter : 'spine-stalker']
     this.combatStyle = this.starter.startingStyle
+    if (this.motherMonsterEnabled) this.combatStyle = 'melee'
     this.liveEvolution = createV4LiveEvolutionState({
       ...V4_BASE_MUTATION_STATS,
       playerSpeed: this.starter.speed,
@@ -308,13 +342,21 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     })
     const search = new URLSearchParams(window.location.search)
     const acceptanceRoute = search.get('evolutionRoute')
+    const acceptanceSecondary = search.get('evolutionSecondary')
     const acceptanceStage = Number(search.get('evolutionStage'))
+    const route = GENE_FAMILIES.includes(acceptanceRoute as GeneFamily) ? acceptanceRoute as GeneFamily : null
+    const secondary = GENE_FAMILIES.includes(acceptanceSecondary as GeneFamily) ? acceptanceSecondary as GeneFamily : undefined
     if (this.liveRunEnabled && search.get('debug') === '1'
-      && (acceptanceRoute === 'fang' || acceptanceRoute === 'carapace' || acceptanceRoute === 'rift')
-      && acceptanceStage === 6) {
-      this.liveEvolution = createV4RouteAcceptanceState(acceptanceRoute, this.liveEvolution.stats)
+      && route
+      && acceptanceStage >= 1 && acceptanceStage <= 6) {
+      this.liveEvolution = createV4RouteAcceptanceState(route, this.liveEvolution.stats, acceptanceStage, secondary)
+      const acceptanceSpecies = this.resolvedEvolutionSpecies()
+      if (this.motherMonsterEnabled && quality3DAssetStageForSpecies(acceptanceSpecies, acceptanceStage) === null) {
+        this.motherMonsterEnabled = false
+      }
+      this.combatStyle = this.motherMonsterEnabled ? 'melee' : combatStyleForSpecies(acceptanceSpecies.definition)
     }
-    this.health = this.starter.maxHealth
+    this.health = this.liveEvolution.stats.health
     this.liveRandom = createSeededRandom(hashSeed(`${this.seed}:v4-live`))
     const { width, height } = GLOAMWOOD_EXPLORATION_LAYOUT.world
     this.physics.world.setBounds(0, 0, width, height)
@@ -338,9 +380,10 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     this.boss = this.physics.add.image(bossLair.x, bossLair.y, 'boss-rift-warden')
       .setOrigin(0.5, 0.72)
       .setCircle(54)
-      .setScale(1.4)
+      .setScale(1.15)
       .setDepth(34)
       .setData('targetId', 'rift-warden')
+      .setData('hurtRadius', 68)
     this.boss.disableBody(true, true)
     this.bossWarning = this.add.graphics().setDepth(43)
     if (this.liveRunEnabled) this.createLiveFog()
@@ -366,6 +409,8 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.physics.world.resume()
       void this.impactAudioContext?.close()
+      this.motherMonsterOverlay?.dispose()
+      this.motherMonsterOverlay = undefined
     })
 
     this.cursors = this.input.keyboard!.createCursorKeys()
@@ -383,6 +428,9 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
       R: Phaser.Input.Keyboard.KeyCodes.R,
     }) as typeof this.keys
     this.input.keyboard!.addCapture('TAB')
+    this.keys.SPACE.on('down', () => {
+      if (this.motherMonsterEnabled) this.requestMotherMonsterAttack(this.time.now)
+    })
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (this.overview || !pointer.leftButtonDown()) return
       this.ensureImpactAudio()
@@ -390,7 +438,7 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
       if (target) {
         this.selectedTarget = target
         this.moveTarget = null
-        this.attackSelectedTarget()
+        if (!this.motherMonsterEnabled) this.attackSelectedTarget()
         return
       }
       this.selectedTarget = undefined
@@ -402,13 +450,36 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     this.setOverview(false)
     this.updateNestRanges()
     this.nestRangeGraphics.setVisible(false)
+    if (this.motherMonsterEnabled) {
+      const container = document.querySelector<HTMLElement>('#game-container')
+      if (container) {
+        void import('./mother-monster-hunt-overlay').then(async ({ MotherMonsterHuntOverlay }) => {
+          if (!this.scene.isActive() || !this.motherMonsterEnabled) return
+          const overlayStage = this.currentQuality3DAssetStage()
+          if (overlayStage === null) {
+            this.lastCombatEvent = '当前随机路线使用程序化模块形态 · 普攻规则保持不变'
+            return
+          }
+          const overlay = new MotherMonsterHuntOverlay(container, this.game.canvas, overlayStage)
+          this.motherMonsterOverlay = overlay
+          try {
+            await overlay.load()
+            this.lastCombatEvent = '母怪物GLB已接入 · 点击或Tab锁定后按Space普攻'
+          } catch (error) {
+            console.error('Formal hunt mother-monster GLB failed to load', error)
+            this.lastCombatEvent = '母怪物GLB加载失败 · 已保留程序化角色回退'
+          }
+        })
+      }
+    }
   }
 
-  update(time: number) {
+  update(time: number, delta = 1000 / 60) {
     if (this.runOver) return
+    this.frameDeltaSeconds = Math.min(0.05, Math.max(0, delta / 1000))
     const x = Number(this.cursors.right.isDown || this.keys.D.isDown) - Number(this.cursors.left.isDown || this.keys.A.isDown)
     const y = Number(this.cursors.down.isDown || this.keys.S.isDown) - Number(this.cursors.up.isDown || this.keys.W.isDown)
-    if (this.playerState !== 'active') {
+    if (this.playerState !== 'active' || (this.motherMonsterEnabled && this.motherMonsterAttack.action)) {
       this.player.setVelocity(0)
       this.moveTarget = null
     } else if (time < this.playerKnockbackUntil) {
@@ -433,16 +504,16 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
       if (pointInsideNest(this.player.x, this.player.y, nest)) this.visitedNestIds.add(nest.id)
     }
     this.updateNestPresentationVisibility()
-    if (Phaser.Input.Keyboard.JustDown(this.keys.ONE)) this.combatStyle = 'melee'
-    if (Phaser.Input.Keyboard.JustDown(this.keys.TWO)) this.combatStyle = 'ranged'
-    if (Phaser.Input.Keyboard.JustDown(this.keys.THREE)) this.combatStyle = 'magic'
+    if (!this.motherMonsterEnabled && Phaser.Input.Keyboard.JustDown(this.keys.ONE)) this.combatStyle = 'melee'
+    if (!this.motherMonsterEnabled && Phaser.Input.Keyboard.JustDown(this.keys.TWO)) this.combatStyle = 'ranged'
+    if (!this.motherMonsterEnabled && Phaser.Input.Keyboard.JustDown(this.keys.THREE)) this.combatStyle = 'magic'
     if (Phaser.Input.Keyboard.JustDown(this.keys.TAB)) this.cycleTarget()
-    if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) this.attackSelectedTarget()
+    if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) {
+      if (!this.motherMonsterEnabled) this.attackSelectedTarget()
+    }
     if (!this.liveRunEnabled && Phaser.Input.Keyboard.JustDown(this.keys.T)) this.teleportToNextNest()
     if (this.liveRunEnabled && Phaser.Input.Keyboard.JustDown(this.keys.R)) {
-      const resisted = resistV4Evolution(this.liveEvolution)
-      if (resisted !== this.liveEvolution) this.lastCombatEvent = resisted.lastMessage
-      this.liveEvolution = resisted
+      this.resistFormalEvolution()
     }
     if (this.liveRunEnabled) this.updateLiveEvolution(time)
     if (this.liveRunEnabled && time - this.lastFogRefreshAt >= V4_FOG_REFRESH_MS) {
@@ -458,6 +529,15 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
       if (this.bossActive && !this.bossDefeated) this.updateV4Boss(time)
     }
     this.updateBullets(time)
+    if (this.motherMonsterEnabled) this.updateMotherMonsterAttack(time, this.frameDeltaSeconds)
+    if (this.motherMonsterOverlay) {
+      const desiredStage = this.currentQuality3DAssetStage()
+      if (desiredStage !== null && this.motherMonsterOverlay.getState().stage !== desiredStage) {
+        void this.motherMonsterOverlay.setStage(desiredStage).catch((error) => {
+          console.error('Formal hunt evolution GLB failed to load', error)
+        })
+      }
+    }
     this.renderV4Player(time)
     this.renderCombatState(time)
   }
@@ -467,6 +547,21 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
       ? this.liveEvolution.stats.playerSpeed
       : GLOAMWOOD_EXPLORATION_LAYOUT.playerSpeed
     return Math.round(base * this.arenaSlowMultiplier * eliteOrbBuffModifiers(this.liveEvolution.eliteOrbBuff, this.time.now).speedMultiplier)
+  }
+
+  private resolvedEvolutionSpecies() {
+    return resolveEvolutionSpecies(
+      this.liveEvolution.evolutionStage,
+      this.liveEvolution.genes,
+      this.liveEvolution.recentHunts,
+      this.liveEvolution.mutationRanks,
+      this.liveEvolution.evolutionChain,
+      this.liveEvolution.apexSpeciesId,
+    )
+  }
+
+  private currentQuality3DAssetStage() {
+    return quality3DAssetStageForSpecies(this.resolvedEvolutionSpecies(), this.liveEvolution.evolutionStage)
   }
 
   private currentMaxHealth() {
@@ -482,7 +577,15 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     this.evolution = this.liveEvolution.evolution
     if (!resolution.evolved) return
     this.health = Math.min(this.currentMaxHealth(), this.liveEvolution.stats.health)
-    this.lastCombatEvent = `${resolution.evolved.name} · ${resolution.evolved.reason}`
+    const resolvedSpecies = this.resolvedEvolutionSpecies()
+    const assetStage = this.currentQuality3DAssetStage()
+    if (this.motherMonsterEnabled && assetStage === null) {
+      this.motherMonsterEnabled = false
+      this.motherMonsterOverlay?.dispose()
+      this.motherMonsterOverlay = undefined
+    }
+    this.combatStyle = this.motherMonsterEnabled ? 'melee' : combatStyleForSpecies(resolvedSpecies.definition)
+    this.lastCombatEvent = `${resolution.evolved.name} → ${resolvedSpecies.formName} · ${resolvedSpecies.definition.passive}`
     this.invulnerableUntil = Math.max(this.invulnerableUntil, time + 900)
     this.cameras.main.flash(160, 121, 242, 161, false)
     this.tweens.add({
@@ -532,6 +635,10 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
       fontFamily: 'system-ui, sans-serif', fontSize: '14px', fontStyle: 'bold', color: '#ffe2cb',
       stroke: '#16060c', strokeThickness: 5,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(122).setVisible(false)
+    if (this.liveRunEnabled) {
+      this.bossHud.setVisible(false)
+      this.bossHudText.setVisible(false)
+    }
   }
 
   private clearedNestCount() {
@@ -572,7 +679,7 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     this.moveTarget = null
     this.selectedTarget = this.boss
     this.boss.enableBody(true, lair.x, lair.y, true, true)
-      .setScale(1.4)
+      .setScale(1.15)
       .setAlpha(0)
       .setAngle(-28)
       .clearTint()
@@ -592,7 +699,7 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
       this.bossPhaseValue = nextPhase
       this.bossState = 'recover'
       this.bossStateUntil = time + 900
-      this.boss.setVelocity(0).setTintFill(0xff7a4d).setScale(1.58)
+      this.boss.setVelocity(0).setTintFill(0xff7a4d).setScale(1.28)
       this.bossWarning.clear()
       this.cameras.main.flash(220, 255, 91, 55, false)
       this.cameras.main.shake(260, 0.01)
@@ -606,7 +713,7 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     } else if (this.bossState === 'attack' && time >= this.bossStateUntil) {
       this.bossState = 'recover'
       this.bossStateUntil = time + RIFT_WARDEN.patterns[this.bossPattern].recoveryMs + bossCooldown(this.bossPhaseValue)
-      this.boss.setVelocity(0).clearTint().setScale(1.4)
+      this.boss.setVelocity(0).clearTint().setScale(1.15)
       this.bossWarning.clear()
     }
     this.renderV4BossHud()
@@ -681,6 +788,7 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
   }
 
   private renderV4BossHud() {
+    if (this.liveRunEnabled) return
     if (!this.bossActive || this.bossDefeated) {
       this.bossHud?.setVisible(false)
       this.bossHudText?.setVisible(false)
@@ -700,6 +808,23 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     if (!this.player?.active) return
     const velocity = this.player.body?.velocity
     if (velocity && velocity.lengthSq() > 80) this.player.setRotation(Math.atan2(velocity.y, velocity.x))
+    if (this.motherMonsterEnabled && this.motherMonsterOverlay && this.currentQuality3DAssetStage() !== null) {
+      const camera = this.cameras.main
+      const overlayAction = this.playerState === 'downed'
+        ? 'Death'
+        : this.motherMonsterAttack.action
+          ?? (time < this.playerHitVisualUntil ? 'Hit' : null)
+      this.motherMonsterOverlay.update({
+        screenX: (this.player.x - camera.worldView.x) * camera.zoom,
+        screenY: (this.player.y - camera.worldView.y) * camera.zoom,
+        facingRadians: this.player.rotation,
+        moving: Boolean(velocity && velocity.lengthSq() > 80) && !this.motherMonsterAttack.action,
+        visible: !this.overview && this.player.visible,
+        action: overlayAction,
+        deltaSeconds: this.frameDeltaSeconds,
+      })
+      if (this.motherMonsterOverlay.getState().ready) return
+    }
     const attackStyle = time < this.playerAttackVisualUntil ? this.playerAttackVisualStyle : null
     const pose = playerAnimationPose({
       now: time,
@@ -713,8 +838,9 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
       attackRecoverRemainingMs: Math.max(0, this.playerAttackVisualUntil - time),
       consumeRemainingMs: Math.max(0, this.lastConsumeAt + 460 - time),
     })
-    const route = evolutionVisualFamily(this.liveEvolution.evolutionChain, this.liveEvolution.genes, this.liveEvolution.recentHunts)
-    const appearance = playerEvolutionAppearance(this.liveEvolution.evolutionStage, route, this.liveEvolution.mutationRanks)
+    const species = this.resolvedEvolutionSpecies()
+    const route = species.primaryFamily ?? evolutionVisualFamily(this.liveEvolution.evolutionChain, this.liveEvolution.genes, this.liveEvolution.recentHunts)
+    const appearance = playerEvolutionAppearance(this.liveEvolution.evolutionStage, route, this.liveEvolution.mutationRanks, species.secondaryFamily)
     const scale = evolutionScaleForStage(this.liveEvolution.evolutionStage) * 1.28
     const angle = this.player.rotation
     const x = this.player.x + Math.cos(angle) * pose.forwardOffset * scale
@@ -732,7 +858,7 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     graphics.setAlpha(pose.alpha)
     graphics.fillStyle(0x010302, 0.5).fillEllipse(this.player.x + 4, this.player.y + 9, bodyLength * 1.5 * scale, bodyWidth * 0.62 * scale)
 
-    if (route === 'wing') {
+    if (appearance.wingPairCount > 0) {
       for (let pair = 0; pair < appearance.wingPairCount; pair += 1) {
         for (const side of [-1, 1]) {
           const root = point(4 - pair * 10, side * bodyWidth * 0.28)
@@ -745,9 +871,9 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     }
 
     const tailBase = point(-bodyLength * 0.38, 0)
-    const tailTip = point(-bodyLength * 0.52 - appearance.tailLength, route === 'venom' ? Math.sin(time / 180) * 3 : 0)
+    const tailTip = point(-bodyLength * 0.52 - appearance.tailLength, appearance.venomNeedleLength > 0 ? Math.sin(time / 180) * 3 : 0)
     graphics.lineStyle(Math.max(5, appearance.limbThickness * 1.25) * scale, darkColor, 1).lineBetween(tailBase.x, tailBase.y, tailTip.x, tailTip.y)
-    if (route === 'venom') {
+    if (appearance.venomNeedleLength > 0) {
       const needleTip = point(-bodyLength * 0.58 - appearance.tailLength - appearance.venomNeedleLength, 0)
       graphics.lineStyle(4 * scale, 0xe8ffb8, 0.98).lineBetween(tailTip.x, tailTip.y, needleTip.x, needleTip.y)
       graphics.fillStyle(GENE_COLORS.venom, 0.96).fillCircle(tailTip.x, tailTip.y, appearance.venomGlandRadius * scale)
@@ -781,7 +907,7 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     graphics.fillStyle(bodyColor, 1).fillCircle(abdomen.x, abdomen.y, bodyWidth * 0.46 * scale)
     graphics.fillStyle(bodyColor, 1).fillCircle(thorax.x, thorax.y, bodyWidth * 0.37 * scale)
 
-    if (route === 'carapace') {
+    if (appearance.armorPlateCount > 0) {
       for (let index = 0; index < appearance.armorPlateCount; index += 1) {
         const progress = (index + 1) / (appearance.armorPlateCount + 1)
         const center = point(-bodyLength * 0.36 + bodyLength * 0.7 * progress, 0)
@@ -807,14 +933,15 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     graphics.fillStyle(0xfff0ae, 1).fillCircle(eye.x, eye.y, 2.8 * scale)
     graphics.fillStyle(0x07100b, 1).fillCircle(eye.x + Math.cos(angle) * scale, eye.y + Math.sin(angle) * scale, 1.3 * scale)
 
-    if (route === 'fang') {
+    if (appearance.visibleTraits.includes('獠牙利爪')) {
       for (const side of [-1, 1]) {
         const clawRoot = point(bodyLength * 0.2, side * bodyWidth * 0.34)
         const clawTip = point(bodyLength * 0.72 + appearance.fangLength, side * (bodyWidth * 0.62 + appearance.limbReach * 0.34))
         graphics.lineStyle(5 * scale, 0xb86a35, 1).lineBetween(clawRoot.x, clawRoot.y, clawTip.x, clawTip.y)
         graphics.fillStyle(0xffedbf, 0.98).fillCircle(clawTip.x, clawTip.y, 3.2 * scale)
       }
-    } else if (route === 'rift') {
+    }
+    if (appearance.riftCoreRadius > 0) {
       const core = point(0, 0)
       graphics.fillStyle(0x25113c, 0.98).fillCircle(core.x, core.y, appearance.riftCoreRadius * 1.45 * scale)
       graphics.lineStyle(3 * scale, GENE_COLORS.rift, 0.9).strokeCircle(core.x, core.y, appearance.riftCoreRadius * (1 + Math.sin(time / 110) * 0.12) * scale)
@@ -822,7 +949,8 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
         const orbit = time / 420 + index / appearance.riftOrbCount * Math.PI * 2
         graphics.fillStyle(0xe0b0ff, 0.92).fillCircle(core.x + Math.cos(orbit) * 24 * scale, core.y + Math.sin(orbit) * 13 * scale, 3.2 * scale)
       }
-    } else if (route === 'swarm') {
+    }
+    if (appearance.broodCount > 0) {
       for (let index = 0; index < appearance.broodCount; index += 1) {
         const orbit = -time / 620 + index / appearance.broodCount * Math.PI * 2
         graphics.fillStyle(index % 2 ? 0x63d8c0 : 0xc6fff0, 0.96)
@@ -929,6 +1057,12 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
       fontFamily: 'system-ui, sans-serif', fontSize: compactLandscape ? '17px' : '12px', color: '#9fb8aa',
       backgroundColor: '#030805bb', padding: { x: 10, y: 5 },
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(120)
+    if (this.liveRunEnabled) {
+      this.combatHud.setVisible(false)
+      this.objectiveHud.setVisible(false)
+      this.targetHud.setVisible(false)
+      this.combatEventHud.setVisible(false)
+    }
   }
 
   private setActiveNest(id: GloamwoodNestId) {
@@ -1834,6 +1968,13 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
       && Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y) <= TARGET_RADIUS
   }
 
+  private targetHurtRadius(target: Phaser.Physics.Arcade.Image) {
+    const configured = target.getData('hurtRadius') as number | undefined
+    if (Number.isFinite(configured)) return Math.max(0, configured!)
+    const body = target.body as Phaser.Physics.Arcade.Body | Phaser.Physics.Arcade.StaticBody | null
+    return body ? Math.max(0, Math.min(body.halfWidth, body.halfHeight)) : 0
+  }
+
   private availableTargets() {
     const targets = this.activeNestEnemies().filter((enemy) => this.isTargetAvailable(enemy))
     if (this.isTargetAvailable(this.nestCore)) targets.push(this.nestCore)
@@ -1859,6 +2000,160 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     }
     const index = this.selectedTarget ? targets.indexOf(this.selectedTarget) : -1
     this.selectedTarget = targets[(index + 1) % targets.length]
+  }
+
+  private requestMotherMonsterAttack(now: number) {
+    if (!this.motherMonsterEnabled || this.playerState !== 'active') return
+    if (!this.isTargetAvailable(this.selectedTarget)) {
+      this.lastCombatEvent = '普攻未启动 · 请点击怪物或按Tab锁定目标'
+      return
+    }
+    this.ensureImpactAudio()
+    this.motherMonsterAttack = requestFormalHuntBasicAttack(
+      this.motherMonsterAttack,
+      now,
+      this.motherMonsterCombatProfile(),
+    )
+  }
+
+  requestMotherMonsterBasicAttack() {
+    if (this.motherMonsterEnabled) this.requestMotherMonsterAttack(this.time.now)
+    else this.attackSelectedTarget()
+  }
+
+  selectNextMotherMonsterTarget() {
+    this.cycleTarget()
+  }
+
+  resistFormalEvolution() {
+    if (!this.liveRunEnabled) return
+    const resisted = resistV4Evolution(this.liveEvolution)
+    if (resisted !== this.liveEvolution) this.lastCombatEvent = resisted.lastMessage
+    this.liveEvolution = resisted
+    this.updateFormalHud()
+  }
+
+  private updateMotherMonsterAttack(now: number, deltaSeconds: number) {
+    const target = this.selectedTarget
+    if (this.motherMonsterAttack.action && this.isTargetAvailable(target)) {
+      const targetAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, target!.x, target!.y)
+      this.player.setRotation(turnFormalHuntAttackToward(
+        this.player.rotation,
+        targetAngle,
+        deltaSeconds,
+      ))
+      this.motherMonsterAimErrorDegrees = formalHuntAttackAimErrorDegrees(this.player.rotation, targetAngle)
+    } else {
+      this.motherMonsterAimErrorDegrees = 0
+    }
+
+    const update = updateFormalHuntBasicAttack(
+      this.motherMonsterAttack,
+      now,
+      this.keys.SPACE.isDown && this.playerState === 'active',
+      this.motherMonsterCombatProfile(),
+    )
+    this.motherMonsterAttack = update.state
+    if (update.contactAction) this.resolveMotherMonsterContact(update.contactAction, now)
+  }
+
+  private resolveMotherMonsterContact(action: FormalHuntBasicAttackAction, now: number) {
+    const target = this.selectedTarget
+    const targetLocked = Boolean(target)
+    const targetAvailable = this.isTargetAvailable(target)
+    const distance = target
+      ? Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y)
+      : Number.POSITIVE_INFINITY
+    const targetRadius = target ? this.targetHurtRadius(target) : 0
+    const surfaceDistance = formalHuntTargetSurfaceDistance(distance, targetRadius)
+    const profile = this.motherMonsterCombatProfile()
+    const actionRange = action === 'Bite'
+      ? profile.hitFeedback.biteRange
+      : action === 'Pounce'
+        ? profile.hitFeedback.pounceRange
+      : action === 'Claw'
+        ? profile.hitFeedback.clawRange
+        : profile.hitFeedback.tailSwipeRange
+    const range = Math.round(COMBAT_STYLES.melee.range * (actionRange / profile.hitFeedback.biteRange))
+    const hit = canFormalHuntBasicAttackContact({
+      targetLocked,
+      targetAvailable,
+      distance,
+      range,
+      aimErrorDegrees: this.motherMonsterAimErrorDegrees,
+      targetRadius,
+    })
+    const reason = hit
+      ? 'hit'
+      : !targetLocked
+        ? 'no-lock'
+        : !targetAvailable
+          ? 'unavailable'
+          : surfaceDistance > range
+            ? 'out-of-range'
+            : 'off-angle'
+    this.motherMonsterLastContact = {
+      action,
+      targetId: this.targetId(target) ?? null,
+      hit,
+      reason,
+      distance: Number.isFinite(distance) ? Math.round(distance * 100) / 100 : -1,
+      aimErrorDegrees: Math.round(this.motherMonsterAimErrorDegrees * 100) / 100,
+      at: now,
+    }
+    if (!hit || !target) {
+      const reasonCopy = reason === 'no-lock'
+        ? '没有锁定目标'
+        : reason === 'unavailable'
+          ? '锁定目标已失效'
+          : reason === 'out-of-range'
+            ? `目标过远 ${Math.round(surfaceDistance)}/${range}`
+            : `接触角误差 ${this.motherMonsterAimErrorDegrees.toFixed(1)}° > 8°`
+      this.lastCombatEvent = `${this.motherMonsterAttackLabel(action)}未命中 · ${reasonCopy}`
+      return
+    }
+    const stats = this.liveEvolution.stats
+    const actionDamage = action === 'Bite'
+      ? profile.hitFeedback.biteDamage
+      : action === 'Pounce'
+        ? profile.hitFeedback.pounceDamage
+      : action === 'Claw'
+        ? profile.hitFeedback.clawDamage
+        : profile.hitFeedback.tailSwipeDamage
+    const damage = Math.round(attackDamage(
+      'melee',
+      stats.bulletDamage,
+      actionDamage / CORAL_GECKO_PRESENTATION.combat.hitFeedback.biteDamage,
+      stats.meleeDamageBonus,
+    ) * eliteOrbBuffModifiers(this.liveEvolution.eliteOrbBuff, now).damageMultiplier)
+    this.applyDamageToV4Target(target, damage, 'melee', this.player.x, this.player.y)
+    this.lastCombatEvent = `${this.motherMonsterAttackLabel(action)}命中 · ${this.targetId(target) ?? '正式锁定目标'}`
+  }
+
+  private motherMonsterCombatProfile() {
+    const stage = this.currentQuality3DAssetStage()
+    if (stage === 2) return SCARLET_HUNTER_PRESENTATION.combat
+    if (stage === 1) return SCARLET_GECKO_PRESENTATION.combat
+    return CORAL_GECKO_PRESENTATION.combat
+  }
+
+  private motherMonsterAttackLabel(action: FormalHuntBasicAttackAction) {
+    const stage = this.currentQuality3DAssetStage()
+    if (stage === 0) {
+      if (action === 'Bite') return CORAL_GECKO_PRESENTATION.combat.attackNames.Bite
+      if (action === 'Pounce') return CORAL_GECKO_PRESENTATION.combat.attackNames.Pounce
+      if (action === 'TailSwipe') return CORAL_GECKO_PRESENTATION.combat.attackNames.TailSwipe
+      return action
+    }
+    if (stage === 1) {
+      if (action === 'Bite') return SCARLET_GECKO_PRESENTATION.combat.attackNames.Bite
+      if (action === 'Pounce') return SCARLET_GECKO_PRESENTATION.combat.attackNames.Pounce
+      if (action === 'TailSwipe') return SCARLET_GECKO_PRESENTATION.combat.attackNames.TailSwipe
+      return action
+    }
+    return action === 'Pounce' || action === 'Claw' || action === 'TailSwipe'
+      ? SCARLET_HUNTER_PRESENTATION.combat.attackNames[action]
+      : action
   }
 
   private attackSelectedTarget() {
@@ -1888,8 +2183,9 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     const now = this.time.now
     if (now - this.lastAttackAt < attackCooldown) return
     const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, target!.x, target!.y)
-    if (distance > attack.range) {
-      this.lastCombatEvent = `目标过远 · ${Math.round(distance)}/${attack.range}`
+    const surfaceDistance = formalHuntTargetSurfaceDistance(distance, this.targetHurtRadius(target!))
+    if (surfaceDistance > attack.range) {
+      this.lastCombatEvent = `目标过远 · ${Math.round(surfaceDistance)}/${attack.range}`
       return
     }
     this.ensureImpactAudio()
@@ -2580,6 +2876,63 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     return `${elite}${definition.name}  ${hp}/${maxHp}  ·  ${gloamwoodMonsterSkill(type).label}${timing}`
   }
 
+  private formalHudObjectivePoint() {
+    if (this.bossActive || this.canChallengeV4Boss()) return GLOAMWOOD_EXPLORATION_LAYOUT.bossLair
+    if (this.nestPhase !== 'dormant' && this.nestPhase !== 'cleared') return gloamwoodNest(this.activeNestId)
+    const uncleared = GLOAMWOOD_EXPLORATION_LAYOUT.nests
+      .filter((nest) => this.nestProgress.get(nest.id)?.phase !== 'cleared')
+      .map((nest) => ({
+        ...nest,
+        distance: Phaser.Math.Distance.Between(this.player.x, this.player.y, nest.x, nest.y),
+      }))
+      .sort((a, b) => a.distance - b.distance)
+    return uncleared[0] ?? GLOAMWOOD_EXPLORATION_LAYOUT.bossLair
+  }
+
+  private updateFormalHud() {
+    if (!this.liveRunEnabled) return
+    const species = this.resolvedEvolutionSpecies()
+    const objective = this.formalHudObjectivePoint()
+    const objectiveAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, objective.x, objective.y)
+    const dominantFamily = GENE_FAMILIES
+      .map((family) => ({ family, value: this.liveEvolution.genes[family] }))
+      .sort((a, b) => b.value - a.value)[0]
+    const hasGeneTendency = Boolean(dominantFamily && dominantFamily.value > 0)
+    const attackLabel = this.motherMonsterEnabled
+      ? this.motherMonsterCombatProfile().primaryCombo
+        .map((action) => this.motherMonsterAttackLabel(action))
+        .join(' → ')
+      : species.definition.normalAttackProfile
+    updateFormalHuntHud({
+      health: this.health,
+      maxHealth: this.currentMaxHealth(),
+      formName: species.formName,
+      speciesName: species.definition.name,
+      stage: this.liveEvolution.evolutionStage,
+      maxStage: V4_BOSS_REQUIRED_STAGE,
+      evolution: this.liveEvolution.evolution,
+      evolutionRequired: evolutionRequirementForStage(this.liveEvolution.evolutionStage),
+      dominantFamily: hasGeneTendency ? dominantFamily!.family : null,
+      dominantLabel: hasGeneTendency ? GENE_LABELS[dominantFamily!.family] : '',
+      objective: this.nestObjectiveCopy(),
+      objectiveDistance: Phaser.Math.Distance.Between(this.player.x, this.player.y, objective.x, objective.y) / 10,
+      objectiveBearingDegrees: Phaser.Math.RadToDeg(Phaser.Math.Angle.Wrap(objectiveAngle - this.player.rotation)),
+      target: this.targetDecisionCopy(),
+      event: this.lastCombatEvent,
+      attackLabel,
+      clearedNests: this.clearedNestCount(),
+      requiredNests: V4_BOSS_REQUIRED_NESTS,
+      bossReady: this.canChallengeV4Boss(),
+      bossActive: this.bossActive,
+      bossName: RIFT_WARDEN.name,
+      bossHealth: this.bossHealth,
+      bossMaxHealth: this.bossMaxHealth,
+      bossPhase: this.bossPhaseValue,
+      resistCharges: this.liveEvolution.resistCharges,
+      evolutionPending: this.liveEvolution.pendingEvolutionAt > 0,
+    })
+  }
+
   private showFloatingDamage(
     x: number,
     y: number,
@@ -2702,14 +3055,17 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
     const evolutionCopy = this.liveRunEnabled
       ? `${this.liveEvolution.evolutionStage}/6 · ${this.liveEvolution.evolution}/${evolutionRequirementForStage(this.liveEvolution.evolutionStage)}`
       : String(this.evolution)
-    this.combatHud.setText(`生命 ${this.health}/${this.currentMaxHealth()}${playerStateLabel} · 击杀 ${this.kills} · 基因 ${genes} · 进化 ${evolutionCopy} · 窝点 ${cleared}/8`)
+    const resolvedSpecies = this.resolvedEvolutionSpecies()
+    const species = resolvedSpecies.definition
+    this.combatHud.setText(`生命 ${this.health}/${this.currentMaxHealth()}${playerStateLabel} · ${resolvedSpecies.formName} · 击杀 ${this.kills} · 基因 ${genes} · 进化 ${evolutionCopy} · 窝点 ${cleared}/8`)
     this.objectiveHud.setText(this.nestObjectiveCopy())
     this.targetHud.setText(this.targetDecisionCopy())
     const buffRemaining = eliteOrbBuffRemainingMs(this.liveEvolution.eliteOrbBuff, time)
     const buffCopy = buffRemaining > 0 && this.liveEvolution.eliteOrbBuff
       ? ` · ${this.liveEvolution.eliteOrbBuff.name}余韵 ${Math.ceil(buffRemaining / 1000)}s`
       : ''
-    this.combatEventHud.setText(`${COMBAT_STYLES[this.combatStyle].name} · ${this.lastCombatEvent}${buffCopy}`)
+    this.combatEventHud.setText(`${species.normalAttackProfile} · ${this.lastCombatEvent}${buffCopy}`)
+    this.updateFormalHud()
   }
 
   private renderArenaFeatures(config: GloamwoodNestConfig, time: number) {
@@ -3078,6 +3434,8 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
           recentHunts: [...this.liveEvolution.recentHunts],
           mutationRanks: { ...this.liveEvolution.mutationRanks },
           evolutionChain: this.liveEvolution.evolutionChain.map((entry) => ({ ...entry })),
+          apexSpeciesId: this.liveEvolution.apexSpeciesId,
+          species: speciesDebugContract(this.resolvedEvolutionSpecies()),
           stats: { ...this.liveEvolution.stats },
           collectedOrbs: { ...this.liveEvolution.collectedOrbs },
           eliteOrbBuff: this.liveEvolution.eliteOrbBuff
@@ -3155,6 +3513,45 @@ export class GloamwoodExplorationLabScene extends Phaser.Scene {
           respawnCount: this.respawnCount,
           kills: this.kills,
           style: this.combatStyle,
+          motherMonster: {
+            ...(() => {
+              const assetStage = this.currentQuality3DAssetStage()
+              const species = this.resolvedEvolutionSpecies()
+              const presentation = assetStage === 2
+                ? SCARLET_HUNTER_PRESENTATION
+                : assetStage === 1
+                  ? SCARLET_GECKO_PRESENTATION
+                  : assetStage === 0 ? CORAL_GECKO_PRESENTATION : null
+              return {
+                baselineId: presentation?.baselineId ?? `${species.definition.id}-procedural-route-v1`,
+                profileId: presentation?.combat.profileId ?? `${species.routeId}-normal-attack-v1`,
+              }
+            })(),
+            enabled: this.motherMonsterEnabled,
+            system: CORAL_GECKO_PRESENTATION.combat.system,
+            skillsEnabled: CORAL_GECKO_PRESENTATION.combat.skillsEnabled,
+            targetMode: 'player-selected-live-target',
+            action: this.motherMonsterAttack.action ?? 'ready',
+            comboStep: this.motherMonsterAttack.comboStep,
+            nextAction: this.motherMonsterCombatProfile().primaryCombo[this.motherMonsterAttack.comboStep],
+            buffered: this.motherMonsterAttack.buffered,
+            aimErrorDegrees: Math.round(this.motherMonsterAimErrorDegrees * 100) / 100,
+            contactToleranceDegrees: this.motherMonsterCombatProfile().targeting.contactToleranceDegrees,
+            overlay: this.motherMonsterOverlay && this.currentQuality3DAssetStage() !== null ? this.motherMonsterOverlay.getState() : {
+              ready: false,
+              source: this.currentQuality3DAssetStage() === null ? 'procedural-route' : this.motherMonsterEnabled ? 'loading' : 'disabled',
+              stage: this.currentQuality3DAssetStage() ?? this.liveEvolution.evolutionStage,
+              formId: this.resolvedEvolutionSpecies().formId,
+              baselineId: `${this.resolvedEvolutionSpecies().definition.id}-procedural-route-v1`,
+              profileId: `${this.resolvedEvolutionSpecies().routeId}-normal-attack-v1`,
+              activeClip: 'none',
+              modelUrl: null,
+            },
+            lastContact: this.motherMonsterLastContact ? {
+              ...this.motherMonsterLastContact,
+              ageMs: Math.max(0, Math.round(this.time.now - this.motherMonsterLastContact.at)),
+            } : null,
+          },
           combatPressure: {
             activeThreats: this.activeCombatThreats().map((threat) => ({
               ...threat,

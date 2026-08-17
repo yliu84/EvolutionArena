@@ -19,6 +19,11 @@ import {
   type SoulOrbDrop,
   type SoulOrbTier,
 } from './soul-orbs'
+import {
+  applySpeciesMechanics,
+  resolveEvolutionSpecies,
+  type EvolutionSpeciesDefinition,
+} from './evolution-species'
 
 export const V4_BASE_MUTATION_STATS: MutationStatState = {
   bulletDamage: 1,
@@ -44,23 +49,29 @@ export function canChallengeV4Boss(clearedNests: number, evolutionStage: number)
   return clearedNests >= V4_BOSS_REQUIRED_NESTS && evolutionStage >= V4_BOSS_REQUIRED_STAGE
 }
 
-const V4_ROUTE_SECONDARY: Record<'fang' | 'carapace' | 'rift', GeneFamily> = {
+const V4_ROUTE_SECONDARY: Record<GeneFamily, GeneFamily> = {
   fang: 'wing',
+  wing: 'venom',
   carapace: 'venom',
+  swarm: 'venom',
+  venom: 'wing',
   rift: 'swarm',
 }
 
 export function createV4RouteAcceptanceState(
-  family: 'fang' | 'carapace' | 'rift',
+  family: GeneFamily,
   stats: MutationStatState = V4_BASE_MUTATION_STATS,
+  requestedStage = V4_BOSS_REQUIRED_STAGE,
+  requestedSecondary?: GeneFamily,
 ) {
-  const secondary = V4_ROUTE_SECONDARY[family]
+  const secondary = requestedSecondary ?? V4_ROUTE_SECONDARY[family]
   const primaryMutations = MUTATIONS.filter((mutation) => mutation.family === family)
   const secondaryMutations = MUTATIONS.filter((mutation) => mutation.family === secondary)
-  const sequence = [
-    primaryMutations[0], primaryMutations[1], primaryMutations[0], primaryMutations[1],
-    secondaryMutations[0], secondaryMutations[1],
-  ].filter((mutation): mutation is (typeof MUTATIONS)[number] => Boolean(mutation))
+  const fullSequence = (requestedSecondary
+    ? [primaryMutations[0], secondaryMutations[0], primaryMutations[1], secondaryMutations[1], primaryMutations[0], secondaryMutations[0]]
+    : [primaryMutations[0], primaryMutations[1], primaryMutations[0], primaryMutations[1], secondaryMutations[0], secondaryMutations[1]])
+    .filter((mutation): mutation is (typeof MUTATIONS)[number] => Boolean(mutation))
+  const sequence = fullSequence.slice(0, Math.max(0, Math.min(fullSequence.length, Math.floor(requestedStage))))
   let routeStats = { ...stats }
   const mutationRanks: MutationRanks = {}
   const evolutionChain: EvolutionRecord[] = []
@@ -78,17 +89,26 @@ export function createV4RouteAcceptanceState(
       kills: (index + 1) * 8,
     })
   })
+  const genes = requestedSecondary
+    ? { ...emptyGenes(), [family]: 8, [secondary]: 8 }
+    : { ...emptyGenes(), [family]: 12, [secondary]: 4 }
+  const recentHunts = requestedSecondary
+    ? [family, secondary, family, secondary]
+    : [family, family, secondary, family]
+  const resolvedSpecies = resolveEvolutionSpecies(sequence.length, genes, recentHunts, mutationRanks, evolutionChain)
+  if (sequence.length >= V4_BOSS_REQUIRED_STAGE) routeStats = applySpeciesMechanics(routeStats, resolvedSpecies.definition)
   const state = createV4LiveEvolutionState(routeStats)
   return {
     ...state,
     evolutionStage: sequence.length,
-    genes: { ...state.genes, [family]: 12, [secondary]: 4 },
-    recentHunts: [family, family, secondary, family],
+    genes,
+    recentHunts,
     recentAppliedFamilies: evolutionChain.map((entry) => entry.family).slice(-4),
     mutationRanks,
     evolutionChain,
     stats: routeStats,
-    lastMessage: `${family}六阶段路线验收`,
+    apexSpeciesId: sequence.length >= V4_BOSS_REQUIRED_STAGE ? resolvedSpecies.definition.id : null,
+    lastMessage: `${requestedSecondary ? `${family}+${secondary}` : family}${sequence.length}阶段路线验收`,
   }
 }
 
@@ -102,6 +122,7 @@ export interface V4LiveEvolutionState {
   mutationRanks: MutationRanks
   recentAppliedFamilies: GeneFamily[]
   evolutionChain: EvolutionRecord[]
+  apexSpeciesId: string | null
   stats: MutationStatState
   eliteOrbBuff: EliteOrbBuff | null
   consumedGoldOrb: boolean
@@ -128,6 +149,7 @@ export function createV4LiveEvolutionState(
     mutationRanks: {},
     recentAppliedFamilies: [],
     evolutionChain: [],
+    apexSpeciesId: null,
     stats: { ...stats },
     eliteOrbBuff: null,
     consumedGoldOrb: false,
@@ -255,18 +277,35 @@ export function resolveV4Evolution(
     ...state.mutationRanks,
     [resolved.mutation.id]: (state.mutationRanks[resolved.mutation.id] ?? 0) + 1,
   }
+  const evolutionStage = state.evolutionStage + 1
+  const evolutionChain = [...state.evolutionChain, record]
+  const mutationStats = applyMutationEffect(state.stats, resolved.mutation.effect)
+  const species = resolveEvolutionSpecies(evolutionStage, state.genes, state.recentHunts, mutationRanks, evolutionChain)
+  const reachesApex = evolutionStage === EVOLUTION_CONFIG.maxStages && state.apexSpeciesId === null
   return {
     state: {
       ...state,
       evolution: 0,
-      evolutionStage: state.evolutionStage + 1,
+      evolutionStage,
       pendingEvolutionAt: 0,
       mutationRanks,
       recentAppliedFamilies: [...state.recentAppliedFamilies, resolved.family].slice(-4),
-      evolutionChain: [...state.evolutionChain, record],
-      stats: applyMutationEffect(state.stats, resolved.mutation.effect),
+      evolutionChain,
+      apexSpeciesId: reachesApex ? species.definition.id : state.apexSpeciesId,
+      stats: reachesApex ? applySpeciesMechanics(mutationStats, species.definition) : mutationStats,
       lastMessage: `${resolved.mutation.name} · ${resolved.reason}`,
     },
     evolved: record,
   }
+}
+
+export function currentV4EvolutionSpecies(state: V4LiveEvolutionState): EvolutionSpeciesDefinition {
+  return resolveEvolutionSpecies(
+    state.evolutionStage,
+    state.genes,
+    state.recentHunts,
+    state.mutationRanks,
+    state.evolutionChain,
+    state.apexSpeciesId,
+  ).definition
 }

@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest'
+import { AnimationClip, Euler, MathUtils, Quaternion, QuaternionKeyframeTrack } from 'three'
 import { getQuality3DGLBAsset, QUALITY_3D_GLB_ASSETS } from '../src/quality-3d-glb-assets'
 import { CORAL_GECKO_PRESENTATION } from '../src/quality-3d-character-presentation'
+import {
+  SCARLET_GECKO_LOCOMOTION_STABILITY,
+  SCARLET_GECKO_PRESENTATION,
+  SCARLET_GECKO_SURFACE_GRADE,
+  stabilizeScarletGeckoLocomotionClip,
+} from '../src/scarlet-gecko-character-presentation'
+import { SCARLET_HUNTER_PRESENTATION } from '../src/scarlet-hunter-character-presentation'
 
 describe('quality 3D GLB vertical slice assets', () => {
-  it('defines independent hatchling, wyvern and ancient-dragon assets', () => {
-    expect(QUALITY_3D_GLB_ASSETS.map((asset) => asset.stage)).toEqual([0, 3, 6])
-    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.formId)).size).toBe(3)
-    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.url)).size).toBe(3)
+  it('defines independent stage-0, first-evolution, second-evolution, wyvern and ancient assets', () => {
+    expect(QUALITY_3D_GLB_ASSETS.map((asset) => asset.stage)).toEqual([0, 1, 2, 3, 6])
+    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.formId)).size).toBe(5)
+    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.url)).size).toBe(5)
   })
 
   it('requires locomotion clips and body-plan-specific nodes', () => {
@@ -18,17 +26,149 @@ describe('quality 3D GLB vertical slice assets', () => {
     expect(coralGecko?.requiredNodes).toContain('FootFL')
     expect(coralGecko?.requiredNodes).toContain('FootBR')
     expect(coralGecko?.requiredNodes).toContain('Jaw')
-    expect(coralGecko?.url).toContain('coral-gecko-rigged')
+    expect(coralGecko?.url).toContain('coral-gecko-rigged-runtime-v1.glb')
+    expect(coralGecko?.url).toContain('texture-budget-v1')
+
+    const scarletGecko = getQuality3DGLBAsset(1)
+    expect(scarletGecko).toMatchObject({
+      formId: 'scarlet-gecko',
+      scale: SCARLET_GECKO_PRESENTATION.displayScale,
+      motion: 'embedded',
+    })
+    expect(scarletGecko?.requiredClips).toEqual(SCARLET_GECKO_PRESENTATION.asset.clips)
+    expect(scarletGecko?.requiredNodes).toEqual(expect.arrayContaining([
+      'ScarletGeckoMesh', 'Hips', 'chest', 'head', 'frontleg2', 'R_frontleg2', 'backleg2', 'R_backleg2', 'tail', 'tail3',
+    ]))
+    expect(scarletGecko?.rig).toEqual({
+      body: 'chest',
+      head: 'head',
+      feet: ['frontleg2', 'R_frontleg2', 'backleg2', 'R_backleg2'],
+      tail: ['tail1', 'tail2', 'tail3'],
+    })
+
+    const scarletHunter = getQuality3DGLBAsset(2)
+    expect(scarletHunter).toMatchObject({
+      formId: 'scarlet-hunter',
+      scale: SCARLET_HUNTER_PRESENTATION.displayScale,
+      motion: 'embedded',
+      modelYaw: Math.PI / 2,
+    })
+    expect(scarletHunter?.requiredClips).toEqual(SCARLET_HUNTER_PRESENTATION.asset.clips)
+    expect(scarletHunter?.requiredNodes).toEqual(expect.arrayContaining([
+      'ScarletHunterMesh', 'Hips', 'chest', 'head', 'frontleg', 'frontleg2', 'R_frontleg', 'R_frontleg2',
+      'backleg', 'backleg2', 'R_backleg', 'R_backleg2', 'tail', 'tail3',
+    ]))
+    expect(scarletHunter?.rig).toEqual({
+      body: 'chest',
+      head: 'head',
+      feet: ['frontleg2', 'R_frontleg2', 'backleg2', 'R_backleg2'],
+      tail: ['tail1', 'tail2', 'tail3'],
+    })
 
     for (const asset of QUALITY_3D_GLB_ASSETS.filter((candidate) => candidate.motion === 'embedded')) {
       expect(asset.requiredClips).toEqual(expect.arrayContaining(['Idle', 'Run']))
+      if (asset.rig) continue
       expect(asset.requiredNodes).toContain('Body')
       expect(asset.requiredNodes).toContain('Head')
       expect(asset.requiredNodes).toContain('Tail_0')
     }
     expect(getQuality3DGLBAsset(3)?.requiredNodes).not.toContain('LegFL')
     expect(getQuality3DGLBAsset(3)?.requiredNodes).toContain('WingL')
-    expect(getQuality3DGLBAsset(1)).toBeUndefined()
+  })
+
+  it('locks the first-evolution V2 candidate and the stage-2 reusable quadruped template', () => {
+    expect(SCARLET_GECKO_PRESENTATION).toMatchObject({
+      baselineId: 'scarlet-gecko-first-evolution-master-v2',
+      displayScale: 166.1,
+      combat: {
+        profileId: 'scarlet-gecko-combat-master-v1',
+        system: 'basic-attack',
+        skillsEnabled: false,
+        primaryCombo: ['Bite', 'Pounce', 'TailSwipe'],
+        attackNames: { Bite: '撕咬', Pounce: '跃起重咬', TailSwipe: '旋身尾扫' },
+        pounceVisualTravelScale: 0.32,
+        pounceVisualLiftScale: 1.65,
+      },
+      animation: {
+        runPlaybackRate: 1.45,
+        footstepEventsPerSecond: 5.8,
+        authoredStrideAmplification: 1.22,
+      },
+      asset: {
+        triangles: 19406,
+        bones: 27,
+        bodyPlan: 'coral-crested-gecko-drake',
+        runtimeModel: 'scarlet-gecko-rigged-v2.glb',
+        artStyle: 'stylized-handpainted-quadruped',
+      },
+      silhouette: { attachmentCount: 0, dominantRead: 'volumetric-coral-crested-gecko-drake' },
+      material: {
+        colorTint: 0xb88a7d,
+        minimumRoughness: 0.46,
+        maximumRoughness: 0.64,
+        normalStrength: 0.62,
+        environmentIntensity: 0.5,
+        emissiveIntensity: 0.18,
+      },
+    })
+    expect(SCARLET_HUNTER_PRESENTATION.displayScale / SCARLET_GECKO_PRESENTATION.displayScale).toBeCloseTo(1.18, 2)
+    expect(SCARLET_GECKO_SURFACE_GRADE).toEqual({ contrast: 1.16, saturation: 1.24 })
+    expect(SCARLET_GECKO_LOCOMOTION_STABILITY).toEqual({
+      coreBones: ['Hips', 'chest', 'head'],
+      yawScale: 0.22,
+      rollScale: 0.18,
+    })
+    expect(getQuality3DGLBAsset(1)?.url).toContain('scarlet-gecko-rigged-runtime-v1.glb')
+    expect(SCARLET_HUNTER_PRESENTATION).toMatchObject({
+      baselineId: 'scarlet-hunter-quadruped-template-v1',
+      displayScale: 196,
+      stageGrowthRatio: 1.18,
+      templateId: 'meshy-quadruped-combat-v1',
+      combat: {
+        profileId: 'scarlet-hunter-combat-master-v1',
+        skillsEnabled: false,
+        primaryCombo: ['Claw', 'Pounce', 'TailSwipe'],
+        attackNames: { Claw: '裂爪', Pounce: '双爪跃扑', TailSwipe: '旋身尾扫' },
+        pounceMotion: {
+          contactSeconds: 0.42,
+          visualTravel: 0.72,
+          damageEvents: 1,
+        },
+      },
+      asset: {
+        triangles: 54828,
+        bones: 27,
+        bodyPlan: 'broad-chested-hunter-drake',
+        runtimeModel: 'scarlet-hunter-quadruped-v1.glb',
+        artStyle: 'stylized-handpainted-quadruped',
+      },
+      silhouette: { dominantRead: 'crested-scarlet-pounce-drake' },
+      material: { normalStrength: 0, environmentIntensity: 0.58 },
+    })
+    expect(SCARLET_HUNTER_PRESENTATION.stageGrowthRatio).toBeCloseTo(1.18)
+    expect(getQuality3DGLBAsset(2)?.url).toContain('scarlet-hunter-quadruped-runtime-v1.glb')
+  })
+
+  it('stabilizes core yaw and roll in stage-one locomotion without mutating the source clip', () => {
+    const rest = new Quaternion()
+    const swayed = new Quaternion().setFromEuler(new Euler(0, MathUtils.degToRad(20), MathUtils.degToRad(10), 'XYZ'))
+    const source = new AnimationClip('Run', 1, [
+      new QuaternionKeyframeTrack('Hips.quaternion', [0, 1], [
+        rest.x, rest.y, rest.z, rest.w,
+        swayed.x, swayed.y, swayed.z, swayed.w,
+      ]),
+    ])
+    const stabilized = stabilizeScarletGeckoLocomotionClip(source)
+    const values = stabilized.tracks[0].values
+    const adjusted = new Euler().setFromQuaternion(
+      new Quaternion(values[4], values[5], values[6], values[7]),
+      'XYZ',
+    )
+
+    expect(stabilized).not.toBe(source)
+    expect(MathUtils.radToDeg(Math.abs(adjusted.y))).toBeLessThan(5)
+    expect(MathUtils.radToDeg(Math.abs(adjusted.z))).toBeLessThan(3)
+    expect(source.tracks[0].values[5]).toBeCloseTo(swayed.y)
   })
 
   it('keeps the accepted coral-gecko quality baseline as structured tuning data', () => {
@@ -73,7 +213,8 @@ describe('quality 3D GLB vertical slice assets', () => {
         knockbackSpeed: 2.3,
         particleCount: 9,
       },
-      primaryCombo: ['Bite', 'Claw', 'TailSwipe'],
+      primaryCombo: ['Bite', 'Pounce', 'TailSwipe'],
+      attackNames: { Bite: '快速撕咬', Pounce: '跃起重咬', TailSwipe: '尾扫' },
       comboResetSeconds: 1.15,
       biteDurationSeconds: 0.6,
       biteContactSeconds: 0.3,

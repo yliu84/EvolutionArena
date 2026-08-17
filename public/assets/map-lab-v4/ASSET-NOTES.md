@@ -25,3 +25,5 @@ Shared production constraints:
 Prompt set summary: seven distinct original dark-fantasy insect environments matching the shared camera/light rules above, each specifying its own named structure, entrance direction, silhouette, materials, palette and open arena. Black Cocoon received one targeted built-in edit to reframe the selected portrait concept into a 3:2 landscape gameplay asset while preserving its identity.
 
 The project copies were subsequently resampled to their exact runtime dimensions with macOS `sips`. Alpha remains present on all eight files and the combined master-asset size was reduced from roughly 21 MB to 10 MB. The original full-resolution generations remain in the Codex generated-image archive referenced above.
+
+The regional Rift Warden is not a downloaded or generated raster asset. Its 240×224 runtime texture is drawn deterministically by `paintBossTexture` from Phaser primitives. The formal-map V4 revision replaces the earlier triangular eye placeholder with a six-limbed, layered-shell silhouette, horn crown, embedded rift iris and contact shadow while preserving the existing authoritative collider, health and two-phase boss patterns.

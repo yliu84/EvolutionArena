@@ -30,7 +30,7 @@ export interface ExplorationRoute {
 
 export const GLOAMWOOD_EXPLORATION_LAYOUT = {
   sceneKey: 'gloamwood-exploration-lab',
-  version: 3,
+  version: 4,
   world: { width: 7200, height: 4400 },
   playerSpeed: 330,
   defaultSeed: 'gloamwood-v4-default',

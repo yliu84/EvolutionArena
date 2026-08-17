@@ -47,8 +47,12 @@ export function attackDamage(style: CombatStyle, basePower: number, multiplier =
   return Math.max(1, (basePower + COMBAT_STYLES[style].damageBonus + styleBonus) * multiplier)
 }
 
-export function isWithinAttackRange(style: CombatStyle, distance: number) {
-  return distance <= COMBAT_STYLES[style].range
+export function targetSurfaceDistance(centerDistance: number, targetRadius = 0) {
+  return Math.max(0, centerDistance - Math.max(0, targetRadius))
+}
+
+export function isWithinAttackRange(style: CombatStyle, distance: number, targetRadius = 0) {
+  return targetSurfaceDistance(distance, targetRadius) <= COMBAT_STYLES[style].range
 }
 
 export function clampAttackPoint(
@@ -74,10 +78,11 @@ export function isInsideMeleeArc(
   targetY: number,
   range: number,
   halfArcRadians = Math.PI * 0.36,
+  targetRadius = 0,
 ) {
   const dx = targetX - originX
   const dy = targetY - originY
-  if (dx * dx + dy * dy > range * range) return false
+  if (targetSurfaceDistance(Math.hypot(dx, dy), targetRadius) > range) return false
   const targetAngle = Math.atan2(dy, dx)
   const difference = Math.atan2(Math.sin(targetAngle - aimAngle), Math.cos(targetAngle - aimAngle))
   return Math.abs(difference) <= halfArcRadians

@@ -9,6 +9,7 @@ import {
   isInsideMeleeArc,
   isAttackBufferAlive,
   isWithinAttackRange,
+  targetSurfaceDistance,
   projectileLifetimeMs,
 } from '../src/combat'
 
@@ -33,6 +34,13 @@ describe('player combat styles', () => {
     expect(isWithinAttackRange('ranged', 390)).toBe(true)
     expect(isWithinAttackRange('ranged', 391)).toBe(false)
     expect(isWithinAttackRange('magic', 431)).toBe(false)
+  })
+
+  it('lets melee reach a large enemy surface without reaching its centre', () => {
+    expect(targetSurfaceDistance(180, 68)).toBe(112)
+    expect(isWithinAttackRange('melee', 180, 68)).toBe(true)
+    expect(isWithinAttackRange('melee', 187, 68)).toBe(false)
+    expect(isInsideMeleeArc(0, 0, 0, 180, 0, 118, Math.PI * 0.36, 68)).toBe(true)
   })
 
   it('clamps ground magic to cast range', () => {

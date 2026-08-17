@@ -7,10 +7,12 @@ import {
   collectV4SoulOrb,
   createV4LiveEvolutionState,
   createV4RouteAcceptanceState,
+  currentV4EvolutionSpecies,
   grantV4NestReward,
   resistV4Evolution,
   resolveV4Evolution,
 } from '../src/v4-live-evolution'
+import { EVOLUTION_APEX_SPECIES } from '../src/evolution-species'
 
 it('requires five cleared nests and all six core evolution stages before the V4 boss', () => {
   expect(canChallengeV4Boss(V4_BOSS_REQUIRED_NESTS, V4_BOSS_REQUIRED_STAGE)).toBe(true)
@@ -29,6 +31,40 @@ it('builds mechanically distinct six-stage Fang, Carapace and Rift acceptance ro
   expect(routes[0].stats.meleeDamageBonus).toBeGreaterThan(routes[1].stats.meleeDamageBonus)
   expect(routes[1].stats.maxHealth).toBeGreaterThan(routes[2].stats.maxHealth)
   expect(routes[2].stats.biomassGainMultiplier).toBeGreaterThan(routes[0].stats.biomassGainMultiplier)
+})
+
+it('builds a bounded first-evolution acceptance state for model validation', () => {
+  const state = createV4RouteAcceptanceState('fang', undefined, 1)
+  expect(state.evolutionStage).toBe(1)
+  expect(state.evolutionChain).toHaveLength(1)
+  expect(state.lastMessage).toBe('fang1阶段路线验收')
+  expect(canChallengeV4Boss(5, state.evolutionStage)).toBe(false)
+})
+
+it('builds all 13 pure and curated hybrid Apex endpoints with distinct authoritative stats', () => {
+  const states = EVOLUTION_APEX_SPECIES.map((endpoint) => {
+    const [primary, secondary] = endpoint.families
+    const state = createV4RouteAcceptanceState(primary, undefined, 6, secondary)
+    return { endpoint, state, resolved: currentV4EvolutionSpecies(state) }
+  })
+  expect(states).toHaveLength(13)
+  expect(new Set(states.map(({ resolved }) => resolved.id)).size).toBe(13)
+  expect(new Set(states.map(({ state }) => JSON.stringify(state.stats))).size).toBe(13)
+  for (const { endpoint, state, resolved } of states) {
+    expect(resolved.id).toBe(endpoint.id)
+    expect(state.apexSpeciesId).toBe(endpoint.id)
+    expect(state.evolutionStage).toBe(6)
+  }
+})
+
+it('locks an Apex endpoint even if later overgrowth genes shift the live tendency', () => {
+  const state = createV4RouteAcceptanceState('fang')
+  const shifted = {
+    ...state,
+    genes: { ...state.genes, fang: 12, rift: 99 },
+    recentHunts: ['rift', 'rift', 'rift', 'rift'] as const,
+  }
+  expect(currentV4EvolutionSpecies(shifted).id).toBe('bloodfang-tyrant')
 })
 
 describe('V4 live evolution controller', () => {

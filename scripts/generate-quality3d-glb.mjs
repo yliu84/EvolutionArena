@@ -26,7 +26,11 @@ const outputDirectory = resolve('public/assets/quality-3d/models')
 const exporter = new GLTFExporter()
 
 function material(name, color, roughness = 0.55, metalness = 0.05, emissive = 0) {
-  const value = new THREE.MeshStandardMaterial({ color, roughness, metalness, emissive, emissiveIntensity: emissive ? 0.35 : 0 })
+  const value = new THREE.MeshStandardMaterial({ color, roughness, metalness })
+  if (emissive) {
+    value.emissive.setHex(emissive)
+    value.emissiveIntensity = 0.35
+  }
   value.name = name
   return value
 }
@@ -110,7 +114,12 @@ function numberTrack(node, axis, values, times = [0, 0.5, 1]) {
 }
 
 function positionTrack(node, axis, values, times = [0, 0.5, 1]) {
-  return new THREE.NumberKeyframeTrack(`${node}.position[${axis}]`, times, values)
+  const vectorValues = values.flatMap((value) => axis === 'x'
+    ? [value, 0, 0]
+    : axis === 'y'
+      ? [0, value, 0]
+      : [0, 0, value])
+  return new THREE.VectorKeyframeTrack(`${node}.position`, times, vectorValues)
 }
 
 function createHatchling() {

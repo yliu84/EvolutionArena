@@ -2,9 +2,15 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="theme-color" content="#030c0a" />
+    <!-- iPhone Safari has no Fullscreen API. Launching from an Add-to-Home-Screen
+         icon in standalone mode is the only way to reclaim the browser chrome. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="进化竞技场" />
     <meta name="description" content="在战争迷雾中探索、猎杀并吸收怪物基因的动作进化游戏原型" />
     <title>进化竞技场 Lite · 黑暗探索原型</title>
   </head>

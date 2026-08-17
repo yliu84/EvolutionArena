@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import {
   QUALITY_3D,
+  canQuality3DTranslateAfterTurn,
   getQuality3DFootprint,
   inspectQuality3DFootprint,
   isQuality3DBridge,
@@ -17,6 +18,18 @@ import {
 } from './quality-3d-layout'
 import { CORAL_GECKO_PRESENTATION } from './quality-3d-character-presentation'
 import {
+  QUALITY_3D_RESCUE_CAMERA,
+  createQuality3DCameraPivot,
+  quality3DVisibleHeightAtPivot,
+  stepQuality3DCameraPivot,
+} from './quality-3d-camera'
+import {
+  applyScarletGeckoSurfaceGrade,
+  SCARLET_GECKO_PRESENTATION,
+  stabilizeScarletGeckoLocomotionClip,
+} from './scarlet-gecko-character-presentation'
+import { SCARLET_HUNTER_PRESENTATION } from './scarlet-hunter-character-presentation'
+import {
   getQuality3DEvolutionEnvelope,
   getQuality3DEvolutionStage,
   mixQuality3DMorphology,
@@ -25,6 +38,8 @@ import {
 } from './quality-3d-evolution'
 import { getQuality3DSpeciesForm, QUALITY_3D_LIZARD_DRAGON_FORMS, type Quality3DSpeciesForm } from './quality-3d-species-forms'
 import { QUALITY_3D_GLB_ASSETS, type Quality3DGLBAsset } from './quality-3d-glb-assets'
+import { getQuality3DAttackFeedback, type Quality3DBasicAttackAction } from './quality-3d-attack-feedback'
+import { juvenileLeapBiteMotionFrame, juvenileSpinTailSwipeMotionFrame, quadrupedAttackMotionFrame, quadrupedPounceFrame } from './quadruped-combat-motion'
 
 interface LegRig {
   hip: THREE.Group
@@ -116,25 +131,29 @@ interface Quality3DDebugState {
   renderer: string
   position: { x: number; y: number; z: number }
   movement: { speed: number; state: string; facingDegrees: number; turnRemainingDegrees: number }
-  grounding: { grounded: boolean; maxFootError: number; surface: string }
+  grounding: { grounded: boolean; maxFootError: number; minimumFootClearance: number; surface: string }
   terrain: { actualHeight: number; walkable: boolean }
   collision: { footprintClear: boolean; blockedProbe: string | null; front: number; rear: number; halfWidth: number; maxHeightDelta: number }
-  camera: { type: string; pitchDegrees: number; viewHeight: number }
+  camera: { type: string; pitchDegrees: number; viewHeight: number; fovDegrees: number; distance: number; springLag: number }
   performance: { drawCalls: number; triangles: number; geometries: number; textures: number; pixelRatio: number }
   evolution: { enabled: boolean; stage: number; targetStage: number; name: string; formId: string; bodyPlan: string; state: string; progress: number; autoplay: boolean }
-  asset: { baselineId: string; source: string; displayScale: number; loadedGLBs: number; activeClip: string; footBones: number; playbackRate: number; dustPuffs: number; tunedMaterials: number; normalMappedMaterials: number; aoMappedMaterials: number }
+  asset: { baselineId: string; source: string; assetUrl: string; displayScale: number; loadedGLBs: number; activeClip: string; footBones: number; playbackRate: number; dustPuffs: number; tunedMaterials: number; normalMappedMaterials: number; aoMappedMaterials: number; rootScale: { x: number; y: number; z: number }; maximumBoneScaleDeviation: number }
   weight: { locomotionBlend: number; stepImpact: number; stopSettle: number; turnFollowDegrees: number; groundCorrection: number }
-  combat: { profileId: string; system: string; skillsEnabled: boolean; action: string; elapsed: number; remaining: number; contactReached: boolean; comboStep: number; nextAction: string; buffered: boolean; targetLocked: boolean; aimErrorDegrees: number }
+  combat: { profileId: string; system: string; skillsEnabled: boolean; action: string; elapsed: number; remaining: number; contactReached: boolean; comboStep: number; nextAction: string; buffered: boolean; targetLocked: boolean; aimErrorDegrees: number; hitStopRemaining: number; attackFx: number; leapBitePhase: string; leapBiteLift: number; leapBiteLandingEvents: number; leapBiteLandingDustPuffs: number; visualYawDegrees: number }
   combatTarget: { name: string; state: string; health: number; maxHealth: number; distance: number; inRange: boolean; hits: number; deaths: number; lastHitAction: string }
   shadow: { layers: number; shape: string; groundLift: number }
   fps: number
 }
 
-type CoralGeckoCombatAction = 'Bite' | 'Claw' | 'TailSwipe' | 'Hit' | 'Death'
+type CoralGeckoCombatAction = 'Bite' | 'Claw' | 'Pounce' | 'TailSwipe' | 'Hit' | 'Death'
 
 declare global {
   interface Window {
-    __EA_3D_DEBUG__?: { getState: () => Quality3DDebugState }
+    __EA_3D_DEBUG__?: {
+      getState: () => Quality3DDebugState
+      primaryAttack: () => void
+      setEvolutionStage: (stage: number) => void
+    }
   }
 }
 
@@ -144,7 +163,13 @@ class Quality3DExperience {
   private readonly container: HTMLElement
   private readonly scene = new THREE.Scene()
   private readonly renderer: THREE.WebGLRenderer
-  private readonly camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 120)
+  private readonly camera = new THREE.PerspectiveCamera(
+    QUALITY_3D_RESCUE_CAMERA.fovDegrees,
+    1,
+    QUALITY_3D_RESCUE_CAMERA.near,
+    QUALITY_3D_RESCUE_CAMERA.far,
+  )
+  private readonly cameraPivot = createQuality3DCameraPivot()
   private readonly raycaster = new THREE.Raycaster()
   private readonly pointer = new THREE.Vector2()
   private readonly gltfLoader = new GLTFLoader()
@@ -155,6 +180,10 @@ class Quality3DExperience {
   private readonly target = new THREE.Vector3()
   private readonly footstepDust: THREE.Sprite[] = []
   private readonly impactParticles: THREE.Mesh[] = []
+  private readonly attackTrails: THREE.Group[] = []
+  private readonly playerFill = new THREE.PointLight(0xffd8bd, 18, 15, 1.7)
+  private readonly cameraLightDirection = new THREE.Vector3()
+  private atmosphereMotes?: THREE.Points
   private waterMaterial?: THREE.ShaderMaterial
   private hasTarget = false
   private currentYaw = 0
@@ -177,7 +206,11 @@ class Quality3DExperience {
   private comboBuffered = false
   private comboResetRemaining = 0
   private attackTargetYaw: number | null = null
+  private leapBiteLandingResolved = false
+  private leapBiteLandingEvents = 0
+  private leapBiteLandingDustPuffs = 0
   private maxFootError = 0
+  private minimumFootClearance = 0
   private blockedProbe: string | null = null
   private loadedGLBCount = 0
   private smoothedFps = 60
@@ -192,6 +225,7 @@ class Quality3DExperience {
   private autoEvolution = false
   private autoEvolutionCountdown = 1
   private cameraTrauma = 0
+  private hitStopRemaining = 0
   private evolutionPanel?: HTMLElement
   private elapsedTime = 0
   private lastFrameTime = performance.now()
@@ -233,6 +267,8 @@ class Quality3DExperience {
     this.scene.add(this.terrain)
     this.createWaterAndBridge()
     this.createEnvironment()
+    this.createRescueLandmark()
+    this.createAtmosphereMotes()
     this.createFootstepDust()
     this.drake = this.createDrake()
     const spawnMode = new URLSearchParams(location.search).get('spawn')
@@ -246,6 +282,7 @@ class Quality3DExperience {
     this.combatDummy = this.createCombatDummy()
     this.resetCombatDummy(true)
     this.createImpactParticles()
+    this.createAttackTrails()
     this.applyEvolutionMorph(getQuality3DEvolutionStage(0).morphology)
     this.setSpeciesFormVisual(0)
     void this.loadGLBSpeciesForms()
@@ -281,11 +318,20 @@ class Quality3DExperience {
     const footprint = getQuality3DFootprint(collisionStage)
     const footprintResult = inspectQuality3DFootprint(position.x, position.z, this.currentYaw, collisionStage)
     const activeForm = this.drake.speciesForms.find((form) => form.root.visible)
+    const activePresentation = presentationForFormId(activeForm?.formId)
+    const activeCombat = activeForm?.formId === 'scarlet-hunter'
+      ? SCARLET_HUNTER_PRESENTATION.combat
+      : activeForm?.formId === 'scarlet-gecko'
+        ? SCARLET_GECKO_PRESENTATION.combat
+        : CORAL_GECKO_PRESENTATION.combat
+    const leapBite = activeForm && this.combatAction === 'Pounce'
+      ? juvenileLeapBiteMotionFrame(this.combatActionElapsed, activeCombat.pounceDurationSeconds)
+      : juvenileLeapBiteMotionFrame(0, 1)
     return {
       renderer: 'Three.js WebGL · real 3D meshes',
       position: { x: round(position.x), y: round(position.y), z: round(position.z) },
       movement: {
-        speed: this.animationState !== 'idle-grounded' ? QUALITY_3D.player.speed : 0,
+        speed: this.animationState === 'walk-grounded' ? QUALITY_3D.player.speed : 0,
         state: this.animationState,
         facingDegrees: round(THREE.MathUtils.radToDeg(this.currentYaw)),
         turnRemainingDegrees: round(THREE.MathUtils.radToDeg(this.turnRemaining)),
@@ -293,6 +339,7 @@ class Quality3DExperience {
       grounding: {
         grounded: this.maxFootError <= 0.16,
         maxFootError: round(this.maxFootError),
+        minimumFootClearance: round(this.minimumFootClearance),
         surface: isQuality3DBridge(position.x, position.z) ? 'stone bridge' : 'heightfield ground',
       },
       terrain: { actualHeight: round(terrainHeight(position.x, position.z)), walkable: isQuality3DWalkable(position.x, position.z) },
@@ -304,7 +351,17 @@ class Quality3DExperience {
         halfWidth: round(footprint.halfWidth),
         maxHeightDelta: round(footprintResult.maxHeightDelta),
       },
-      camera: { type: 'OrthographicCamera', pitchDegrees: 51, viewHeight: QUALITY_3D.camera.viewHeight },
+      camera: {
+        type: 'PerspectiveCamera',
+        pitchDegrees: QUALITY_3D_RESCUE_CAMERA.pitchDegrees,
+        viewHeight: round(quality3DVisibleHeightAtPivot()),
+        fovDegrees: QUALITY_3D_RESCUE_CAMERA.fovDegrees,
+        distance: QUALITY_3D_RESCUE_CAMERA.distance,
+        springLag: round(Math.hypot(
+          this.cameraPivot.x - position.x,
+          this.cameraPivot.z - position.z,
+        )),
+      },
       performance: {
         drawCalls: this.renderer.info.render.calls,
         triangles: this.renderer.info.render.triangles,
@@ -324,17 +381,24 @@ class Quality3DExperience {
         autoplay: this.autoEvolution,
       },
       asset: {
-        baselineId: activeForm?.formId === 'coral-gecko' ? CORAL_GECKO_PRESENTATION.baselineId : 'unversioned',
+        baselineId: activePresentation?.baselineId ?? 'unversioned',
         source: activeForm?.assetSource ?? 'procedural',
+        assetUrl: QUALITY_3D_GLB_ASSETS.find((asset) => asset.formId === activeForm?.formId)?.url ?? 'procedural',
         displayScale: round(activeForm?.baseScale ?? 1),
         loadedGLBs: this.loadedGLBCount,
         activeClip: activeForm?.activeAction ?? 'procedural-motion',
         footBones: activeForm?.feet.length ?? 0,
-        playbackRate: round(activeForm?.actions?.get(activeForm.activeAction ?? '')?.getEffectiveTimeScale() ?? 1),
+        playbackRate: round(activeForm?.actions?.get(quality3DClipName(activeForm.formId, activeForm.activeAction ?? ''))?.getEffectiveTimeScale() ?? 1),
         dustPuffs: this.footstepDust.filter((puff) => puff.visible).length,
         tunedMaterials: activeForm?.materialTuning?.materials ?? 0,
         normalMappedMaterials: activeForm?.materialTuning?.normalMapped ?? 0,
         aoMappedMaterials: activeForm?.materialTuning?.aoMapped ?? 0,
+        rootScale: {
+          x: round(activeForm?.root.scale.x ?? 1),
+          y: round(activeForm?.root.scale.y ?? 1),
+          z: round(activeForm?.root.scale.z ?? 1),
+        },
+        maximumBoneScaleDeviation: round(maximumBoneScaleDeviation(activeForm?.root)),
       },
       weight: {
         locomotionBlend: round(this.locomotionBlend),
@@ -344,7 +408,7 @@ class Quality3DExperience {
         groundCorrection: round(activeForm?.groundCorrection ?? 0),
       },
       combat: {
-        profileId: CORAL_GECKO_PRESENTATION.combat.profileId,
+        profileId: activePresentation?.combat.profileId ?? CORAL_GECKO_PRESENTATION.combat.profileId,
         system: CORAL_GECKO_PRESENTATION.combat.system,
         skillsEnabled: CORAL_GECKO_PRESENTATION.combat.skillsEnabled,
         action: this.combatAction ?? 'ready',
@@ -352,10 +416,17 @@ class Quality3DExperience {
         remaining: round(this.combatActionRemaining),
         contactReached: this.combatContactReached,
         comboStep: this.comboStep,
-        nextAction: CORAL_GECKO_PRESENTATION.combat.primaryCombo[this.comboStep],
+        nextAction: activeCombat.primaryCombo[this.comboStep],
         buffered: this.comboBuffered,
         targetLocked: this.attackTargetYaw !== null && this.combatDummy.state === 'alive',
         aimErrorDegrees: round(THREE.MathUtils.radToDeg(this.getAttackAimError())),
+        hitStopRemaining: round(this.hitStopRemaining),
+        attackFx: this.attackTrails.filter((trail) => trail.visible).length,
+        leapBitePhase: leapBite.phase,
+        leapBiteLift: round(leapBite.liftOffset),
+        leapBiteLandingEvents: this.leapBiteLandingEvents,
+        leapBiteLandingDustPuffs: this.leapBiteLandingDustPuffs,
+        visualYawDegrees: round(THREE.MathUtils.radToDeg(activeForm?.root.rotation.y ?? 0)),
       },
       combatTarget: {
         name: CORAL_GECKO_PRESENTATION.combat.demoTarget.name,
@@ -377,6 +448,17 @@ class Quality3DExperience {
     }
   }
 
+  debugPrimaryAttack() {
+    this.requestPrimaryAttack()
+  }
+
+  debugSetEvolutionStage(stage: number) {
+    if (!this.evolutionLabEnabled || !Number.isInteger(stage) || stage < 0 || stage >= QUALITY_3D_EVOLUTION_STAGES.length) return
+    this.setEvolutionStageImmediate(stage)
+    this.autoEvolution = false
+    this.updateEvolutionPanel()
+  }
+
   private addLights() {
     this.scene.add(new THREE.HemisphereLight(0xcbe6d5, 0x263224, 2.05))
     const sun = new THREE.DirectionalLight(0xffe0a3, 4.2)
@@ -394,6 +476,9 @@ class Quality3DExperience {
     const rim = new THREE.DirectionalLight(0x5db69d, 1.15)
     rim.position.set(18, 9, 18)
     this.scene.add(rim)
+    this.playerFill.name = 'player-presentation-fill'
+    this.playerFill.castShadow = false
+    this.scene.add(this.playerFill)
   }
 
   private createTerrain() {
@@ -434,6 +519,85 @@ class Quality3DExperience {
     mesh.receiveShadow = true
     mesh.name = 'authored-heightfield'
     return mesh
+  }
+
+  private createRescueLandmark() {
+    const landmark = new THREE.Group()
+    landmark.name = 'rescue-slice-broken-waygate'
+    const x = -8.1
+    const z = -5.4
+    landmark.position.set(x, terrainHeight(x, z), z)
+    landmark.rotation.y = 0.32
+    landmark.scale.setScalar(0.72)
+    const stone = new THREE.MeshStandardMaterial({ color: 0x566b62, roughness: 0.94, metalness: 0.01 })
+    const blocks = new THREE.InstancedMesh(new THREE.BoxGeometry(0.76, 0.48, 0.86), stone, 20)
+    const matrix = new THREE.Matrix4()
+    const rotation = new THREE.Quaternion()
+    const scale = new THREE.Vector3()
+    let blockIndex = 0
+    const placeBlock = (px: number, py: number, angle: number, sx = 1, sy = 1) => {
+      rotation.setFromEuler(new THREE.Euler(0, 0, angle))
+      scale.set(sx, sy, 1)
+      matrix.compose(new THREE.Vector3(px, py, 0), rotation, scale)
+      blocks.setMatrixAt(blockIndex, matrix)
+      blockIndex += 1
+    }
+    for (let row = 0; row < 7; row += 1) {
+      placeBlock(-1.78 + Math.sin(row * 1.7) * 0.055, 0.24 + row * 0.47, 0.035 + row * 0.008, 1, 0.94)
+      if (row < 6) placeBlock(1.78 + Math.sin(row * 1.3) * 0.05, 0.24 + row * 0.47, -0.06 - row * 0.012, 1, 0.94)
+    }
+    for (let segment = 0; segment < 7; segment += 1) {
+      if (segment === 5) continue
+      const angle = (segment / 6) * Math.PI
+      placeBlock(Math.cos(angle) * 1.78, 2.78 + Math.sin(angle) * 1.42, angle - Math.PI / 2, 1.04, 0.9)
+    }
+    blocks.count = blockIndex
+    blocks.instanceMatrix.needsUpdate = true
+    blocks.castShadow = true
+    blocks.receiveShadow = true
+    landmark.add(blocks)
+    const runeMaterial = new THREE.MeshBasicMaterial({
+      color: 0x8ae4c8,
+      transparent: true,
+      opacity: 0.52,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+    for (let shardIndex = 0; shardIndex < 3; shardIndex += 1) {
+      const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.12 + shardIndex * 0.035, 0), runeMaterial)
+      shard.position.set((shardIndex - 1) * 0.42, 1.35 + shardIndex * 0.56, -0.1)
+      shard.rotation.z = 0.35 + shardIndex * 0.7
+      shard.renderOrder = 4
+      landmark.add(shard)
+    }
+    const beacon = new THREE.PointLight(0x72d7b6, 7, 8, 2)
+    beacon.position.set(0, 2.55, 0.6)
+    landmark.add(beacon)
+    this.scene.add(landmark)
+  }
+
+  private createAtmosphereMotes() {
+    const positions: number[] = []
+    for (let index = 0; index < 56; index += 1) {
+      const angle = seeded(index + 31) * Math.PI * 2
+      const radius = 3.5 + seeded(index + 71) * 16
+      const x = -2 + Math.cos(angle) * radius
+      const z = 1 + Math.sin(angle) * radius
+      positions.push(x, terrainHeight(x, z) + 0.35 + seeded(index + 117) * 3.4, z)
+    }
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    const material = new THREE.PointsMaterial({
+      color: 0xd5f0cf,
+      size: 0.055,
+      transparent: true,
+      opacity: 0.46,
+      depthWrite: false,
+      sizeAttenuation: true,
+    })
+    this.atmosphereMotes = new THREE.Points(geometry, material)
+    this.atmosphereMotes.name = 'forest-atmosphere-motes'
+    this.scene.add(this.atmosphereMotes)
   }
 
   private createTerrainBackdrop() {
@@ -1324,33 +1488,61 @@ class Quality3DExperience {
     root.add(gltf.scene)
     const materialTuning = { materials: 0, normalMapped: 0, aoMapped: 0 }
     const tunedMaterials = new Set<THREE.MeshStandardMaterial>()
+    const materialProfile = asset.formId === 'scarlet-hunter'
+      ? SCARLET_HUNTER_PRESENTATION.material
+      : asset.formId === 'scarlet-gecko'
+        ? SCARLET_GECKO_PRESENTATION.material
+        : CORAL_GECKO_PRESENTATION.material
     gltf.scene.traverse((node) => {
+      if (node.name === 'Icosphere') {
+        node.visible = false
+        if (node instanceof THREE.Mesh) {
+          node.castShadow = false
+          node.receiveShadow = false
+        }
+        return
+      }
       if (node instanceof THREE.Mesh) {
         node.castShadow = true
         node.receiveShadow = true
         node.frustumCulled = true
-        if (asset.formId === 'coral-gecko') {
+        if (presentationForFormId(asset.formId)) {
           const materials = Array.isArray(node.material) ? node.material : [node.material]
           for (const material of materials) {
             if (!(material instanceof THREE.MeshStandardMaterial) || tunedMaterials.has(material)) continue
             tunedMaterials.add(material)
             material.roughness = THREE.MathUtils.clamp(
               material.roughness * 1.06,
-              CORAL_GECKO_PRESENTATION.material.minimumRoughness,
-              CORAL_GECKO_PRESENTATION.material.maximumRoughness,
+              materialProfile.minimumRoughness,
+              materialProfile.maximumRoughness,
             )
-            material.metalness = Math.min(material.metalness, CORAL_GECKO_PRESENTATION.material.maximumMetalness)
-            material.envMapIntensity = CORAL_GECKO_PRESENTATION.material.environmentIntensity
-            material.aoMapIntensity = CORAL_GECKO_PRESENTATION.material.aoStrength
+            material.metalness = Math.min(material.metalness, materialProfile.maximumMetalness)
+            material.envMapIntensity = materialProfile.environmentIntensity
+            if (asset.formId === 'scarlet-gecko') {
+              material.color.setHex(SCARLET_GECKO_PRESENTATION.material.colorTint)
+              material.emissive.setHex(0xffffff)
+              material.emissiveMap = material.map
+              material.emissiveIntensity = SCARLET_GECKO_PRESENTATION.material.emissiveIntensity
+              applyScarletGeckoSurfaceGrade(material)
+            }
+            if (asset.formId === 'scarlet-hunter') {
+              material.flatShading = false
+              material.normalMap = null
+            }
+            material.aoMapIntensity = materialProfile.aoStrength
+            if (asset.formId === 'scarlet-hunter') {
+              material.emissive.setHex(0x1b0603)
+              material.emissiveIntensity = 0.14
+            }
             if (material.normalMap) {
-              material.normalScale.setScalar(CORAL_GECKO_PRESENTATION.material.normalStrength)
+              material.normalScale.setScalar(materialProfile.normalStrength)
               materialTuning.normalMapped += 1
             }
             if (material.aoMap) materialTuning.aoMapped += 1
             for (const texture of [material.map, material.normalMap, material.roughnessMap, material.metalnessMap, material.aoMap]) {
               if (!texture) continue
               texture.anisotropy = Math.min(
-                CORAL_GECKO_PRESENTATION.material.maximumAnisotropy,
+                materialProfile.maximumAnisotropy,
                 this.renderer.capabilities.getMaxAnisotropy(),
               )
               texture.needsUpdate = true
@@ -1361,19 +1553,27 @@ class Quality3DExperience {
       }
     })
     materialTuning.materials = tunedMaterials.size
-    const body = (root.getObjectByName('Body') ?? gltf.scene) as THREE.Group
-    const head = (root.getObjectByName('Head') ?? gltf.scene) as THREE.Group
+    const body = (root.getObjectByName(asset.rig?.body ?? 'Body') ?? gltf.scene) as THREE.Group
+    const head = (root.getObjectByName(asset.rig?.head ?? 'Head') ?? gltf.scene) as THREE.Group
     const legs = asset.requiredNodes.filter((name) => name.startsWith('Leg')).map((name) => root.getObjectByName(name) as THREE.Group)
-    const feet = asset.requiredNodes.filter((name) => name.startsWith('Foot')).map((name) => root.getObjectByName(name) as THREE.Object3D)
+    const footNames = asset.rig?.feet ?? asset.requiredNodes.filter((name) => name.startsWith('Foot'))
+    const feet = footNames.map((name) => root.getObjectByName(name) as THREE.Object3D)
     const tailJoints: THREE.Group[] = []
-    for (let index = 0; ; index += 1) {
-      const node = root.getObjectByName(`Tail_${index}`) as THREE.Group | undefined
-      if (!node) break
-      tailJoints.push(node)
+    if (asset.rig) {
+      for (const name of asset.rig.tail) tailJoints.push(root.getObjectByName(name) as THREE.Group)
+    } else {
+      for (let index = 0; ; index += 1) {
+        const node = root.getObjectByName(`Tail_${index}`) as THREE.Group | undefined
+        if (!node) break
+        tailJoints.push(node)
+      }
     }
     const wings = ['WingL', 'WingR'].map((name) => root.getObjectByName(name) as THREE.Group | undefined).filter((node): node is THREE.Group => Boolean(node))
     const mixer = new THREE.AnimationMixer(root)
-    const actions = new Map(gltf.animations.map((clip) => [clip.name, mixer.clipAction(clip)]))
+    const actions = new Map(gltf.animations.map((sourceClip) => {
+      const clip = asset.formId === 'scarlet-gecko' ? stabilizeScarletGeckoLocomotionClip(sourceClip) : sourceClip
+      return [clip.name, mixer.clipAction(clip)] as const
+    }))
     actions.get('Idle')?.play()
 
     this.drake.root.remove(existing.root)
@@ -1404,24 +1604,32 @@ class Quality3DExperience {
 
   private setGLBAction(form: SpeciesFormRig, name: string, force = false) {
     if (!form.actions) return
-    const next = form.actions.get(name)
+    const clipName = quality3DClipName(form.formId, name)
+    const next = form.actions.get(clipName)
     if (!next) return
-    const playbackRate = form.formId === 'coral-gecko'
+    const presentation = presentationForFormId(form.formId)
+    const attackPlaybackRate = (form.formId === 'coral-gecko' || form.formId === 'scarlet-gecko') && name === 'Pounce'
+      ? CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.clipPlaybackRate
+      : form.formId === 'scarlet-hunter'
+      && (name === 'Pounce' || name === 'Claw' || name === 'TailSwipe')
+      ? SCARLET_HUNTER_PRESENTATION.combat.attackPlaybackRate[name]
+      : null
+    const playbackRate = attackPlaybackRate ?? (presentation
       ? name === 'Run'
-        ? CORAL_GECKO_PRESENTATION.animation.runPlaybackRate
+        ? presentation.animation.runPlaybackRate
         : name === 'Turn'
-          ? CORAL_GECKO_PRESENTATION.animation.turnPlaybackRate
-          : CORAL_GECKO_PRESENTATION.animation.idlePlaybackRate
-      : 1
+          ? presentation.animation.turnPlaybackRate
+          : presentation.animation.idlePlaybackRate
+      : 1)
     next.setEffectiveTimeScale(playbackRate)
-    const oneShot = name === 'Bite' || name === 'Claw' || name === 'TailSwipe' || name === 'Hit' || name === 'Death'
+    const oneShot = name === 'Bite' || name === 'Claw' || name === 'Pounce' || name === 'TailSwipe' || name === 'Hit' || name === 'Death'
     next.setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity)
     next.clampWhenFinished = oneShot
     if (form.activeAction === name && !force) return
-    const previous = form.actions.get(form.activeAction ?? '')
+    const previous = form.actions.get(quality3DClipName(form.formId, form.activeAction ?? ''))
     const crossfade = oneShot
-      ? CORAL_GECKO_PRESENTATION.combat.oneShotCrossfadeSeconds
-      : CORAL_GECKO_PRESENTATION.animation.crossfadeSeconds
+      ? presentation?.combat.oneShotCrossfadeSeconds ?? CORAL_GECKO_PRESENTATION.combat.oneShotCrossfadeSeconds
+      : presentation?.animation.crossfadeSeconds ?? CORAL_GECKO_PRESENTATION.animation.crossfadeSeconds
     previous?.fadeOut(crossfade)
     next.reset().fadeIn(crossfade).play()
     form.activeAction = name
@@ -1725,6 +1933,33 @@ class Quality3DExperience {
     }
   }
 
+  private createAttackTrails() {
+    for (let poolIndex = 0; poolIndex < 3; poolIndex += 1) {
+      const trail = new THREE.Group()
+      trail.name = `basic-attack-contact-${poolIndex}`
+      trail.visible = false
+      trail.userData.life = 0
+      trail.userData.duration = 0.2
+      for (let arcIndex = 0; arcIndex < 3; arcIndex += 1) {
+        const arc = new THREE.Mesh(
+          new THREE.TorusGeometry(0.78, 0.035, 6, 26, Math.PI * 0.82),
+          new THREE.MeshBasicMaterial({
+            color: 0xffd7a0,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+          }),
+        )
+        arc.renderOrder = 24
+        arc.userData.baseScale = 1
+        trail.add(arc)
+      }
+      this.scene.add(trail)
+      this.attackTrails.push(trail)
+    }
+  }
+
   private resetCombatDummy(initial = false) {
     const forward = new THREE.Vector3(Math.cos(this.currentYaw), 0, -Math.sin(this.currentYaw))
     const spawn = this.drake.root.position.clone().addScaledVector(forward, CORAL_GECKO_PRESENTATION.combat.demoTarget.spawnDistance)
@@ -1753,12 +1988,22 @@ class Quality3DExperience {
     if (distance <= 0.001) return true
     const forward = new THREE.Vector3(Math.cos(this.currentYaw), 0, -Math.sin(this.currentYaw))
     const facing = forward.dot(toTarget.normalize())
+    const profile = this.activeBasicAttackProfile()
     const range = action === 'TailSwipe'
-      ? CORAL_GECKO_PRESENTATION.combat.hitFeedback.tailSwipeRange
+      ? profile.hitFeedback.tailSwipeRange
+      : action === 'Pounce'
+        ? profile.hitFeedback.pounceRange
       : action === 'Claw'
-        ? CORAL_GECKO_PRESENTATION.combat.hitFeedback.clawRange
-        : CORAL_GECKO_PRESENTATION.combat.hitFeedback.biteRange
+        ? profile.hitFeedback.clawRange
+        : profile.hitFeedback.biteRange
     return distance <= range && facing >= (action === 'TailSwipe' ? -0.05 : 0.38)
+  }
+
+  private activeBasicAttackProfile() {
+    const activeForm = this.drake.speciesForms.find((form) => form.root.visible)
+    if (activeForm?.formId === 'scarlet-hunter') return SCARLET_HUNTER_PRESENTATION.combat
+    if (activeForm?.formId === 'scarlet-gecko') return SCARLET_GECKO_PRESENTATION.combat
+    return CORAL_GECKO_PRESENTATION.combat
   }
 
   private getCombatTargetYaw() {
@@ -1774,7 +2019,8 @@ class Quality3DExperience {
   }
 
   private updateBasicAttackTargeting(delta: number) {
-    if (!this.combatAction || !CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(this.combatAction as 'Bite' | 'Claw' | 'TailSwipe')) return
+    const profile = this.activeBasicAttackProfile()
+    if (!this.combatAction || !(profile.primaryCombo as readonly string[]).includes(this.combatAction)) return
     const targetYaw = this.getCombatTargetYaw()
     if (targetYaw === null) {
       this.attackTargetYaw = null
@@ -1784,22 +2030,32 @@ class Quality3DExperience {
     this.currentYaw = turnToward(
       this.currentYaw,
       targetYaw,
-      CORAL_GECKO_PRESENTATION.combat.targeting.turnSpeedRadiansPerSecond * delta,
+      profile.targeting.turnSpeedRadiansPerSecond * delta,
     )
     this.drake.root.rotation.y = this.currentYaw
   }
 
   private resolveBasicAttackHit(action: CoralGeckoCombatAction) {
-    if (!CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(action as 'Bite' | 'Claw' | 'TailSwipe')) return
-    if (this.attackTargetYaw !== null && this.getAttackAimError() > THREE.MathUtils.degToRad(CORAL_GECKO_PRESENTATION.combat.targeting.contactToleranceDegrees)) return
+    const profile = this.activeBasicAttackProfile()
+    if (!(profile.primaryCombo as readonly string[]).includes(action)) return
+    if (this.attackTargetYaw !== null && this.getAttackAimError() > THREE.MathUtils.degToRad(profile.targeting.contactToleranceDegrees)) return
     if (!this.isCombatDummyInRange(action)) return
-    const feedback = CORAL_GECKO_PRESENTATION.combat.hitFeedback
-    const damage = action === 'Bite' ? feedback.biteDamage : action === 'Claw' ? feedback.clawDamage : feedback.tailSwipeDamage
+    const feedback = profile.hitFeedback
+    const damage = action === 'Bite'
+      ? feedback.biteDamage
+      : action === 'Pounce'
+        ? feedback.pounceDamage
+        : action === 'Claw'
+          ? feedback.clawDamage
+          : feedback.tailSwipeDamage
     this.combatDummy.health = Math.max(0, this.combatDummy.health - damage)
     this.combatDummy.hits += 1
     this.combatDummy.lastHitAction = action
     this.combatDummy.flashRemaining = feedback.flashSeconds
-    this.cameraTrauma = Math.max(this.cameraTrauma, feedback.cameraTrauma)
+    const contactRecipe = getQuality3DAttackFeedback(action as Quality3DBasicAttackAction)
+    this.cameraTrauma = Math.max(this.cameraTrauma, feedback.cameraTrauma * contactRecipe.cameraTraumaMultiplier)
+    this.hitStopRemaining = Math.max(this.hitStopRemaining, contactRecipe.hitStopSeconds)
+    this.emitAttackTrail(action as Quality3DBasicAttackAction)
     const knockback = this.combatDummy.root.position.clone().sub(this.drake.root.position).setY(0).normalize()
     this.combatDummy.knockbackVelocity.copy(knockback).multiplyScalar(feedback.knockbackSpeed)
     this.emitImpactParticles(this.combatDummy.root.position.clone().add(new THREE.Vector3(-0.45, 0.72, 0)), feedback.particleCount)
@@ -1825,6 +2081,64 @@ class Quality3DExperience {
       ;(particle.userData.velocity as THREE.Vector3).set(Math.cos(angle) * 1.45, lift, Math.sin(angle) * 1.45)
       emitted += 1
       if (emitted >= count) break
+    }
+  }
+
+  private emitAttackTrail(action: Quality3DBasicAttackAction) {
+    const recipe = getQuality3DAttackFeedback(action)
+    const activeForm = this.drake.speciesForms.find((form) => form.root.visible)
+    const visualAction = activeForm?.formId === 'coral-gecko' && action === 'Pounce' ? 'Bite' : action
+    const trail = this.attackTrails.find((candidate) => !candidate.visible) ?? this.attackTrails[0]
+    if (!trail) return
+    trail.visible = true
+    trail.userData.life = recipe.durationSeconds
+    trail.userData.duration = recipe.durationSeconds
+    trail.position.copy(this.combatDummy.root.position)
+    trail.position.y += recipe.plane === 'ground' ? 0.1 : 0.72
+    trail.rotation.set(recipe.plane === 'ground' ? -Math.PI / 2 : 0, this.currentYaw, 0)
+    trail.scale.setScalar(recipe.scale)
+    trail.children.forEach((child, index) => {
+      const arc = child as THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>
+      arc.visible = index < recipe.arcCount
+      arc.position.set(
+        recipe.plane === 'ground' ? 0 : (index - 0.5) * 0.25,
+        recipe.plane === 'ground' ? 0 : (index - 0.5) * 0.12,
+        index * 0.012,
+      )
+      arc.rotation.z = visualAction === 'Claw' || visualAction === 'Pounce'
+        ? -0.58 + index * 0.07
+        : visualAction === 'Bite'
+          ? (index === 0 ? 0.22 : Math.PI + 0.22)
+          : -0.25 + index * 0.38
+      arc.userData.baseScale = action === 'TailSwipe' ? 0.88 + index * 0.22 : 0.9 + index * 0.08
+      arc.userData.baseScaleX = visualAction === 'Claw' || visualAction === 'Pounce'
+        ? arc.userData.baseScale * 0.72
+        : arc.userData.baseScale
+      arc.userData.baseScaleY = visualAction === 'Claw' || visualAction === 'Pounce'
+        ? arc.userData.baseScale * 1.34
+        : arc.userData.baseScale
+      arc.scale.set(arc.userData.baseScaleX, arc.userData.baseScaleY, arc.userData.baseScale)
+      arc.material.color.setHex(index % 2 === 0 ? recipe.color : recipe.accent)
+      arc.material.opacity = 0.9
+    })
+  }
+
+  private updateAttackTrails(delta: number) {
+    for (const trail of this.attackTrails) {
+      if (!trail.visible) continue
+      trail.userData.life = Math.max(0, trail.userData.life - delta)
+      const progress = 1 - trail.userData.life / trail.userData.duration
+      trail.children.forEach((child) => {
+        const arc = child as THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>
+        arc.material.opacity = Math.pow(1 - progress, 1.7) * 0.9
+        const expansion = 1 + progress * 0.34
+        arc.scale.set(
+          arc.userData.baseScaleX * expansion,
+          arc.userData.baseScaleY * expansion,
+          arc.userData.baseScale * expansion,
+        )
+      })
+      if (trail.userData.life <= 0) trail.visible = false
     }
   }
 
@@ -1903,13 +2217,15 @@ class Quality3DExperience {
       puff.userData.velocityX = 0
       puff.userData.velocityY = 0
       puff.userData.velocityZ = 0
+      puff.userData.peakOpacity = CORAL_GECKO_PRESENTATION.dust.peakOpacity
       this.scene.add(puff)
       this.footstepDust.push(puff)
     }
   }
 
-  private emitFootstepDust() {
+  private emitFootstepDust(intensity = 1) {
     this.stepImpact = 1
+    let emitted = 0
     const forwardX = Math.cos(this.currentYaw)
     const forwardZ = -Math.sin(this.currentYaw)
     const lateralX = -forwardZ
@@ -1917,19 +2233,22 @@ class Quality3DExperience {
 
     for (const side of [-1, 1]) {
       const puff = this.footstepDust.find((candidate) => !candidate.visible)
-      if (!puff) return
+      if (!puff) return emitted
       const variation = Math.sin(this.elapsedTime * 13.7 + side * 2.3)
       const x = this.drake.root.position.x - forwardX * CORAL_GECKO_PRESENTATION.dust.backOffset + lateralX * side * CORAL_GECKO_PRESENTATION.dust.lateralOffset
       const z = this.drake.root.position.z - forwardZ * CORAL_GECKO_PRESENTATION.dust.backOffset + lateralZ * side * CORAL_GECKO_PRESENTATION.dust.lateralOffset
       puff.position.set(x, terrainHeight(x, z) + CORAL_GECKO_PRESENTATION.dust.groundLift, z)
-      puff.scale.setScalar(CORAL_GECKO_PRESENTATION.dust.startScale + Math.abs(variation) * CORAL_GECKO_PRESENTATION.dust.scaleVariance)
+      puff.scale.setScalar((CORAL_GECKO_PRESENTATION.dust.startScale + Math.abs(variation) * CORAL_GECKO_PRESENTATION.dust.scaleVariance) * intensity)
       puff.visible = true
       puff.userData.life = puff.userData.duration
       puff.userData.velocityX = -forwardX * CORAL_GECKO_PRESENTATION.dust.backwardVelocity + lateralX * side * CORAL_GECKO_PRESENTATION.dust.lateralVelocity
-      puff.userData.velocityY = CORAL_GECKO_PRESENTATION.dust.liftVelocity + Math.abs(variation) * CORAL_GECKO_PRESENTATION.dust.liftVelocityVariance
+      puff.userData.velocityY = (CORAL_GECKO_PRESENTATION.dust.liftVelocity + Math.abs(variation) * CORAL_GECKO_PRESENTATION.dust.liftVelocityVariance) * intensity
       puff.userData.velocityZ = -forwardZ * CORAL_GECKO_PRESENTATION.dust.backwardVelocity + lateralZ * side * CORAL_GECKO_PRESENTATION.dust.lateralVelocity
-      ;(puff.material as THREE.SpriteMaterial).opacity = CORAL_GECKO_PRESENTATION.dust.peakOpacity
+      puff.userData.peakOpacity = Math.min(0.86, CORAL_GECKO_PRESENTATION.dust.peakOpacity * intensity)
+      ;(puff.material as THREE.SpriteMaterial).opacity = puff.userData.peakOpacity
+      emitted += 1
     }
+    return emitted
   }
 
   private updateFootstepDust(delta: number) {
@@ -1946,7 +2265,7 @@ class Quality3DExperience {
       puff.position.y += puff.userData.velocityY * delta
       puff.position.z += puff.userData.velocityZ * delta
       puff.scale.multiplyScalar(1 + delta * CORAL_GECKO_PRESENTATION.dust.expansionPerSecond)
-      ;(puff.material as THREE.SpriteMaterial).opacity = (1 - progress) * CORAL_GECKO_PRESENTATION.dust.peakOpacity
+      ;(puff.material as THREE.SpriteMaterial).opacity = (1 - progress) * puff.userData.peakOpacity
     }
   }
 
@@ -1965,25 +2284,29 @@ class Quality3DExperience {
   private triggerCombatAction(action: CoralGeckoCombatAction) {
     if (this.isEvolving || (this.combatAction === 'Death' && action !== 'Death')) return
     const form = this.drake.speciesForms.find((candidate) => candidate.root.visible)
-    if (!form?.actions?.has(action)) return
+    if (!form?.actions?.has(quality3DClipName(form.formId, action))) return
     this.combatAction = action
     this.combatActionElapsed = 0
     this.combatContactReached = false
     this.combatHitResolved = false
-    this.attackTargetYaw = CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(action as 'Bite' | 'Claw' | 'TailSwipe')
+    if (action === 'Pounce') this.leapBiteLandingResolved = false
+    const profile = this.activeBasicAttackProfile()
+    this.attackTargetYaw = (profile.primaryCombo as readonly string[]).includes(action)
       ? this.getCombatTargetYaw()
       : null
     this.combatActionRemaining = action === 'Bite'
-      ? CORAL_GECKO_PRESENTATION.combat.biteDurationSeconds
+      ? profile.biteDurationSeconds
+      : action === 'Pounce'
+        ? profile.pounceDurationSeconds
       : action === 'Claw'
-        ? CORAL_GECKO_PRESENTATION.combat.clawDurationSeconds
+        ? profile.clawDurationSeconds
         : action === 'TailSwipe'
-          ? CORAL_GECKO_PRESENTATION.combat.tailSwipeDurationSeconds
+          ? profile.tailSwipeDurationSeconds
       : action === 'Hit'
         ? CORAL_GECKO_PRESENTATION.combat.hitDurationSeconds
         : CORAL_GECKO_PRESENTATION.combat.deathDurationSeconds
     this.hasTarget = false
-    if (!CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(action as 'Bite' | 'Claw' | 'TailSwipe')) {
+    if (!(profile.primaryCombo as readonly string[]).includes(action)) {
       this.comboStep = 0
       this.comboBuffered = false
       this.comboResetRemaining = 0
@@ -1993,12 +2316,13 @@ class Quality3DExperience {
 
   private requestPrimaryAttack() {
     if (this.isEvolving || this.combatAction === 'Death' || this.combatAction === 'Hit') return
-    if (this.combatAction && CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(this.combatAction as 'Bite' | 'Claw' | 'TailSwipe')) {
+    const profile = this.activeBasicAttackProfile()
+    if (this.combatAction && (profile.primaryCombo as readonly string[]).includes(this.combatAction)) {
       this.comboBuffered = true
       return
     }
-    const action = CORAL_GECKO_PRESENTATION.combat.primaryCombo[this.comboStep]
-    this.comboStep = (this.comboStep + 1) % CORAL_GECKO_PRESENTATION.combat.primaryCombo.length
+    const action = profile.primaryCombo[this.comboStep]
+    this.comboStep = (this.comboStep + 1) % profile.primaryCombo.length
     this.comboResetRemaining = 0
     this.attackTargetYaw = null
     this.triggerCombatAction(action)
@@ -2025,17 +2349,25 @@ class Quality3DExperience {
     this.lastFrameTime = now
     this.elapsedTime += delta
     this.smoothedFps = THREE.MathUtils.lerp(this.smoothedFps, 1 / Math.max(delta, 0.001), 0.06)
+    const simulationDelta = this.hitStopRemaining > 0 ? 0 : delta
+    this.hitStopRemaining = Math.max(0, this.hitStopRemaining - delta)
     this.resize()
-    this.updatePlayer(delta)
-    this.updateCombatDummy(delta)
-    this.updateEvolution(delta)
+    this.updatePlayer(simulationDelta)
+    this.updateCombatDummy(simulationDelta)
+    this.updateEvolution(simulationDelta)
     this.updateFootstepDust(delta)
+    this.updateAttackTrails(delta)
     this.updateCamera(false, delta)
+    if (this.atmosphereMotes) {
+      this.atmosphereMotes.rotation.y = Math.sin(this.elapsedTime * 0.08) * 0.018
+      ;(this.atmosphereMotes.material as THREE.PointsMaterial).opacity = 0.4 + Math.sin(this.elapsedTime * 0.7) * 0.08
+    }
     if (this.waterMaterial) this.waterMaterial.uniforms.uTime.value = this.elapsedTime
     this.renderer.render(this.scene, this.camera)
   }
 
   private updatePlayer(delta: number) {
+    const combatProfile = this.activeBasicAttackProfile()
     if (!this.combatAction && this.comboResetRemaining > 0) {
       this.comboResetRemaining = Math.max(0, this.comboResetRemaining - delta)
       if (this.comboResetRemaining <= 0) this.comboStep = 0
@@ -2045,11 +2377,13 @@ class Quality3DExperience {
       this.combatActionElapsed += delta
       this.combatActionRemaining = Math.max(0, this.combatActionRemaining - delta)
       const contactTime = this.combatAction === 'Bite'
-        ? CORAL_GECKO_PRESENTATION.combat.biteContactSeconds
+        ? combatProfile.biteContactSeconds
+        : this.combatAction === 'Pounce'
+          ? combatProfile.pounceContactSeconds
         : this.combatAction === 'Claw'
-          ? CORAL_GECKO_PRESENTATION.combat.clawContactSeconds
+          ? combatProfile.clawContactSeconds
           : this.combatAction === 'TailSwipe'
-            ? CORAL_GECKO_PRESENTATION.combat.tailSwipeContactSeconds
+            ? combatProfile.tailSwipeContactSeconds
             : Number.POSITIVE_INFINITY
       if (this.combatActionElapsed >= contactTime && !this.combatHitResolved) {
         this.combatContactReached = true
@@ -2059,7 +2393,7 @@ class Quality3DExperience {
       if (this.combatAction !== 'Death' && this.combatActionRemaining <= 0) {
         const completedAction = this.combatAction
         const continueCombo = (this.comboBuffered || this.keys.has('Space'))
-          && CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(completedAction as 'Bite' | 'Claw' | 'TailSwipe')
+          && (combatProfile.primaryCombo as readonly string[]).includes(completedAction)
         this.combatAction = null
         this.combatActionElapsed = 0
         this.combatContactReached = false
@@ -2067,8 +2401,8 @@ class Quality3DExperience {
         this.attackTargetYaw = null
         this.comboBuffered = false
         if (continueCombo) this.requestPrimaryAttack()
-        else if (CORAL_GECKO_PRESENTATION.combat.primaryCombo.includes(completedAction as 'Bite' | 'Claw' | 'TailSwipe')) {
-          this.comboResetRemaining = CORAL_GECKO_PRESENTATION.combat.comboResetSeconds
+        else if ((combatProfile.primaryCombo as readonly string[]).includes(completedAction)) {
+          this.comboResetRemaining = combatProfile.comboResetSeconds
         }
       }
     }
@@ -2119,26 +2453,30 @@ class Quality3DExperience {
         this.currentYaw = proposedYaw
       }
       this.drake.root.rotation.y = this.currentYaw
-      const step = QUALITY_3D.player.speed * delta
-      const candidateX = this.drake.root.position.x + direction.x * step
-      const candidateZ = this.drake.root.position.z + direction.z * step
-      const candidateResult = inspectQuality3DFootprint(candidateX, candidateZ, this.currentYaw, collisionStage)
-      if (candidateResult.clear) {
-        this.drake.root.position.x = candidateX
-        this.drake.root.position.z = candidateZ
-        this.blockedProbe = null
-      } else {
-        // Slide along the free axis so touching a cliff does not make controls
-        // feel sticky, while the full oriented body hull remains outside it.
-        const slideX = inspectQuality3DFootprint(candidateX, this.drake.root.position.z, this.currentYaw, collisionStage)
-        const slideZ = inspectQuality3DFootprint(this.drake.root.position.x, candidateZ, this.currentYaw, collisionStage)
-        if (slideX.clear) this.drake.root.position.x = candidateX
-        else if (slideZ.clear) this.drake.root.position.z = candidateZ
-        else this.hasTarget = false
-        this.blockedProbe = candidateResult.blockedProbe
+      const canTranslate = canQuality3DTranslateAfterTurn(this.currentYaw, desiredYaw)
+      if (canTranslate) {
+        this.turnAnimationRemaining = 0
+        const step = QUALITY_3D.player.speed * delta
+        const candidateX = this.drake.root.position.x + direction.x * step
+        const candidateZ = this.drake.root.position.z + direction.z * step
+        const candidateResult = inspectQuality3DFootprint(candidateX, candidateZ, this.currentYaw, collisionStage)
+        if (candidateResult.clear) {
+          this.drake.root.position.x = candidateX
+          this.drake.root.position.z = candidateZ
+          this.blockedProbe = null
+        } else {
+          // Slide along the free axis so touching a cliff does not make controls
+          // feel sticky, while the full oriented body hull remains outside it.
+          const slideX = inspectQuality3DFootprint(candidateX, this.drake.root.position.z, this.currentYaw, collisionStage)
+          const slideZ = inspectQuality3DFootprint(this.drake.root.position.x, candidateZ, this.currentYaw, collisionStage)
+          if (slideX.clear) this.drake.root.position.x = candidateX
+          else if (slideZ.clear) this.drake.root.position.z = candidateZ
+          else this.hasTarget = false
+          this.blockedProbe = candidateResult.blockedProbe
+        }
+        this.gaitPhase += delta * 10.4
       }
-      this.gaitPhase += delta * 10.4
-      this.animationState = this.turnAnimationRemaining > 0 ? 'turn-grounded' : 'walk-grounded'
+      this.animationState = canTranslate ? 'walk-grounded' : 'turn-grounded'
     } else {
       this.turnRemaining = 0
       this.animationState = this.combatAction ? `${this.combatAction.toLowerCase()}-grounded` : 'idle-grounded'
@@ -2190,8 +2528,10 @@ class Quality3DExperience {
   private animateSpeciesForm(moving: boolean, delta: number, phase: number, breathing: number, shadowPulse: number) {
     const form = this.drake.speciesForms.find((candidate) => candidate.root.visible)
     if (!form) return
+    let attackRootFrame: ReturnType<typeof quadrupedAttackMotionFrame> | null = null
+    let leapBiteFrame: ReturnType<typeof juvenileLeapBiteMotionFrame> | null = null
     if (form.assetSource === 'glb' && form.motion === 'embedded' && form.mixer) {
-      const action = this.combatAction && form.actions?.has(this.combatAction)
+      const action = this.combatAction && form.actions?.has(quality3DClipName(form.formId, this.combatAction))
         ? this.combatAction
         : moving && this.turnAnimationRemaining > 0 && form.actions?.has('Turn')
           ? 'Turn'
@@ -2212,12 +2552,59 @@ class Quality3DExperience {
           ? Math.abs(Math.sin(runPhase * 2)) * CORAL_GECKO_PRESENTATION.weight.runLift * this.locomotionBlend
           : 0
         form.root.position.y = runLift - compression - settle * CORAL_GECKO_PRESENTATION.weight.stopSettleDepth
+        const formPresentation = presentationForFormId(form.formId) ?? CORAL_GECKO_PRESENTATION
+        if (action === 'Pounce') {
+          leapBiteFrame = juvenileLeapBiteMotionFrame(
+            this.combatActionElapsed,
+            formPresentation.combat.pounceDurationSeconds,
+          )
+          attackRootFrame = leapBiteFrame
+          if (form.formId === 'scarlet-gecko') {
+            attackRootFrame = {
+              ...attackRootFrame,
+              forwardOffset: attackRootFrame.forwardOffset * SCARLET_GECKO_PRESENTATION.combat.pounceVisualTravelScale,
+            }
+          }
+          if (leapBiteFrame.progress >= CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.landingProgress && !this.leapBiteLandingResolved) {
+            this.leapBiteLandingResolved = true
+            this.leapBiteLandingEvents += 1
+            this.leapBiteLandingDustPuffs += this.emitFootstepDust(1.5)
+            this.leapBiteLandingDustPuffs += this.emitFootstepDust(1.5)
+            this.cameraTrauma = Math.max(this.cameraTrauma, CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.landingCameraTrauma)
+          }
+        } else if (action === 'TailSwipe') {
+          attackRootFrame = juvenileSpinTailSwipeMotionFrame(
+            this.combatActionElapsed,
+            formPresentation.combat.tailSwipeDurationSeconds,
+            formPresentation.combat.tailSwipeContactSeconds,
+          )
+        } else if (action === 'Bite' || action === 'Claw') {
+          const profile = formPresentation.combat
+          const duration = action === 'Bite'
+            ? profile.biteDurationSeconds
+            : action === 'Claw'
+              ? profile.clawDurationSeconds
+              : profile.tailSwipeDurationSeconds
+          const contact = action === 'Bite'
+            ? profile.biteContactSeconds
+            : action === 'Claw'
+              ? profile.clawContactSeconds
+              : profile.tailSwipeContactSeconds
+          attackRootFrame = quadrupedAttackMotionFrame(action, this.combatActionElapsed, duration, contact)
+        }
+        const pounce = quadrupedPounceFrame(0, 1, 0)
+        form.root.position.x = pounce.forwardOffset + (attackRootFrame?.forwardOffset ?? 0)
+        form.root.position.y += pounce.liftOffset + (attackRootFrame?.liftOffset ?? 0)
         const widthGain = compression * CORAL_GECKO_PRESENTATION.weight.widthCompensation
-        form.root.scale.set(
-          form.baseScale * (1 + widthGain),
-          form.baseScale * (1 - compression),
-          form.baseScale * (1 + widthGain),
-        )
+        if (attackRootFrame) form.root.scale.setScalar(form.baseScale)
+        else {
+          form.root.scale.set(
+            form.baseScale * (1 + widthGain),
+            form.baseScale * (1 - compression),
+            form.baseScale * (1 + widthGain),
+          )
+        }
+        form.root.rotation.y = attackRootFrame?.yawRadians ?? 0
         const inertialTurn = this.turnFollow * this.locomotionBlend
         form.head.rotation.z += inertialTurn * CORAL_GECKO_PRESENTATION.weight.headFollow
         form.tailJoints.forEach((joint, index) => {
@@ -2229,8 +2616,8 @@ class Quality3DExperience {
       }
       form.root.rotation.z = THREE.MathUtils.damp(
         form.root.rotation.z,
-        moving ? -this.turnRemaining * CORAL_GECKO_PRESENTATION.weight.turnLean : 0,
-        9,
+        attackRootFrame?.pitchRadians ?? (moving ? -this.turnRemaining * CORAL_GECKO_PRESENTATION.weight.turnLean : 0),
+        attackRootFrame ? 18 : 9,
         delta,
       )
       if (form.formId === 'coral-gecko' && action === 'Run') {
@@ -2240,7 +2627,8 @@ class Quality3DExperience {
           this.footstepProgress -= 1
         }
       } else this.footstepProgress = 0
-      if (form.feet.length) {
+      const leapIsAirborne = Boolean(leapBiteFrame && leapBiteFrame.airborneStrength > 0.08)
+      if (form.feet.length && !leapIsAirborne) {
         form.root.updateWorldMatrix(true, true)
         const signedFootErrors = form.feet.map((foot) => {
           const position = foot.getWorldPosition(new THREE.Vector3())
@@ -2260,24 +2648,57 @@ class Quality3DExperience {
         )
         form.root.position.y += form.groundCorrection
         form.root.updateWorldMatrix(true, true)
-        const correctedFootErrors = form.feet.map((foot) => {
+        let signedCorrectedFootErrors = form.feet.map((foot) => {
           const position = foot.getWorldPosition(new THREE.Vector3())
-          return Math.abs(position.y - terrainHeight(position.x, position.z))
-        }).sort((left, right) => left - right)
+          return position.y - terrainHeight(position.x, position.z)
+        })
+        const attackPenetration = attackRootFrame ? Math.min(...signedCorrectedFootErrors) : 0
+        if (attackPenetration < -0.015) {
+          form.root.position.y += -0.015 - attackPenetration
+          form.root.updateWorldMatrix(true, true)
+          signedCorrectedFootErrors = form.feet.map((foot) => {
+            const position = foot.getWorldPosition(new THREE.Vector3())
+            return position.y - terrainHeight(position.x, position.z)
+          })
+        }
+        this.minimumFootClearance = Math.min(...signedCorrectedFootErrors)
+        const correctedFootErrors = signedCorrectedFootErrors.map(Math.abs).sort((left, right) => left - right)
         // Two feet lift during a diagonal quadruped stride; measure the two
         // planted feet so intentional lift is not reported as hovering.
         this.maxFootError = correctedFootErrors[Math.min(1, correctedFootErrors.length - 1)] ?? this.maxFootError
+      } else if (leapBiteFrame) {
+        form.groundCorrection = 0
+        form.root.updateWorldMatrix(true, true)
+        let airborneFootClearances = form.feet.map((foot) => {
+          const position = foot.getWorldPosition(new THREE.Vector3())
+          return position.y - terrainHeight(position.x, position.z)
+        })
+        const airbornePenetration = Math.min(...airborneFootClearances)
+        if (airbornePenetration < -0.015) {
+          form.root.position.y += -0.015 - airbornePenetration
+          form.root.updateWorldMatrix(true, true)
+          airborneFootClearances = form.feet.map((foot) => {
+            const position = foot.getWorldPosition(new THREE.Vector3())
+            return position.y - terrainHeight(position.x, position.z)
+          })
+        }
+        this.minimumFootClearance = Math.min(...airborneFootClearances)
+        this.maxFootError = leapBiteFrame.airborneStrength > 0.08 ? 0.2 : 0
       }
       const glbShadowSize = 0.72 + form.stage * 0.15 + (form.wings.length ? 0.2 : 0)
       const contact = this.stepImpact * this.stepImpact
       const shadowSettle = this.stopSettleRemaining > 0 ? 1 : 0
       const shadowSize = glbShadowSize + shadowPulse - contact * CORAL_GECKO_PRESENTATION.weight.shadowImpactContraction
-      this.updateContactShadow(shadowSize, THREE.MathUtils.clamp(
+      const leapShadowFade = leapBiteFrame ? leapBiteFrame.airborneStrength * 0.16 : 0
+      const leapLanding = leapBiteFrame?.landingStrength ?? 0
+      this.updateContactShadow(shadowSize + (leapBiteFrame?.airborneStrength ?? 0) * 0.1 - leapLanding * 0.05, THREE.MathUtils.clamp(
         CORAL_GECKO_PRESENTATION.weight.shadowBaseOpacity
           + contact * CORAL_GECKO_PRESENTATION.weight.shadowImpactOpacity
-          + shadowSettle * CORAL_GECKO_PRESENTATION.weight.shadowSettleOpacity,
-        0,
-        0.48,
+          + shadowSettle * CORAL_GECKO_PRESENTATION.weight.shadowSettleOpacity
+          - leapShadowFade
+          + leapLanding * 0.08,
+          0,
+          0.48,
       ))
       return
     }
@@ -2338,10 +2759,24 @@ class Quality3DExperience {
 
   private updateCamera(immediate: boolean, delta = 1 / 60) {
     const focus = this.drake.root.position
+    const forwardX = Math.cos(this.currentYaw)
+    const forwardZ = -Math.sin(this.currentYaw)
+    const lead = QUALITY_3D_RESCUE_CAMERA.lookAheadDistance * this.locomotionBlend
+    if (immediate) this.cameraPivot.active = false
+    stepQuality3DCameraPivot(
+      this.cameraPivot,
+      focus.x + forwardX * lead,
+      focus.y + QUALITY_3D_RESCUE_CAMERA.pivotHeight,
+      focus.z + forwardZ * lead,
+      delta,
+    )
+    const pitch = THREE.MathUtils.degToRad(QUALITY_3D_RESCUE_CAMERA.pitchDegrees)
+    const orbit = THREE.MathUtils.degToRad(QUALITY_3D_RESCUE_CAMERA.orbitDegrees)
+    const horizontalDistance = Math.cos(pitch) * QUALITY_3D_RESCUE_CAMERA.distance
     const desired = new THREE.Vector3(
-      focus.x + QUALITY_3D.camera.offsetX,
-      focus.y + QUALITY_3D.camera.offsetY,
-      focus.z + QUALITY_3D.camera.offsetZ,
+      this.cameraPivot.x + Math.sin(orbit) * horizontalDistance,
+      this.cameraPivot.y + Math.sin(pitch) * QUALITY_3D_RESCUE_CAMERA.distance,
+      this.cameraPivot.z + Math.cos(orbit) * horizontalDistance,
     )
     if (this.cameraTrauma > 0) {
       const shake = this.cameraTrauma * this.cameraTrauma
@@ -2350,13 +2785,18 @@ class Quality3DExperience {
       desired.z += Math.sin(this.elapsedTime * 29 + 0.8) * 0.17 * shake
       this.cameraTrauma = Math.max(0, this.cameraTrauma - delta * 1.35)
     }
-    if (immediate) this.camera.position.copy(desired)
-    else {
-      this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, desired.x, 10.5, delta)
-      this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, desired.y, 10.5, delta)
-      this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, desired.z, 10.5, delta)
-    }
-    this.camera.lookAt(focus.x, focus.y + 0.7, focus.z)
+    this.camera.position.copy(desired)
+    this.camera.lookAt(this.cameraPivot.x, this.cameraPivot.y, this.cameraPivot.z)
+    const towardCamera = this.cameraLightDirection.set(
+      desired.x - this.cameraPivot.x,
+      0,
+      desired.z - this.cameraPivot.z,
+    ).normalize()
+    this.playerFill.position.set(
+      this.cameraPivot.x + towardCamera.x * 3.8,
+      this.cameraPivot.y + 4.4,
+      this.cameraPivot.z + towardCamera.z * 3.8,
+    )
   }
 
   private resize() {
@@ -2366,14 +2806,36 @@ class Quality3DExperience {
     this.previousWidth = width
     this.previousHeight = height
     this.renderer.setSize(width, height, false)
-    const aspect = width / height
-    const viewHeight = QUALITY_3D.camera.viewHeight
-    this.camera.left = -viewHeight * aspect / 2
-    this.camera.right = viewHeight * aspect / 2
-    this.camera.top = viewHeight / 2
-    this.camera.bottom = -viewHeight / 2
+    this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
   }
+}
+
+function maximumBoneScaleDeviation(root?: THREE.Object3D) {
+  let maximum = 0
+  root?.traverse((node) => {
+    if (!(node instanceof THREE.Bone)) return
+    maximum = Math.max(
+      maximum,
+      Math.abs(node.scale.x - 1),
+      Math.abs(node.scale.y - 1),
+      Math.abs(node.scale.z - 1),
+    )
+  })
+  return maximum
+}
+
+function presentationForFormId(formId?: string) {
+  if (formId === 'coral-gecko') return CORAL_GECKO_PRESENTATION
+  if (formId === 'scarlet-gecko') return SCARLET_GECKO_PRESENTATION
+  if (formId === 'scarlet-hunter') return SCARLET_HUNTER_PRESENTATION
+  return null
+}
+
+function quality3DClipName(formId: string, action: string) {
+  return (formId === 'coral-gecko' || formId === 'scarlet-gecko') && action === 'Pounce'
+    ? CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.clipName
+    : action
 }
 
 export function launchQuality3D() {
@@ -2402,7 +2864,7 @@ export function launchQuality3D() {
     : [
         '<span><strong>WASD / 点击地面</strong> 任意方向移动</span>',
         '<span class="divider">/</span>',
-        '<span><strong>Space 普攻连招</strong> 自动循环咬击 → 爪击 → 尾扫</span>',
+        '<span><strong>Space 普攻连招</strong> 阶段0：快速咬 → 跃起重咬 → 尾扫；阶段1：咬击 → 爪击 → 尾扫；阶段2：裂爪 → 双爪前扑 → 尾砸</span>',
         '<span class="divider">/</span>',
         '<span><strong>命中训练虫</strong> 测试距离 · 受击闪光 · 击退 · 生命与死亡</span>',
         '<span class="divider">/</span>',
@@ -2413,7 +2875,11 @@ export function launchQuality3D() {
   const experience = new Quality3DExperience(container)
   const debugRequested = new URLSearchParams(location.search).get('debug') === '1'
   if (import.meta.env.DEV || debugRequested) {
-    window.__EA_3D_DEBUG__ = { getState: () => experience.getDebugState() }
+    window.__EA_3D_DEBUG__ = {
+      getState: () => experience.getDebugState(),
+      primaryAttack: () => experience.debugPrimaryAttack(),
+      setEvolutionStage: (stage) => experience.debugSetEvolutionStage(stage),
+    }
     if (debugRequested) {
       const output = document.createElement('output')
       output.id = 'debug-state'

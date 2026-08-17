@@ -149,6 +149,12 @@ export function turnToward(from: number, to: number, maxStep: number) {
   return from + Math.sign(delta) * maxStep
 }
 
+export const QUALITY_3D_MOVE_FACING_TOLERANCE_RADIANS = Math.PI / 30
+
+export function canQuality3DTranslateAfterTurn(facing: number, desired: number) {
+  return Math.abs(shortestAngleDelta(facing, desired)) <= QUALITY_3D_MOVE_FACING_TOLERANCE_RADIANS
+}
+
 function smoothstep(edge0: number, edge1: number, value: number) {
   const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)))
   return t * t * (3 - 2 * t)

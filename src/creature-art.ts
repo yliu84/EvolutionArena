@@ -263,18 +263,67 @@ function paintProceduralExtras(
 
 export function paintBossTexture(g: GameObjects.Graphics) {
   g.clear()
-  g.fillStyle(0x000000, 0.45).fillEllipse(80, 148, 120, 28)
-  g.fillStyle(0x2a101f).fillTriangle(80, 40, 28, 140, 132, 140)
-  g.fillStyle(0x3b1630).fillEllipse(80, 96, 108, 86)
-  g.fillStyle(0x7f315f).fillTriangle(80, 8, 48, 64, 112, 64)
-  g.fillStyle(0x7f315f).fillTriangle(32, 52, 4, 108, 48, 96)
-  g.fillStyle(0x7f315f).fillTriangle(128, 52, 156, 108, 112, 96)
-  g.fillStyle(0xd85e88).fillCircle(80, 88, 30)
-  g.fillStyle(0x170914).fillCircle(80, 88, 14)
-  g.fillStyle(0xffa0bd, 0.4).fillCircle(64, 74, 10)
-  g.lineStyle(5, 0xffa0bd, 0.9).strokeEllipse(80, 96, 108, 86)
-  g.lineStyle(4, 0xffd36e, 0.8).strokeCircle(80, 88, 40)
-  g.generateTexture('boss-rift-warden', 160, 160).clear()
+  g.fillStyle(0x000000, 0.5).fillEllipse(120, 195, 194, 34)
+
+  // Six asymmetric load-bearing rift limbs establish a creature silhouette
+  // instead of the former triangular debug icon.
+  const limbs = [
+    { rootX: 70, rootY: 112, jointX: 34, jointY: 128, tipX: 9, tipY: 166 },
+    { rootX: 72, rootY: 137, jointX: 31, jointY: 157, tipX: 19, tipY: 203 },
+    { rootX: 84, rootY: 158, jointX: 57, jointY: 190, tipX: 53, tipY: 216 },
+    { rootX: 170, rootY: 110, jointX: 211, jointY: 126, tipX: 234, tipY: 158 },
+    { rootX: 169, rootY: 138, jointX: 209, jointY: 162, tipX: 220, tipY: 205 },
+    { rootX: 155, rootY: 160, jointX: 182, jointY: 191, tipX: 187, tipY: 218 },
+  ]
+  for (const [index, limb] of limbs.entries()) {
+    g.lineStyle(index % 2 ? 19 : 23, 0x210f19, 1)
+      .lineBetween(limb.rootX, limb.rootY, limb.jointX, limb.jointY)
+      .lineBetween(limb.jointX, limb.jointY, limb.tipX, limb.tipY)
+    g.lineStyle(index % 2 ? 9 : 11, index % 2 ? 0x61354b : 0x74415a, 1)
+      .lineBetween(limb.rootX, limb.rootY, limb.jointX, limb.jointY)
+      .lineBetween(limb.jointX, limb.jointY, limb.tipX, limb.tipY)
+    g.fillStyle(0xc77b82, 0.74).fillTriangle(limb.tipX, limb.tipY - 7, limb.tipX - 7, limb.tipY + 7, limb.tipX + 7, limb.tipY + 5)
+  }
+
+  g.fillStyle(0x180b12).fillEllipse(120, 125, 142, 126)
+  g.fillStyle(0x321823).fillEllipse(120, 118, 130, 116)
+  g.fillStyle(0x4a2634).fillEllipse(120, 107, 112, 96)
+
+  // Overlapping shell plates carry their own warm rim so the body keeps
+  // volume under the dark Gloamwood grade.
+  const plates = [
+    { x: 120, y: 53, w: 64, h: 52 },
+    { x: 82, y: 82, w: 58, h: 62 },
+    { x: 158, y: 82, w: 58, h: 62 },
+    { x: 79, y: 130, w: 64, h: 67 },
+    { x: 161, y: 130, w: 64, h: 67 },
+    { x: 120, y: 159, w: 78, h: 58 },
+  ]
+  for (const [index, plate] of plates.entries()) {
+    g.fillStyle(index % 2 ? 0x573044 : 0x66364a, 1).fillEllipse(plate.x, plate.y, plate.w, plate.h)
+    g.lineStyle(3, index % 2 ? 0xad6671 : 0xd07a75, 0.72).strokeEllipse(plate.x, plate.y, plate.w, plate.h)
+    g.fillStyle(0xeaa39a, 0.2).fillEllipse(plate.x - plate.w * 0.13, plate.y - plate.h * 0.18, plate.w * 0.28, plate.h * 0.2)
+  }
+
+  for (const horn of [
+    [76, 58, 48, 13, 91, 48], [164, 58, 192, 13, 149, 48],
+    [62, 98, 18, 72, 73, 82], [178, 98, 225, 70, 167, 81],
+  ] as const) {
+    g.fillStyle(0x8f5a60).fillTriangle(horn[0], horn[1], horn[2], horn[3], horn[4], horn[5])
+    g.lineStyle(2, 0xe3a27f, 0.68).lineBetween(horn[0], horn[1], horn[2], horn[3])
+  }
+
+  // The rift core remains the encounter read, but is seated inside layered
+  // lids and a faceted iris rather than floating on a flat triangle.
+  g.fillStyle(0x120710).fillEllipse(120, 111, 82, 60)
+  g.lineStyle(7, 0xa84d69, 1).strokeEllipse(120, 111, 82, 60)
+  g.lineStyle(3, 0xf0a06e, 0.72).strokeEllipse(120, 111, 66, 45)
+  g.fillStyle(0xe26078).fillEllipse(120, 111, 46, 39)
+  g.fillStyle(0x7c214d).fillCircle(120, 111, 16)
+  g.fillStyle(0x09040a).fillEllipse(120, 111, 9, 27)
+  g.fillStyle(0xffd4ae, 0.72).fillCircle(111, 102, 5)
+  g.lineStyle(3, 0xe47d93, 0.5).strokeEllipse(120, 116, 106, 91)
+  g.generateTexture('boss-rift-warden', 240, 224).clear()
 }
 
 export function paintCombatProjectiles(g: GameObjects.Graphics) {

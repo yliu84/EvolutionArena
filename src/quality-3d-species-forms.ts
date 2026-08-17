@@ -1,4 +1,12 @@
-export type Quality3DBodyPlan = 'hatchling-lizard' | 'crested-gecko' | 'predator-drake' | 'sky-wyvern' | 'armored-dragon' | 'frost-dragon' | 'ancient-dragon'
+export type Quality3DBodyPlan =
+  | 'hatchling-lizard'
+  | 'crested-gecko'
+  | 'predator-drake'
+  | 'broad-chested-hunter-drake'
+  | 'sky-wyvern'
+  | 'armored-dragon'
+  | 'frost-dragon'
+  | 'ancient-dragon'
 
 export interface Quality3DSpeciesForm {
   lineage: 'lizard-dragon'
@@ -35,8 +43,8 @@ export interface Quality3DSpeciesForm {
 
 export const QUALITY_3D_LIZARD_DRAGON_FORMS: readonly Quality3DSpeciesForm[] = [
   form(0, 'moss-hatchling', 'hatchling-lizard', 0.72, 1.12, 0.42, 0.58, 0.54, 0.92, 0.68, 0.48, 0.42, 0.5, 0.25, 4, 0.4, 0.48, 7, 1.85, 0, 0, 0, 0, 0, 0x8ecb76, 0x4b7a55, 0xf0d873, 0, 0xffb52e),
-  form(1, 'coral-gecko', 'crested-gecko', 0.82, 1.42, 0.46, 0.76, 0.6, 1.12, 0.76, 0.58, 0.4, 0.68, 0.34, 4, 0.5, 0.64, 8, 2.3, 0, 0, 0, 6, 0.08, 0x35bcb4, 0x176f75, 0xff795f, 0, 0xffdf72),
-  form(2, 'scarlet-hunter', 'predator-drake', 0.96, 1.66, 0.62, 0.68, 0.84, 1.42, 1.08, 0.62, 0.48, 0.54, 0.62, 4, 0.78, 0.58, 9, 2.75, 0, 0, 2, 5, 0.22, 0xb93e38, 0x351e2a, 0xf3b34b, 0, 0xffdd55),
+  form(1, 'scarlet-gecko', 'crested-gecko', 0.82, 1.42, 0.46, 0.76, 0.6, 1.12, 0.76, 0.58, 0.4, 0.68, 0.34, 4, 0.5, 0.64, 8, 2.3, 0, 0, 0, 6, 0.08, 0x913542, 0x4f202d, 0xf0b178, 0, 0xffdf72),
+  form(2, 'scarlet-hunter', 'broad-chested-hunter-drake', 0.96, 1.42, 0.94, 0.62, 0.9, 1.12, 0.94, 0.68, 0.66, 0.7, 0.72, 4, 0.82, 0.72, 8, 2.42, 0, 0, 2, 5, 0.22, 0xb94d3f, 0x5a2a22, 0xf1c28a, 0, 0xffcf62),
   form(3, 'azure-wyvern', 'sky-wyvern', 1.08, 1.58, 0.84, 0.74, 1.06, 1.5, 1.5, 0.66, 0.52, 0.58, 0.7, 2, 0.94, 0.62, 9, 2.9, 2.65, 1.6, 4, 4, 0.18, 0x397ed0, 0x173e78, 0x6ff1e7, 0x2459a8, 0x9affff),
   form(4, 'magma-bulwark', 'armored-dragon', 1.18, 1.95, 1.02, 1.08, 1.12, 1.66, 1.4, 0.76, 0.62, 0.7, 0.78, 4, 0.84, 0.86, 8, 2.65, 1.55, 1.05, 5, 9, 0.95, 0x332f38, 0x171821, 0xff713d, 0x632b32, 0xff9d42),
   form(5, 'frost-sovereign', 'frost-dragon', 1.3, 2.12, 0.92, 0.92, 1.24, 1.92, 1.8, 0.72, 0.58, 0.62, 0.88, 4, 1.02, 0.76, 10, 3.35, 3.35, 1.95, 6, 8, 0.52, 0xc7dfe5, 0x557a91, 0x8ef4ff, 0x8acddd, 0xc8ffff),

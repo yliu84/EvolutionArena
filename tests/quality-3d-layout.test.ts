@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   QUALITY_3D,
+  QUALITY_3D_MOVE_FACING_TOLERANCE_RADIANS,
+  canQuality3DTranslateAfterTurn,
   getQuality3DFootprint,
   inspectQuality3DFootprint,
   isQuality3DBridge,
@@ -56,6 +58,12 @@ describe('quality 3D terrain and turning', () => {
     const to = -Math.PI + 0.1
     expect(shortestAngleDelta(from, to)).toBeCloseTo(0.2)
     expect(turnToward(from, to, 0.05)).toBeCloseTo(from + 0.05)
+  })
+
+  it('opens translation only after the body faces the requested direction', () => {
+    expect(canQuality3DTranslateAfterTurn(0, Math.PI)).toBe(false)
+    expect(canQuality3DTranslateAfterTurn(0, QUALITY_3D_MOVE_FACING_TOLERANCE_RADIANS)).toBe(true)
+    expect(canQuality3DTranslateAfterTurn(0, QUALITY_3D_MOVE_FACING_TOLERANCE_RADIANS + 0.001)).toBe(false)
   })
 
   it('keeps the head, flanks and tail inside the authored walkable topology', () => {

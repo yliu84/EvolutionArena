@@ -13,20 +13,20 @@ describe('browser page entry', () => {
   })
 
   it('keeps the hunt readability slice behind an explicit query entry', () => {
-    const entry = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+    const entry = readFileSync(new URL('../src/legacy-main.ts', import.meta.url), 'utf8')
     expect(entry).toMatch(/isGloamwoodHuntSliceRequested\(\)/)
     expect(entry).toMatch(/launchRun\(isStarterVariantId\(requestedStarter\) \? requestedStarter : 'spine-stalker'\)/)
   })
 
   it('keeps the wide spatial skeleton behind maplab=3', () => {
-    const entry = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+    const entry = readFileSync(new URL('../src/legacy-main.ts', import.meta.url), 'utf8')
     expect(entry).toMatch(/isGloamwoodSpaceLabRequested\(\)/)
     expect(entry).toMatch(/launchGloamwoodSpaceLab\(\)/)
     expect(entry).toMatch(/data-space-action="layer"/)
   })
 
   it('keeps the nest exploration skeleton behind maplab=4', () => {
-    const entry = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+    const entry = readFileSync(new URL('../src/legacy-main.ts', import.meta.url), 'utf8')
     expect(entry).toMatch(/isGloamwoodExplorationLabRequested\(\)/)
     expect(entry).toMatch(/launchGloamwoodExplorationLab\(\)/)
     expect(entry).toMatch(/data-exploration-action="spawn"/)
@@ -39,9 +39,33 @@ describe('browser page entry', () => {
   })
 
   it('clears every V4 QA override before starting a fresh run', () => {
-    const entry = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+    const entry = readFileSync(new URL('../src/legacy-main.ts', import.meta.url), 'utf8')
     for (const parameter of ['boss', 'prop', 'nest', 'enemy', 'health', 'hazard', 'combatStyle', 'evolutionRoute', 'evolutionStage']) {
       expect(entry).toContain(`params.delete('${parameter}')`)
     }
+  })
+
+  it('loads MapLab 5 independently from the legacy Phaser entry and exposes retry recovery', () => {
+    const entry = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+    expect(entry).toMatch(/import\(['"]\.\/gloamwood-3d-hunt['"]\)/)
+    expect(entry).toMatch(/import\(['"]\.\/legacy-main['"]\)/)
+    expect(entry).toMatch(/data-gloamwood-retry/)
+    expect(entry).toMatch(/dataset\.gameReadyMs/)
+    expect(entry).not.toMatch(/^import .*legacy-main/m)
+  })
+
+  it('ships only runtime character GLBs while preserving authoring masters in public', () => {
+    const config = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8')
+    for (const runtimeModel of [
+      'coral-gecko-rigged-runtime-v1.glb',
+      'scarlet-gecko-rigged-runtime-v1.glb',
+      'scarlet-hunter-quadruped-runtime-v1.glb',
+      'azure-wyvern-v1.glb',
+      'golden-ancient-v1.glb',
+    ]) {
+      expect(config).toContain(runtimeModel)
+    }
+    expect(config).toMatch(/closeBundle/)
+    expect(config).toMatch(/Authoring masters stay intact/)
   })
 })

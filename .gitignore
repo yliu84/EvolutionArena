@@ -12,6 +12,16 @@ dist
 dist-ssr
 *.local
 
+# Creature authoring working files under docs/concepts/: Blender masters,
+# intermediate Meshy/source exports and render sheets. These are reproducible
+# local working files, not runtime assets — the runtime GLBs live in public/.
+# The PROCESSING.md / PRODUCTION-MODEL-CONTRACT .md provenance records in the
+# same folders stay tracked, since PROJECT_CONTEXT.md cites them.
+docs/concepts/**/*.blend
+docs/concepts/**/*.blend1
+docs/concepts/**/*.glb
+docs/concepts/**/*.png
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

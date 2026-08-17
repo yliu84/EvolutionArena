@@ -29,7 +29,7 @@ describe('Gloamwood V4 exploration layout', () => {
   })
 
   it('defines eight varied nests and one separate boss lair', () => {
-    expect(GLOAMWOOD_EXPLORATION_LAYOUT.version).toBe(3)
+    expect(GLOAMWOOD_EXPLORATION_LAYOUT.version).toBe(4)
     expect(GLOAMWOOD_EXPLORATION_LAYOUT.nests).toHaveLength(8)
     expect(GLOAMWOOD_EXPLORATION_LAYOUT.nests.filter((nest) => nest.elite)).toHaveLength(2)
     expect(new Set(GLOAMWOOD_EXPLORATION_LAYOUT.nests.map((nest) => nest.family)).size).toBe(6)

@@ -93,4 +93,18 @@ describe('player evolution visual profile', () => {
     expect(venom.venomNeedleLength).toBeGreaterThan(25)
     expect(venom.visibleTraits).toContain('疫毒针冠')
   })
+
+  it('combines both families into one readable hybrid silhouette at Apex', () => {
+    const hybrid = playerEvolutionAppearance(6, 'fang', {
+      'serrated-claws': 2,
+      'execution-fangs': 1,
+      'swift-nerves': 2,
+      'wind-sacs': 1,
+    }, 'wing')
+    expect(hybrid.route).toBe('fang')
+    expect(hybrid.secondaryRoute).toBe('wing')
+    expect(hybrid.fangLength).toBeGreaterThan(10)
+    expect(hybrid.wingPairCount).toBe(2)
+    expect(hybrid.visibleTraits).toEqual(expect.arrayContaining(['獠牙利爪', '疾风尾翎', '双基因融合终态']))
+  })
 })

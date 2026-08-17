@@ -20,11 +20,13 @@ The public repository currently uses a web stack built around **TypeScript + Vit
 - `docs/design/03-MAP-AND-ENCOUNTERS.md` — map, spawn logic, encounters, events
 - `docs/design/04-CREATURES-AND-BOSSES.md` — 10-creature launch roster, elites, bosses
 - `docs/design/05-EVOLUTION-AND-GENES.md` — six-stage evolution and gene system
+- `docs/design/20-RANDOM-EVOLUTION-SPECIES-MATRIX.md` — 20 core species, 13 Apex endpoints and route mechanics
 - `docs/design/06-META-PROGRESSION.md` — collection and unlocks without pay-to-win power creep
 - `docs/technical/07-WEB-ARCHITECTURE.md` — browser architecture and portability
 - `docs/technical/08-PERFORMANCE-BUDGET.md` — browser performance budgets
 - `docs/art/09-ART-BIBLE.md` — 2.5D visual direction and AI-art pipeline
-- `docs/art/19-CHARACTER-QUALITY-BASELINE.md` — accepted coral-gecko data, pending weight gate, and reusable creature/evolution template
+- `docs/art/19-CHARACTER-QUALITY-BASELINE.md` — immutable accepted coral-gecko stage-0 history and original production template
+- `docs/art/20-CREATURE-PRODUCTION-STANDARD-V2.md` — current mandatory cross-species model, rig, locomotion, combat and acceptance standard
 - `docs/production/10-ROADMAP.md` — gated development roadmap
 - `docs/production/11-BACKLOG.md` — prioritized feature backlog
 - `docs/production/12-PLAYTEST-PLAN.md` — validation metrics and test protocol

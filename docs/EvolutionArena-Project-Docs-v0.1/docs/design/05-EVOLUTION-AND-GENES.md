@@ -58,6 +58,8 @@ Capstone mutation; should feel qualitatively different.
 
 After Stage VI, optional overgrowth raises world and boss pressure. Formal Stages VII–X are not part of v0.1 and require the later long-run gate.
 
+Stages are timing/progression levels, not one universal species ladder. Runtime form resolution uses stage plus dominant family and an optional compatible secondary family. The v1 authored graph contains one origin, six family lineages and thirteen Apex endpoints (six pure and seven curated hybrids), documented in `20-RANDOM-EVOLUTION-SPECIES-MATRIX.md`. Once an Apex is reached, its species ID and capstone mechanics are locked for the run; overgrowth cannot reroll the endpoint.
+
 ## Current Mutation Families
 
 ### Fang
@@ -85,6 +87,8 @@ After Stage VI, optional overgrowth raises world and boss pressure. Formal Stage
 - Rift Chamber — magic area and damage
 
 Each mutation currently supports two ranks. Several effects remain stat-led; route polish must add behavior, timing, visual tells or trade-offs so each family changes how the player fights.
+
+The stage-6 resolver applies an additional species capstone to the same authoritative combat state. Every Apex defines a normal-attack profile, locomotion profile, passive, explicit cost and a unique combination of damage, speed, dodge, health, defense, resource, sustain, retaliation, cadence or area changes. These mechanics are not owned by animation or UI text.
 
 ## Visual Mutation Slots
 
