@@ -4,9 +4,16 @@ Status: design direction accepted by the user on 2026-08-17. This is the first n
 
 Standard: `evolution-arena-creature-production-v2.1`. Where this document and typed runtime code disagree, stop and reconcile before producing another creature.
 
-Canonical production target:
+Canonical production target (primary Meshy image, 3/4):
 
 `docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/shell-stage1-concept-b-stone-pangolin-visible-legs.png`
+
+Extra reconstruction views (side, then front). Use only as dedicated extra-view slots, never collaged into the primary image:
+
+- `docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/shell-stage1-concept-b-stone-pangolin-side.png`
+- `docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/shell-stage1-concept-b-stone-pangolin-front.png`
+
+Meshy job pack (upload order, prompt, reject list, drop path for the source GLB): `source/SOURCE.md`
 
 Preserved first draft (legs hidden under the plate skirt, superseded):
 
@@ -47,6 +54,41 @@ Player decision this form changes: it trades approach speed and burst for the ab
 - Value separation carries this form: light stone against dark hide must hold in the Gloamwood's bright, midtone and shadow zones. Hue-only separation fails standard rule 11 — this is exactly why the buckler-head direction was not chosen for the player.
 - Matte, zero metalness. No base-colour texture reused as full-strength emissive; any emissive fill stays low and measured in the map.
 - The palette must not drift toward coral-red. Coral/teal-jade/cream belongs to `scarlet-gecko-first-evolution-master-v2`; two stage-1 forms sharing a palette halves the evolution read.
+
+## Weight and solidity
+
+User direction, 2026-08-17: the creature must feel solid and hard-edged, never light or flimsy. This project has failed that bar twice, so the requirement is written as checkable properties rather than adjectives.
+
+Prior failures this clause exists to prevent:
+
+- `scarlet-gecko` V1 — rejected because the body read as flat and rubber-like.
+- `scarlet-hunter` native V1/V2 — rejected as a balloon-like smooth primitive construction.
+
+Static properties:
+
+- Every plate keeps a hard lifted lip and real thickness at its overlap. A bevelled edge that rounds away at gameplay distance reads as rubber.
+- Plate seams must carry genuine dark occlusion. A uniform mid-value surface is the single largest cause of the plastic-toy read; the form needs a true dark end, not only a light one.
+- Semi-matte response with zero metalness, following the accepted stage-1 material fix: base colour must not be reused as full-strength emissive, because that erases body planes and produces the watercolour/cardboard read (standard rule 11). Stage 1 settled at 0.18 emissive fill, 1.16 contrast, 1.24 saturation — use those as the starting point, not neutral defaults.
+- No pale flat tints and no black albedo. Both collapse volume in the Gloamwood's lighting.
+
+Dynamic properties — weight is carried more by motion than by mesh:
+
+- Heaviest cadence in the game, with plant compression and stop settle above the stage-2 values (0.052 lift / 0.072 plant / 0.082 settle are the stage-2 reference floor for this form).
+- Every foot plant emits pooled dust; a heavy body that lands silently reads weightless regardless of how it is modelled.
+- `Slam` must have visible anticipation, a hard contact frame and a slow recovery. Fast symmetric motion is what makes armour look like foam.
+- Three-layer contact shadow must track the body, head and tail mass, as on the accepted forms.
+
+None of these may alter authoritative damage, range, targeting or collision (standard rule 10).
+
+## Readable size at the gameplay camera
+
+Measured from runtime values, not estimated: the camera is a 44° FOV perspective at 20.09 units and a 36.0° pitch, so the visible frame is 16.23 world units tall. A 2.16-unit stage-1 form therefore occupies **13.3% of screen height — roughly 144 px on a 1080p display**.
+
+Consequences that bind this form's production:
+
+- Outer contour and value separation are the only properties that survive at that size. They receive the quality budget.
+- Individual plates, micro-bevels and texture detail are not resolvable at 144 px and must not absorb production time.
+- Aggressive decimation is therefore safe. When reducing from the source, preserve the silhouette's outer notching — the sawtooth the plate rows cut into the body outline — and allow interior plates to merge.
 
 ## Scale and world footprint
 
@@ -95,21 +137,24 @@ The chain is `Bite → Slam → TailSwipe` on the single primary input. These ar
 
 ## Acceptance sequence
 
-1. Image-to-3D generation from the production target. Text-to-3D is not permitted for this form — see rejected candidates.
-2. Silhouette review against this contract before any rigging work.
-3. Rig, weights, nine clips, validator pass.
+1. ~~Image-to-3D generation from the production target.~~ **Done, attempt 2.** Text-to-3D is not permitted for this form — see attempt 1.
+2. ~~Silhouette review against this contract before any rigging work.~~ **Done and accepted by the user on 2026-08-17**, reviewed at the true 36° camera angle.
+3. Staged decimation from 1,986,110 to 19,406, preserving the outer contour notching. Rig, weights, nine clips, validator pass.
 4. Runtime integration behind the `(stage, family)` asset key; debug `characterFamilyMatched` must report `true` for `shell`.
 5. Footprint and traversal verification per the scale section.
 6. Browser verification at desktop and 844×390: full three-step chain, authoritative damage, grounded feet, zero console errors or warnings.
 7. User gameplay acceptance. Only then does the identifier move from `candidate` to `master`.
 
-## Rejected candidates
+## Generation attempts
 
 | # | Date | Method | Outcome |
 | --- | --- | --- | --- |
 | 1 | 2026-08-17 | Meshy text-to-3D | **Rejected.** Output reverted to a generic armoured monitor lizard: spinal spike ridge instead of plate coverage, long smooth tapering tail, tall upright stance, raised head on a visible neck. Body plan was indistinguishable from stage 0/1 at the gameplay camera. Root cause: `lizard` / `reptile` / `quadruped` in the prompt dominate the generator's prior and reduce "armour" to bolted-on decoration. |
+| 2 | 2026-08-17 | Meshy image-to-3D from the production target | **Accepted as source geometry.** 1,986,110 triangles / 992,973 vertices. Continuous overlapping plate coverage across back, flanks and tail; four legs clear of the plate skirt with visible claws; head low, forward and tucked under the leading rim; tail shorter than the torso and plated to the tip. Reviewed at the true 36° camera angle: the outer contour reads as a plated mound and cannot be confused with the stage-1 gecko. Back arch is flatter and the body longer than the concept board, accepted because neither is resolvable at 13.3% screen height. Source triangle count is ~6× the heaviest previous source (coral gecko's 320,506 cleaned high), so decimation is staged, not single-pass. |
 
-Record every further attempt here with date, method and outcome. **Cost measurement is this creature's primary deliverable** — the stage-2 hunter needed 13 GLB attempts, and the number of attempts this form needs is what decides whether the species matrix is produced in full or cut.
+Record every further attempt here with date, method and outcome. **Cost measurement is this creature's primary deliverable** — the stage-2 hunter needed 13 GLB attempts, and the number of attempts this form needs is what decides whether the species matrix is produced in full or cut. Running total for this form: **2 attempts to usable source geometry**, versus 13 GLBs for the stage-2 hunter.
+
+Decimation reference from `coral-gecko/derived/PROCESSING.md`: 320,506 cleaned high → 54,997 web candidate → 32,000 runtime LOD. This form targets 19,406 for parity with Fang stage 1, from a 1,986,110 source.
 
 ## Related, not in scope here
 

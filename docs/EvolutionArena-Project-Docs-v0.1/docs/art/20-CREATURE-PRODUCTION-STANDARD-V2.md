@@ -51,6 +51,25 @@ The current movement/combat reference is the stage-2 Scarlet Hunter, not because
 
 The desktop/mobile FPS samples are development-machine evidence, not physical midrange-mobile certification. Package compression and LOD remain release gates.
 
+### 2.1 How large a creature actually is on screen
+
+Clarification added 2026-08-17. This does not change any rule below; it states the size at which every rule below is judged, because production time was at risk of going into detail no player can resolve.
+
+Derived from runtime values — a 44° FOV perspective camera at 20.09 units and a 36.0° pitch — the visible frame is 16.23 world units tall. Therefore:
+
+| Stage | World height | Share of screen height | Pixels at 1080p |
+|---|---|---|---|
+| 0 | 1.80 | 11.1% | ~120 |
+| 1 | 2.16 | 13.3% | ~144 |
+| 2 | 2.55 | 15.7% | ~170 |
+
+Consequences for every creature:
+
+- Outer contour and value separation are what survive at this size, and they receive the quality budget.
+- Micro-bevels, individual scales or plates, and fine texture detail are not resolvable and must not absorb production time.
+- Decimation may be aggressive provided the silhouette's outer profile is preserved.
+- A turntable at screen-filling size is not a review. Judge every candidate at the gameplay camera angle and size before rigging.
+
 ## 3. Non-Negotiable Rules for Every Ground Creature
 
 1. **Readable silhouette:** head, chest/shoulder, waist, pelvis, load-bearing limbs and tail/abdomen must read at the gameplay camera. Smooth balloons, accidental flat sheets, intersecting primitive piles and floating decorations fail.
