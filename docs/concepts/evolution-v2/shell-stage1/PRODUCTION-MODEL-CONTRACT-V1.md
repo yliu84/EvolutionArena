@@ -120,12 +120,24 @@ Normalising this body to 2.16 height makes it **1.38× wider and 1.75× longer**
 
 The collision profile is still the stage-based Fang value (radius 0.62, front 0.58, rear 0.66), giving a roughly 2.48-unit collision extent against a 6.98-unit body: about 36% coverage, against 62% for the gecko. A typed Shell body radius is therefore required, not optional.
 
-**Open decision, blocking runtime acceptance.** Two admissible corrections:
+**Resolved 2026-08-17: form-specific world height.** The user chose the second of the two admissible corrections — a height below 2.16 rather than keeping 2.16 with a much larger body.
 
-1. Keep 2.16 height, define a Shell-specific body radius near 1.05–1.30, and accept a visibly large creature.
-2. Give Shell stage 1 a form-specific world height below 2.16 so length lands near the gecko's 4.0–4.6, expressing its growth as breadth and mass rather than height. This is the deviation this section already permits, and suits an armoured form that should grow heavier rather than taller.
+Shell stage 1 is held at **1.80**, the stage-0 height, giving:
 
-Traversal against the 82 obstacles, the nest's 6.4 clear radius and the Boss arena's 4.2/7.8 radii has **not yet been run** — an in-session attempt could not drive the player during the guardian phase. It must be completed before either option is committed.
+| | Width | Length | Height |
+|---|---|---|---|
+| coral-gecko (stage 0) | 1.72 | 3.94 | 1.80 |
+| **stone-pangolin at 1.80** | **1.80** | **5.82** | **1.80** |
+
+Growth over stage 0 is therefore carried by roughly **+48% length and +5% width at equal height**, which suits an armoured form that should get heavier rather than taller. Holding height rather than lowering it also matters for the evolution read: the player must never see their creature appear to shrink at the moment it evolves.
+
+Typed data, not constants in frame loops:
+
+- `GLOAMWOOD_3D_FORM_WORLD_HEIGHTS` in `src/gloamwood-3d-hunt.ts` carries the per-family override; `gloamwoodCharacterWorldHeight(stage, family)` falls back to the stage table for every other form.
+- `GLOAMWOOD_PLAYER_FAMILY_COLLISION_PROFILES` in `src/gloamwood-3d-collision.ts` gives Shell stage 1 `radius 0.72 / front 0.74 / rear 0.84` against the Fang `0.62 / 0.58 / 0.66`. Radius follows half-width; the probes grow less than raw length because the plated tail tip is deliberately not an authoritative body.
+- The stage-1 Pounce reserve in `gloamwoodPlayerCombatBodyRadius` is skipped for Shell, which lands a planted Slam instead of a leap.
+
+**Still open.** Traversal against the 82 obstacles, the nest's 6.4 clear radius and the Boss arena's 4.2/7.8 radii has **not been run in a live browser**. Two in-session attempts failed for environment reasons: the debug entry could not drive the player during the guardian phase, and the dev server became unreachable. The unit suite covers the profile selection and relative clearance, but a real run must still confirm the body traverses the map before this form is accepted.
 
 ## Rig, budget and deformation
 

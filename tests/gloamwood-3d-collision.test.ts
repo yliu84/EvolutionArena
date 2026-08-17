@@ -56,3 +56,25 @@ describe('Gloamwood 3D world collision', () => {
     expect(Math.hypot(result.x - shrine.x, result.z - shrine.z)).toBeGreaterThan(shrine.radius)
   })
 })
+
+describe('Shell stage-1 footprint', () => {
+  it('gives the Shell form its own footprint instead of the Fang stage profile', () => {
+    const fang = getGloamwoodPlayerCollisionProfile(1, 'fang')
+    const shell = getGloamwoodPlayerCollisionProfile(1, 'shell')
+    // 1.80 x 5.82 against the Fang form's 1.56 x 3.99 needs a wider, longer body.
+    expect(shell.radius).toBeGreaterThan(fang.radius)
+    expect(shell.frontOffset).toBeGreaterThan(fang.frontOffset)
+    expect(shell.rearOffset).toBeGreaterThan(fang.rearOffset)
+    // Other families and stages keep the accepted stage profile untouched.
+    expect(getGloamwoodPlayerCollisionProfile(1)).toEqual(fang)
+    expect(getGloamwoodPlayerCollisionProfile(0, 'shell')).toEqual(getGloamwoodPlayerCollisionProfile(0))
+    expect(getGloamwoodPlayerCollisionProfile(2, 'shell')).toEqual(getGloamwoodPlayerCollisionProfile(2))
+  })
+
+  it('keeps the wider Shell body clear of an obstacle the Fang body would pass', () => {
+    const obstacles = [{ id: 'rock-1', kind: 'rock' as const, x: 1.4, z: 0, radius: 0.5 }]
+    const fang = inspectGloamwoodPlayerCollision({ x: 0, z: 0 }, 0, 1, obstacles, 'fang')
+    const shell = inspectGloamwoodPlayerCollision({ x: 0, z: 0 }, 0, 1, obstacles, 'shell')
+    expect(shell.minimumClearance).toBeLessThan(fang.minimumClearance)
+  })
+})

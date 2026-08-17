@@ -139,8 +139,25 @@ export const GLOAMWOOD_PLAYER_HIT_REACTION = {
   familyScale: { fang: 0.26, shell: 0.34, swarm: 0.08 },
 } as const
 
-export function gloamwoodCharacterWorldHeight(stage: number) {
-  return GLOAMWOOD_3D_CHARACTER_HEIGHTS[stage >= 2 ? 2 : stage >= 1 ? 1 : 0]
+/**
+ * Form-specific world heights, applied instead of the stage default.
+ *
+ * The runtime normalises a model by height alone, so a low, long body scaled to
+ * the 2.16 stage-1 height inflates in length and width. The Shell stage-1 form
+ * measured 2.16 x 6.98 that way, against the Fang form's 1.56 x 3.99. Holding it
+ * at the stage-0 height instead makes it 1.80 x 5.82: it never reads as
+ * shrinking on evolution, and its growth is carried by roughly +48% length and
+ * +5% width over stage 0 rather than by height, which suits an armoured form
+ * that should get heavier rather than taller.
+ */
+const GLOAMWOOD_3D_FORM_WORLD_HEIGHTS: Partial<Record<Quality3DFormFamily, readonly number[]>> = {
+  shell: [1.8, 1.8, 2.55],
+}
+
+export function gloamwoodCharacterWorldHeight(stage: number, family?: Quality3DFormFamily) {
+  const index = stage >= 2 ? 2 : stage >= 1 ? 1 : 0
+  const override = family ? GLOAMWOOD_3D_FORM_WORLD_HEIGHTS[family] : undefined
+  return override?.[index] ?? GLOAMWOOD_3D_CHARACTER_HEIGHTS[index]
 }
 
 /**
@@ -152,10 +169,12 @@ function gloamwoodStandaloneDisplay() {
   return iosStandalone || window.matchMedia?.('(display-mode: standalone)').matches === true
 }
 
-function gloamwoodPlayerCombatBodyRadius(stage: number) {
-  const profile = getGloamwoodPlayerCollisionProfile(stage)
+function gloamwoodPlayerCombatBodyRadius(stage: number, family?: Quality3DFormFamily) {
+  const profile = getGloamwoodPlayerCollisionProfile(stage, family)
   const neutralRadius = profile.radius + Math.max(profile.frontOffset, profile.rearOffset)
-  const stageOnePounceReserve = stage === 1
+  // The reserve exists so a leaping form does not land inside another body. The
+  // Shell chain replaces Pounce with a planted Slam, so it reserves nothing.
+  const stageOnePounceReserve = stage === 1 && family !== 'shell'
     ? CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.visualTravel * SCARLET_GECKO_PRESENTATION.combat.pounceVisualTravelScale
     : 0
   return neutralRadius + stageOnePounceReserve
@@ -1378,7 +1397,7 @@ class Gloamwood3DHunt {
     gltf.scene.updateMatrixWorld(true)
     const bounds = new THREE.Box3().setFromObject(gltf.scene)
     const size = bounds.getSize(new THREE.Vector3())
-    const scale = gloamwoodCharacterWorldHeight(stage) / Math.max(0.001, size.y)
+    const scale = gloamwoodCharacterWorldHeight(stage, this.characterFamily) / Math.max(0.001, size.y)
     gltf.scene.scale.setScalar(scale)
     gltf.scene.updateMatrixWorld(true)
     const groundedBounds = new THREE.Box3().setFromObject(gltf.scene)
@@ -1854,14 +1873,14 @@ class Gloamwood3DHunt {
       x: this.playerRoot.position.x,
       z: this.playerRoot.position.z,
       alive: this.playerCombat.alive,
-      bodyRadius: gloamwoodPlayerCombatBodyRadius(this.stage),
+      bodyRadius: gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily),
     })
     this.nestState = {
       ...frame.state,
       prey: resolveGloamwoodPreyAroundPlayer(
         frame.state.prey,
         { x: this.playerRoot.position.x, z: this.playerRoot.position.z },
-        gloamwoodPlayerCombatBodyRadius(this.stage),
+        gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily),
       ),
     }
     if (this.runPhase === 'guardian') {
@@ -2231,10 +2250,10 @@ class Gloamwood3DHunt {
   }
 
   private resolveObstacles(next: THREE.Vector3) {
-    const collision = resolveGloamwoodPlayerCollision(next, this.lastFacing, this.stage, this.obstacles)
+    const collision = resolveGloamwoodPlayerCollision(next, this.lastFacing, this.stage, this.obstacles, 6, this.characterFamily)
     next.x = collision.x
     next.z = collision.z
-    const bodyRadius = gloamwoodPlayerCombatBodyRadius(this.stage)
+    const bodyRadius = gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily)
     if (this.bossActive()) {
       let dx = next.x - this.bossState.x
       let dz = next.z - this.bossState.z
@@ -2256,7 +2275,7 @@ class Gloamwood3DHunt {
     next.x = preyCollision.x
     next.z = preyCollision.z
     if (preyCollision.contacts > 0) {
-      const worldCorrection = resolveGloamwoodPlayerCollision(next, this.lastFacing, this.stage, this.obstacles)
+      const worldCorrection = resolveGloamwoodPlayerCollision(next, this.lastFacing, this.stage, this.obstacles, 6, this.characterFamily)
       next.x = worldCorrection.x
       next.z = worldCorrection.z
       this.collisionContacts = collision.contacts + preyCollision.contacts + worldCorrection.contacts
@@ -3263,9 +3282,9 @@ class Gloamwood3DHunt {
   private getDebugState(): DebugState {
     const stage = this.stage
     const asset = resolveQuality3DGLBAsset(stage >= 2 ? 2 : stage >= 1 ? 1 : 0, this.characterFamily).asset
-    const collisionProfile = getGloamwoodPlayerCollisionProfile(stage)
-    const collision = inspectGloamwoodPlayerCollision(this.playerRoot.position, this.lastFacing, stage, this.obstacles)
-    const playerBodyRadius = gloamwoodPlayerCombatBodyRadius(stage)
+    const collisionProfile = getGloamwoodPlayerCollisionProfile(stage, this.characterFamily)
+    const collision = inspectGloamwoodPlayerCollision(this.playerRoot.position, this.lastFacing, stage, this.obstacles, this.characterFamily)
+    const playerBodyRadius = gloamwoodPlayerCombatBodyRadius(stage, this.characterFamily)
     const leapBite = this.activeClip === 'Pounce'
       ? this.stage === 1
         ? gloamwoodStageOnePounceFrame(Math.max(0, performance.now() - this.attackStartedAt) / 1000, Math.max(0.001, this.attackDurationSeconds))
