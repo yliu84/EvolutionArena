@@ -78,7 +78,7 @@ export const QUALITY_3D_GLB_ASSETS: readonly Quality3DGLBAsset[] = [
   asset(
     1,
     'stone-pangolin',
-    '/assets/quality-3d/models/stone-pangolin-rigged-runtime-v1.glb?v=shell-stage1-v1',
+    '/assets/quality-3d/models/stone-pangolin-rigged-runtime-v1.glb?v=shell-stage1-v2-rootfix',
     SCARLET_GECKO_PRESENTATION.displayScale,
     ['StonePangolinMesh', 'Hips', 'chest', 'head', 'frontleg', 'frontleg2', 'R_frontleg', 'R_frontleg2', 'backleg', 'backleg2', 'R_backleg', 'R_backleg2', 'tail', 'tail3'],
     'embedded',

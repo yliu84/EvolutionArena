@@ -49,6 +49,8 @@ describe('quality 3D GLB vertical slice assets', () => {
     const shell = resolveQuality3DGLBAsset(1, 'shell').asset
     // The runtime serves the texture-optimized variant, not the authoring master.
     expect(shell?.url).toContain('stone-pangolin-rigged-runtime-v1.glb')
+    // Cache tag must change whenever the GLB is rebuilt, or browsers serve the old one.
+    expect(shell?.url).toContain('v=shell-stage1-v2')
     // Slam replaces Pounce: short stout forelimbs cannot support a leap.
     expect(shell?.requiredClips).toContain('Slam')
     expect(shell?.requiredClips).not.toContain('Pounce')

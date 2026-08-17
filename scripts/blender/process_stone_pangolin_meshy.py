@@ -131,6 +131,77 @@ def amplify_quaternion_motion(action, bone_names, factor, ceiling_degrees=58):
     return changed_keys
 
 
+def rigidify_plate_islands(mesh_object, max_extent_ratio=0.15, minimum_vertices=6):
+    """Bind each armour plate to one bone so it cannot be torn off the body.
+
+    The plates are separate shells rather than part of a continuous skin. Meshy
+    blends their weights across neighbouring bones, so a small plate driven
+    partly by a distant bone travels far further than its own size during the
+    walk cycle - measured up to 6.5x - which opens holes in the back and head.
+
+    The production contract already prescribes the fix: a plate is a rigid body,
+    and bending is expressed by plates sliding against each other rather than by
+    each plate stretching. So every island small enough to be a plate is snapped
+    to whichever bone already dominates it. The large islands that make up the
+    body, limbs and head keep their smooth blended weights.
+    """
+    mesh = mesh_object.data
+    parent = list(range(len(mesh.vertices)))
+
+    def find(node):
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    for edge in mesh.edges:
+        a, b = (find(edge.vertices[0]), find(edge.vertices[1]))
+        if a != b:
+            parent[a] = b
+
+    islands = {}
+    for index in range(len(mesh.vertices)):
+        islands.setdefault(find(index), []).append(index)
+
+    coordinates = [vertex.co for vertex in mesh.vertices]
+    body_extent = max(
+        max(co[axis] for co in coordinates) - min(co[axis] for co in coordinates)
+        for axis in range(3)
+    )
+    limit = body_extent * max_extent_ratio
+    group_names = {group.index: group.name for group in mesh_object.vertex_groups}
+
+    rigidified = 0
+    for vertices in islands.values():
+        if len(vertices) < minimum_vertices:
+            continue
+        island = [coordinates[index] for index in vertices]
+        extent = max(
+            max(co[axis] for co in island) - min(co[axis] for co in island)
+            for axis in range(3)
+        )
+        if extent > limit:
+            continue
+
+        totals = {}
+        for index in vertices:
+            for group in mesh.vertices[index].groups:
+                totals[group.group] = totals.get(group.group, 0.0) + group.weight
+        if not totals:
+            continue
+        dominant = max(totals, key=totals.get)
+        dominant_group = mesh_object.vertex_groups[group_names[dominant]]
+
+        for index in vertices:
+            for group in list(mesh.vertices[index].groups):
+                if group.group != dominant:
+                    mesh_object.vertex_groups[group_names[group.group]].remove([index])
+            dominant_group.add([index], 1.0, "REPLACE")
+        rigidified += 1
+
+    return rigidified
+
+
 def neutralise_root_location(action, bone_name="Hips"):
     """Remove the constant root displacement Meshy bakes into its clips.
 
@@ -197,6 +268,8 @@ def make_action(name, frame_end, poses):
     armature.animation_data.action = None
     return action
 
+
+rigidified_plates = 0  # disabled: see note on rigidify_plate_islands
 
 armature.animation_data_create()
 
@@ -496,5 +569,6 @@ print("EA_STONE_PANGOLIN_PROCESS=" + json.dumps({
     "actions": sorted(action.name for action in bpy.data.actions),
     "removed_imported_scale_curves": removed_scale_curves,
     "recentred_root_location_channels": recentred_root_channels,
+    "rigidified_plate_islands": rigidified_plates,
     "amplified_run_quaternion_keys": amplified_run_keys,
 }, ensure_ascii=False))
