@@ -500,8 +500,9 @@ class Gloamwood3DHunt {
     window.removeEventListener('keyup', this.keyUp)
     this.renderer.domElement.removeEventListener('pointerdown', this.pointerDown)
     this.renderer.domElement.removeEventListener('dblclick', this.suppressGesture)
-    this.container.removeEventListener('gesturestart', this.suppressGesture)
-    this.container.removeEventListener('gesturechange', this.suppressGesture)
+    document.removeEventListener('gesturestart', this.suppressGesture)
+    document.removeEventListener('gesturechange', this.suppressGesture)
+    document.removeEventListener('gestureend', this.suppressGesture)
     document.removeEventListener('fullscreenchange', this.fullscreenChanged)
     this.scene.traverse((node) => {
       if (!(node instanceof THREE.Mesh)) return
@@ -1389,9 +1390,12 @@ class Gloamwood3DHunt {
     this.renderer.domElement.addEventListener('pointerdown', this.pointerDown)
     this.renderer.domElement.addEventListener('dblclick', this.suppressGesture)
     // Two-thumb play (joystick plus attack) reads as a pinch in Safari, which
-    // ignores `user-scalable=no`. Only Safari fires these gesture events.
-    this.container.addEventListener('gesturestart', this.suppressGesture)
-    this.container.addEventListener('gesturechange', this.suppressGesture)
+    // ignores `user-scalable=no`. Only Safari fires these gesture events, and
+    // they are bound at document level because a page-level pinch does not
+    // necessarily originate inside the game container.
+    document.addEventListener('gesturestart', this.suppressGesture)
+    document.addEventListener('gesturechange', this.suppressGesture)
+    document.addEventListener('gestureend', this.suppressGesture)
     this.renderer.domElement.focus()
   }
 

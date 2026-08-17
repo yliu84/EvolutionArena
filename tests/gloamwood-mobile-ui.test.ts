@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 describe('Gloamwood mobile HUD', () => {
   const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+  const source0 = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
   const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8')
 
   it('defaults to a compact expandable combat HUD on phone landscape', () => {
@@ -33,9 +34,14 @@ describe('Gloamwood mobile HUD', () => {
     expect(html).toMatch(/<meta name="viewport"[^>]*maximum-scale=1\.0/)
     // The canvas is the click-to-move surface, so a stray second tap must stay input.
     expect(css).toMatch(/\.gloamwood-3d-canvas\s*{[^}]*touch-action: none/s)
-    expect(css).toMatch(/body\.is-gloamwood-3d\s*{[^}]*touch-action: manipulation/s)
+    // touch-action is NOT inherited: declaring it on body alone leaves every
+    // descendant at `auto`, which is how iOS zoom survived the first fix.
+    expect(css).toMatch(/body\.is-gloamwood-3d\s*\*[^{]*{[^}]*touch-action: manipulation/s)
+    // iOS resolves page-level zoom against <html>, which body rules cannot reach.
+    expect(css).toMatch(/html\.is-gloamwood-3d/)
+    expect(source0).toContain("document.documentElement.classList.add('is-gloamwood-3d')")
     // Safari ignores user-scalable=no, so two-thumb pinch needs an explicit guard.
-    expect(source).toContain("addEventListener('gesturestart', this.suppressGesture)")
+    expect(source).toContain("document.addEventListener('gesturestart', this.suppressGesture)")
     expect(source).toContain("addEventListener('dblclick', this.suppressGesture)")
   })
 

@@ -905,12 +905,30 @@ body.is-gloamwood-3d .helpbar { display: none; }
 body.is-gloamwood-3d #game-container { position: relative; width: 100%; height: 100dvh; overflow: hidden; }
 /* Touch hardening: the hunt is a full-screen game surface, so no part of it may
    consume a stray second tap as browser double-tap zoom. `manipulation` keeps
-   normal button taps and panel scrolling while removing the zoom gesture. */
+   normal button taps and panel scrolling while removing the zoom gesture.
+   touch-action is NOT an inherited property, so it has to be declared on the
+   descendants as well — setting it on body alone leaves every panel and control
+   wrapper at `auto`, which is how a tap landing beside the round attack button
+   (inside its square box but outside the circle) still reached iOS zoom. */
+html.is-gloamwood-3d,
 body.is-gloamwood-3d {
   overscroll-behavior: none;
-  touch-action: manipulation;
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
+}
+html.is-gloamwood-3d,
+body.is-gloamwood-3d,
+body.is-gloamwood-3d * {
+  touch-action: manipulation;
+}
+/* The play surface and the virtual controls additionally refuse pan and pinch.
+   These carry the body prefix so they outrank the universal rule above. */
+body.is-gloamwood-3d .gloamwood-3d-canvas,
+body.is-gloamwood-3d .gloamwood-3d-touch,
+body.is-gloamwood-3d .gloamwood-3d-touch *,
+body.is-gloamwood-3d .g3d-joystick,
+body.is-gloamwood-3d .g3d-actions {
+  touch-action: none;
 }
 /* No part of the hunt is text the player needs to copy, and a long press on HUD
    or guide copy otherwise opens the iOS selection callout mid-fight. The game

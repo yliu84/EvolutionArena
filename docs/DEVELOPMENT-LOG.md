@@ -1452,3 +1452,16 @@
 - 调试：`prey[]` 调试输出新增只读 `facing` 与 `playerBearing`，便于真机直接确认承诺窗口，无需远程开发者工具。
 - 自动验证：70 个测试文件 / 374 项测试（`tests/gloamwood-3d-ecology.test.ts` 新增 3 项：模拟玩家绕行完成侧后未被格挡的高伤命中、承诺相位朝向恒定且回到 chase 后重新对准、裂牙与群生仍逐帧追踪）、TypeScript、`git diff --check` 与 Vite 生产构建通过。MapLab 5 逻辑块 120.19→120.34 kB。
 - 未验证并明确保留：内嵌浏览器面板为后台标签、`requestAnimationFrame` 被节流至约 6 FPS，无法在其中稳定驱动一次完整的巢卫攻击周期，因此**实机观感（绕后是否手感自然、窗口是否过于宽裕）需用户在真机复验**；`facing`/`playerBearing` 已确认在浏览器正常输出。
+
+## 2026-08-17 · Goal 5 第九批：双击缩放未根除的真因（touch-action 非继承）
+
+- 来源：用户在 iPhone 横屏复测后反馈「点屏幕右下角时有时仍会触发 2 倍放大」，截图显示页面确被放大约 2 倍、左侧 HUD 被推出视口。
+- 根因（第七批的实现错误）：**`touch-action` 不是可继承属性**。第七批把它只写在 `body.is-gloamwood-3d` 上，因此只有 `<body>` 自身生效，全部后代仍为 `auto`。浏览器实测确认：`#app`、`.game-shell`、`#game-container`、`.gloamwood-3d-hud`、`.gloamwood-onboarding`、`.gloamwood-3d-touch`、`.g3d-actions` 均为 `auto`，只有显式声明过的画布、摇杆与按钮为 `none`。反过来 `user-select` 本身可继承，第八批却用了 `*`——两者用反了。
+- 第二处漏网：`<html>` 根元素同样为 `auto`。iOS Safari 的页面级缩放手势按根元素解析，任何 `body` 作用域的规则都够不到。
+- 修复：
+  - `touch-action: manipulation` 改为同时作用于 `html.is-gloamwood-3d`、`body.is-gloamwood-3d` 与 `body.is-gloamwood-3d *`；画布、触控条、摇杆与动作区保留更严格的 `none`，并加 `body` 前缀提高特异度，避免被通配规则覆盖（`body.is-gloamwood-3d .gloamwood-3d-canvas` 为 (0,2,1)，高于通配规则的 (0,1,1)）。
+  - `main.ts` 同时把 `is-gloamwood-3d` 加到 `document.documentElement`。已确认 style.css 中 14 条相关规则全部带 `body` 前缀，根元素加类不会误匹配。
+  - Safari 专有的 `gesturestart`/`gesturechange`（新增 `gestureend`）由容器级改为 document 级监听，页面级捏合不一定源自游戏容器。
+- 浏览器验证（844×390）：遍历 `<html>` + `<body>` + 全部 195 个后代元素，`touch-action === 'auto'` 的数量为 **0**（修复前该集合包含上述七类容器与根元素）。画布、`.gloamwood-3d-touch`、`.g3d-actions` 为 `none`，HUD/引导/设置为 `manipulation`。另确认圆形攻击键方框四角与屏幕最右下角的命中目标均为画布（`.gloamwood-3d-touch` 为 `pointer-events: none`，命中穿透），其 `touch-action` 为 `none`。
+- 自动验证：70 个测试文件 / 374 项测试、TypeScript、`git diff --check` 与 Vite 生产构建通过。新断言直接锁定非继承这一点（要求存在 `body.is-gloamwood-3d *` 的 touch-action 规则与 `html.is-gloamwood-3d` 规则），避免同类错误再次通过。CSS 51.19→51.49 kB。
+- 待用户真机复验：本机浏览器面板无法复现 iOS 的缩放手势，本轮只能证明计算样式已无 `auto`，**实际是否根除需在 iPhone 上重测**，重点仍是右下角攻击键周边与双拇指同时操作。

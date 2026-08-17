@@ -56,6 +56,9 @@ let cleanup: (() => void) | undefined
 
 if (isGloamwood3DEntry()) {
   const loadStartedAt = performance.now()
+  // The root element carries the class too: iOS Safari resolves page-level
+  // zoom gestures against <html>, which no body-scoped rule can reach.
+  document.documentElement.classList.add('is-gloamwood-3d')
   document.body.classList.add('is-maplab', 'is-v4-live', 'is-gloamwood-3d')
   const loading = createGameLoadingState()
   const loadHunt = import.meta.env.DEV && new URLSearchParams(window.location.search).get('failLoad') === '1'
