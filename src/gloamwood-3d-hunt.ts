@@ -14,6 +14,12 @@ import { applyDocumentLocale, getLocale, persistLocale, setLocale, t, type Local
 import { gloamwoodFamilyPortrait } from './gloamwood-family-portraits'
 import { gloamwoodMutationIcon } from './gloamwood-mutation-icons'
 import {
+  GLOAMWOOD_BLADESHELL_BOSS,
+  gloamwoodBossClipForState,
+  gloamwoodBossClipRate,
+  type GloamwoodModelledBossConfig,
+} from './gloamwood-3d-modelled-boss'
+import {
   GLOAMWOOD_MUTATION_POOL,
   accumulateGloamwoodMutationEffects,
   recordGloamwoodMutationMilestone,
@@ -297,6 +303,15 @@ interface BossVisual {
   root: THREE.Group
   body: THREE.Group
   materials: THREE.MeshStandardMaterial[]
+  /** Set only when a modelled boss replaced the primitive assembly. */
+  model?: {
+    config: GloamwoodModelledBossConfig
+    mixer: THREE.AnimationMixer
+    clips: Map<string, THREE.AnimationClip>
+    current?: THREE.AnimationAction
+    currentName?: string
+    previous?: { state: GloamwoodBossState['state']; pattern: GloamwoodBossState['pattern'] }
+  }
   targetRing: THREE.Mesh
   telegraph: THREE.Mesh
   innerTelegraph: THREE.Mesh
@@ -636,6 +651,13 @@ class Gloamwood3DHunt {
     this.createDustPool()
     this.createNest()
     this.createBossVisual()
+    // The Bladeshell was authored for the valley's first chokepoint, and the
+    // valley does not exist yet. Putting a river crustacean in the Gloamwood by
+    // default would be wrong, so it loads only when asked for - which is enough
+    // to judge the model and the clip driver in engine.
+    if (new URLSearchParams(window.location.search).get('bossModel') === 'bladeshell') {
+      void this.loadModelledBoss(GLOAMWOOD_BLADESHELL_BOSS)
+    }
     this.createHud()
     this.bindInput()
     const debugSettings = import.meta.env.DEV ? new URLSearchParams(window.location.search) : null
@@ -1750,6 +1772,7 @@ class Gloamwood3DHunt {
       this.mixer?.update(delta)
       this.applySecondaryMotion()
     }
+    this.updateModelledBoss(delta)
     this.updateHealthDecay(delta)
     this.updateMutationOffers()
     this.updateCamera(delta)
@@ -2389,9 +2412,72 @@ class Gloamwood3DHunt {
     const strike = this.bossState.state === 'attack' ? Math.sin(Math.min(1, this.bossState.elapsed / spec.attackSeconds) * Math.PI) : 0
     const intro = this.bossState.state === 'intro' ? Math.min(1, this.bossState.elapsed / GLOAMWOOD_BOSS.introSeconds) : 1
     visual.root.scale.setScalar(0.72 + intro * 0.28)
-    visual.body.position.x = strike * 0.65
+    // A modelled boss animates itself; nudging its root as well would double the
+    // motion and desynchronise it from the clip.
+    visual.body.position.x = visual.model ? 0 : strike * 0.65
     visual.body.position.y = this.bossState.phase === 2 ? Math.sin(performance.now() * 0.009) * 0.05 : 0
     for (const material of visual.materials) material.emissiveIntensity = this.bossState.phase === 2 ? 0.78 : 0.42
+  }
+
+  /**
+   * Swap the primitive boss assembly for an authored model.
+   *
+   * The telegraph rings stay: they are the authority's own shapes and a model
+   * cannot be allowed to imply a different reach than the one that resolves.
+   */
+  private async loadModelledBoss(config: GloamwoodModelledBossConfig) {
+    const visual = this.bossVisual
+    if (!visual) return
+    const gltf = await this.loader.loadAsync(assetUrl(config.url))
+    if (this.disposed) return
+    for (const child of [...visual.body.children]) visual.body.remove(child)
+    gltf.scene.updateMatrixWorld(true)
+    const bounds = new THREE.Box3().setFromObject(gltf.scene)
+    const size = bounds.getSize(new THREE.Vector3())
+    gltf.scene.scale.setScalar(config.worldHeight / Math.max(0.001, size.y))
+    gltf.scene.updateMatrixWorld(true)
+    const grounded = new THREE.Box3().setFromObject(gltf.scene)
+    gltf.scene.position.y -= grounded.min.y
+    visual.body.add(gltf.scene)
+    visual.materials.length = 0
+    gltf.scene.traverse((node) => {
+      node.castShadow = true
+      node.receiveShadow = true
+      if (!(node instanceof THREE.Mesh)) return
+      for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
+        if (material instanceof THREE.MeshStandardMaterial) visual.materials.push(material)
+      }
+    })
+    visual.model = {
+      config,
+      mixer: new THREE.AnimationMixer(gltf.scene),
+      clips: new Map(gltf.animations.map((clip) => [clip.name, clip])),
+    }
+  }
+
+  /** Drive the modelled boss's clip from the authority's state, never the reverse. */
+  private updateModelledBoss(delta: number) {
+    const model = this.bossVisual?.model
+    if (!model) return
+    const selection = gloamwoodBossClipForState(this.bossState, model.config, model.previous)
+    const clip = model.clips.get(selection.clip)
+    if (clip && (selection.restart || model.currentName !== selection.clip)) {
+      const next = model.mixer.clipAction(clip)
+      next.reset()
+      next.setLoop(selection.once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity)
+      next.clampWhenFinished = selection.once
+      if (selection.once) {
+        const spec = GLOAMWOOD_BOSS.patterns[this.bossState.pattern]
+        const attackSeconds = 'attackSeconds' in spec ? spec.attackSeconds : 0.3
+        next.timeScale = gloamwoodBossClipRate(clip.duration, spec.telegraphSeconds, attackSeconds)
+      } else next.timeScale = 1
+      if (model.current && model.current !== next) model.current.fadeOut(0.16)
+      next.fadeIn(0.16).play()
+      model.current = next
+      model.currentName = selection.clip
+    }
+    model.previous = { state: this.bossState.state, pattern: this.bossState.pattern }
+    model.mixer.update(delta)
   }
 
   private bossPatternName(pattern: GloamwoodBossState['pattern']) {
