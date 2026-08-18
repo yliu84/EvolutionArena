@@ -408,12 +408,21 @@ describe('Being hit cannot silence a creature outright', () => {
     expect(again.state.prey[0].health).toBeLessThan(hit.state.prey[0].health)
   })
 
-  it('covers immunity long enough for one full telegraph and strike', () => {
+  it('covers immunity from the hit through a full telegraph and strike', () => {
     let state = stepGloamwoodNest(createGloamwoodNestState(), 0.05, { x: GLOAMWOOD_NEST.centerX, z: GLOAMWOOD_NEST.centerZ, alive: true }).state
     const target = { ...state.prey[0], id: 'shell', kind: 'shell' as const, x: 0, z: 0, health: 999, maxHealth: 999 }
     state = { ...state, prey: [target] }
     const hit = damageGloamwoodNestPrey(state, 'shell', 5, 'Claw', { x: 2, z: 0 }, 0)
-    expect(hit.state.prey[0].stunImmuneSeconds)
-      .toBeCloseTo(GLOAMWOOD_PREY.shell.telegraphSeconds + GLOAMWOOD_PREY.shell.strikeSeconds, 5)
+    // The window runs from the hit itself, so it has to cover the stun the
+    // creature is about to sit through as well as the wind-up and swing after.
+    expect(hit.state.prey[0].stunImmuneSeconds).toBeCloseTo(
+      GLOAMWOOD_PREY.shell.stunSeconds + GLOAMWOOD_PREY.shell.telegraphSeconds + GLOAMWOOD_PREY.shell.strikeSeconds,
+      5,
+    )
+    // And it reports whether the hit actually cut anything short, so the hit
+    // reaction can tell a real interruption from a hit inside that window.
+    expect(hit.interrupted).toBe(true)
+    const inside = damageGloamwoodNestPrey(hit.state, 'shell', 5, 'Claw', { x: 2, z: 0 }, 0)
+    expect(inside.interrupted).toBe(false)
   })
 })

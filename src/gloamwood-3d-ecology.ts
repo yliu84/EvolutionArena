@@ -83,6 +83,15 @@ export interface GloamwoodPreyDamageResult {
    * already resolved here and nothing downstream may change it.
    */
   weakness: boolean
+  /**
+   * True when this hit actually cut the creature's action short.
+   *
+   * Reported so presentation can tell a real interruption from a hit that
+   * landed while the creature was inside its guaranteed attack window. Playing
+   * the full stagger on both made a guardian that was no longer being
+   * interrupted still look like it was.
+   */
+  interrupted: boolean
   killed: boolean
   biomassGained: number
   geneGained: GloamwoodPreyKind | null
@@ -263,7 +272,7 @@ export function damageGloamwoodNestPrey(
   knockback: number,
 ): GloamwoodPreyDamageResult {
   const target = state.prey.find((prey) => prey.id === preyId)
-  if (!target || target.phase === 'dead') return { state, effectiveDamage: 0, blocked: false, weakness: false, killed: false, biomassGained: 0, geneGained: null }
+  if (!target || target.phase === 'dead') return { state, effectiveDamage: 0, blocked: false, weakness: false, interrupted: false, killed: false, biomassGained: 0, geneGained: null }
   const spec = GLOAMWOOD_PREY[target.kind]
   const attackerFacing = Math.atan2(-(attacker.z - target.z), attacker.x - target.x)
   const frontalError = Math.abs(shortestAngle(target.facingRadians, attackerFacing))
@@ -277,10 +286,14 @@ export function damageGloamwoodNestPrey(
   const inverse = 1 / Math.max(0.001, Math.hypot(dx, dz))
   // Interrupting matters, but it cannot be free every time or a creature whose
   // wind-up is longer than the player's attack cadence never acts at all. One
-  // stun buys immunity for a full telegraph and strike, so every creature gets
-  // one guaranteed attempt between interruptions.
+  // stun buys a guaranteed attempt: the window runs from the hit itself, so it
+  // has to cover the stun the creature is about to sit through as well as the
+  // telegraph and strike that follow. Covering only telegraph and strike left
+  // the window expiring a fraction before the swing landed, and at the Fang
+  // chain's cadence that produced a cut-short wind-up before nearly every
+  // attack - the interruption the player was still seeing.
   const interruptible = (target.stunImmuneSeconds ?? 0) <= 0
-  const stunImmunity = spec.telegraphSeconds + spec.strikeSeconds
+  const stunImmunity = spec.stunSeconds + spec.telegraphSeconds + spec.strikeSeconds
   const nextPrey = state.prey.map((prey) => prey.id === preyId ? {
     ...prey,
     health,
@@ -299,6 +312,7 @@ export function damageGloamwoodNestPrey(
     effectiveDamage,
     blocked: shellFront,
     weakness: !shellFront && multiplier > 1,
+    interrupted: !killed && interruptible,
     killed,
     biomassGained,
     geneGained: killed ? spec.gene : null,
@@ -406,6 +420,10 @@ function stepPrey(
   if (next.phase === 'strike') {
     if (!next.attackResolved && next.phaseElapsed >= spec.contactSeconds) {
       next.attackResolved = true
+      // The guaranteed attempt has been spent. Dropping the window here rather
+      // than letting it run out keeps it a guarantee of one attack rather than
+      // a stretch of free immunity.
+      next.stunImmuneSeconds = 0
       if (playerDistance <= attackDistance) events.push({ type: 'prey-attack', preyId: next.id, kind: next.kind, damage: spec.damage, knockback: spec.knockback })
     }
     if (next.phaseElapsed >= spec.strikeSeconds) next = enterPhase(next, 'recover')

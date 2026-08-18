@@ -1505,7 +1505,10 @@ body.is-gloamwood-3d * {
 /* Held mutations. Effects stack rather than replace, so the row grows all run
    and is where a player reads their own build back before the next choice. */
 .g3d-mutation-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
-.g3d-mutation-chip { position: relative; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--route, #7fdcc0); border-radius: 50%; color: var(--route, #7fdcc0); background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .14), rgba(9, 20, 15, .92)); cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
+/* The HUD is pointer-events: none so it never blocks the play surface;
+   anything interactive inside it has to opt back in, or hover and tap never
+   reach it at all. */
+.g3d-mutation-chip { pointer-events: auto; position: relative; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--route, #7fdcc0); border-radius: 50%; color: var(--route, #7fdcc0); background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .14), rgba(9, 20, 15, .92)); cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
 .g3d-mutation-chip[data-family="fang"] { --route: #e07a5f; }
 .g3d-mutation-chip[data-family="shell"] { --route: #9fbb82; }
 .g3d-mutation-chip[data-family="swarm"] { --route: #64cbb0; }

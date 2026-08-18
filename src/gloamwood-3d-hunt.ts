@@ -2032,7 +2032,15 @@ class Gloamwood3DHunt {
       visual.flashRemaining = this.feedbackSettings.flash ? 0.15 : 0
       visual.impactDuration = recipe.hitStopSeconds + 0.2
       visual.impactRemaining = visual.impactDuration
-      visual.impactStrength = action === 'TailSwipe' ? 1 : action === 'Pounce' ? 0.94 : 0.76
+      // A hit that did not cut the creature's action short gets a much smaller
+      // reaction. Playing the full stagger on every hit made the guardian look
+      // perpetually interrupted long after it had stopped being interrupted -
+      // measured at one wasted wind-up per thirty seconds, against a stagger on
+      // every single hit.
+      const reaction = action === 'TailSwipe' ? 1 : action === 'Pounce' ? 0.94 : 0.76
+      visual.impactStrength = damage.interrupted ? reaction : reaction * 0.34
+      if (!damage.interrupted) visual.impactDuration = recipe.hitStopSeconds + 0.08
+      visual.impactRemaining = visual.impactDuration
     }
     this.spawnSlashFeedback(action, target)
     // Feedback goes where the player is looking - on the target - rather than

@@ -248,3 +248,15 @@ describe('The player can read their own build back', () => {
     expect(source).toMatch(/if \(held\.length === 0\) \{\s*\n\s*list\.hidden = true/)
   })
 })
+
+describe('The chips are actually reachable by a cursor', () => {
+  const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8')
+
+  it('opts back into pointer events, since the HUD around them does not take any', () => {
+    // The HUD is pointer-events: none so it never blocks the play surface.
+    // Anything interactive inside it has to opt back in or hover and tap never
+    // arrive - the tooltip looked broken while the CSS was entirely correct.
+    expect(css).toMatch(/\.gloamwood-3d-hud \{[^}]*pointer-events: none/s)
+    expect(css).toMatch(/\.g3d-mutation-chip \{[^}]*pointer-events: auto/s)
+  })
+})
