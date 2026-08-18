@@ -1,61 +1,79 @@
-import { GLOAMWOOD_VALLEY } from './gloamwood-valley-terrain'
 import type { GloamwoodValleyProp } from './gloamwood-valley-dressing'
 
 /**
  * How the valley's props are cut up for drawing.
  *
  * The Gloamwood is 58 units across and every prop is always on screen, so it
- * gets away with one batch per species. The valley is 1600 units long and the
- * camera can see perhaps a sixth of it, which changes the problem: an
- * InstancedMesh is culled all or nothing, so a single batch spanning the whole
- * valley draws the headwater's cliffs while the player is still in the
- * shallows.
+ * gets away with one batch per species. The valley is 1600 units of route
+ * folded through a 1500-by-600 footprint, and the camera can see perhaps a
+ * tenth of it, which changes the problem: an InstancedMesh is culled all or
+ * nothing, so a single batch spanning the whole valley draws the headwater's
+ * cliffs while the player is still in the shallows.
  *
- * So the props are binned by position and each bin gets its own batches, and
- * bins far from the camera are switched off outright. Fog already hides them -
- * this only stops the GPU paying for what the fog is covering up.
+ * So the props are binned by position and bins far from the camera are switched
+ * off outright. The bins are a plain square grid rather than slices along the
+ * route: the route turns back on itself, so two points far apart along it can
+ * be neighbours in the world, and a player standing between them has to be able
+ * to see both.
  */
-export const GLOAMWOOD_VALLEY_CHUNK_LENGTH = 200
+export const GLOAMWOOD_VALLEY_CELL = 120
 
-/** How far down the valley a chunk may be and still be drawn. */
-export const GLOAMWOOD_VALLEY_DRAW_DISTANCE = 260
+/** How far from the camera a cell may be and still be drawn. */
+export const GLOAMWOOD_VALLEY_DRAW_DISTANCE = 240
 
-export function gloamwoodValleyChunkCount() {
-  return Math.ceil(GLOAMWOOD_VALLEY.length / GLOAMWOOD_VALLEY_CHUNK_LENGTH)
+export interface GloamwoodValleyCellKey {
+  column: number
+  row: number
 }
 
-export function gloamwoodValleyChunkOf(x: number) {
-  const index = Math.floor(x / GLOAMWOOD_VALLEY_CHUNK_LENGTH)
-  return Math.min(gloamwoodValleyChunkCount() - 1, Math.max(0, index))
+export function gloamwoodValleyCellOf(x: number, z: number): GloamwoodValleyCellKey {
+  return { column: Math.floor(x / GLOAMWOOD_VALLEY_CELL), row: Math.floor(z / GLOAMWOOD_VALLEY_CELL) }
+}
+
+export function gloamwoodValleyCellId(cell: GloamwoodValleyCellKey) {
+  return `${cell.column}:${cell.row}`
 }
 
 /**
- * True when any part of the chunk is near enough to matter.
+ * True when any part of the cell is near enough to matter.
  *
- * Measured to the chunk's nearest edge rather than its centre: measuring to the
- * centre switches a chunk off while the player is still looking down its near
+ * Measured to the cell's nearest edge rather than its centre: measuring to the
+ * centre switches a cell off while the player is still looking across its near
  * half, which is a popping seam directly ahead of them.
  */
-export function gloamwoodValleyChunkDrawn(chunk: number, cameraX: number) {
-  const from = chunk * GLOAMWOOD_VALLEY_CHUNK_LENGTH
-  const to = from + GLOAMWOOD_VALLEY_CHUNK_LENGTH
-  const distance = cameraX < from ? from - cameraX : cameraX > to ? cameraX - to : 0
-  return distance <= GLOAMWOOD_VALLEY_DRAW_DISTANCE
+export function gloamwoodValleyCellDrawn(cell: GloamwoodValleyCellKey, cameraX: number, cameraZ: number) {
+  const left = cell.column * GLOAMWOOD_VALLEY_CELL
+  const top = cell.row * GLOAMWOOD_VALLEY_CELL
+  const dx = cameraX < left ? left - cameraX : cameraX > left + GLOAMWOOD_VALLEY_CELL ? cameraX - left - GLOAMWOOD_VALLEY_CELL : 0
+  const dz = cameraZ < top ? top - cameraZ : cameraZ > top + GLOAMWOOD_VALLEY_CELL ? cameraZ - top - GLOAMWOOD_VALLEY_CELL : 0
+  return Math.hypot(dx, dz) <= GLOAMWOOD_VALLEY_DRAW_DISTANCE
 }
 
-export function groupGloamwoodValleyProps(props: readonly GloamwoodValleyProp[]) {
-  const chunks: GloamwoodValleyProp[][] = Array.from(
-    { length: gloamwoodValleyChunkCount() },
-    () => [],
-  )
-  for (const prop of props) chunks[gloamwoodValleyChunkOf(prop.x)].push(prop)
-  return chunks
+export interface GloamwoodValleyPropCell {
+  cell: GloamwoodValleyCellKey
+  props: GloamwoodValleyProp[]
 }
 
-/** Props actually submitted for drawing from a given point along the valley. */
-export function gloamwoodValleyDrawnPropCount(props: readonly GloamwoodValleyProp[], cameraX: number) {
+export function groupGloamwoodValleyProps(props: readonly GloamwoodValleyProp[]): GloamwoodValleyPropCell[] {
+  const cells = new Map<string, GloamwoodValleyPropCell>()
+  for (const prop of props) {
+    const cell = gloamwoodValleyCellOf(prop.x, prop.z)
+    const id = gloamwoodValleyCellId(cell)
+    const existing = cells.get(id)
+    if (existing) existing.props.push(prop)
+    else cells.set(id, { cell, props: [prop] })
+  }
+  return [...cells.values()]
+}
+
+/** Props actually submitted for drawing from a given point in the world. */
+export function gloamwoodValleyDrawnPropCount(
+  props: readonly GloamwoodValleyProp[],
+  cameraX: number,
+  cameraZ: number,
+) {
   return groupGloamwoodValleyProps(props).reduce(
-    (total, chunk, index) => total + (gloamwoodValleyChunkDrawn(index, cameraX) ? chunk.length : 0),
+    (total, cell) => total + (gloamwoodValleyCellDrawn(cell.cell, cameraX, cameraZ) ? cell.props.length : 0),
     0,
   )
 }

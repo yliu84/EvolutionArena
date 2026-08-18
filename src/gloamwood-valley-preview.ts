@@ -4,10 +4,13 @@ import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
 import { gloamwoodValleyDressingFor } from './gloamwood-valley-dressing'
 import {
   GLOAMWOOD_VALLEY,
+  GLOAMWOOD_VALLEY_LENGTH,
   gloamwoodValleyConfine,
+  gloamwoodValleyCorridorAt,
   gloamwoodValleyHeight,
+  gloamwoodValleyPointAt,
   gloamwoodValleyRegionAt,
-  gloamwoodValleyRoadCenter,
+  gloamwoodValleyRoadOffset,
 } from './gloamwood-valley-terrain'
 
 /**
@@ -25,11 +28,15 @@ import {
 
 const PLAYER_SPEED = 6.2
 const SPRINT = 3.4
-// The hunt's camera height and distance exactly (11.8 up, 16.25 back), yawed to
-// sit square behind the player looking up the valley. The Gloamwood's yaw is
-// arbitrary because that map has no axis; this one is 1600 units long, and a
-// camera off-axis to it makes forward drift into the river on a held key.
-const CAMERA_OFFSET = new THREE.Vector3(-16.25, 11.8, 0)
+// The hunt's camera height and distance exactly (11.8 up, 16.25 back), at a
+// fixed world heading of about fifteen degrees.
+//
+// Fixed, not following the route. A camera that swung round with every turn
+// would keep the road running up the screen and undo the whole point of folding
+// it: you would never see the valley bend away, only a corridor that is always
+// straight ahead. Fifteen degrees is chosen so no leg of the route runs
+// edge-on to the lens.
+const CAMERA_OFFSET = new THREE.Vector3(-15.7, 11.8, -4.2)
 
 export async function launchGloamwoodValleyPreview(): Promise<() => void> {
   const container = document.querySelector<HTMLElement>('#game-container')
@@ -53,6 +60,11 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
   scene.background = new THREE.Color(0x8fb08c)
 
   const camera = new THREE.PerspectiveCamera(52, 1, 0.4, 620)
+  // `?view=top` lifts the camera clear of the valley and holds it there. The
+  // walkthrough shows what a place feels like; only an overhead shot shows
+  // whether the network of routes is actually there.
+  const overhead = params.get('view') === 'top'
+  if (overhead) camera.far = 2200
 
   const seed = Number(params.get('mapSeed') ?? 0) || 0x5a11e
   const valley = await buildGloamwoodValleyScene({
@@ -71,11 +83,12 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
   marker.castShadow = true
   scene.add(marker)
 
-  // `?at=` drops the reviewer at a point along the valley. Walking 1600 units
-  // to look at the second choke is not a review, it is a commute.
-  const startX = Number(params.get('at') ?? '') || GLOAMWOOD_VALLEY.spawn.x
-  // On the road, which no longer runs down the middle of the valley.
-  const start = gloamwoodValleyConfine(startX, gloamwoodValleyRoadCenter(startX))
+  // `?at=` drops the reviewer at a distance along the route. Walking 1600 units
+  // to look at the second gate is not a review, it is a commute.
+  const startS = Number(params.get('at') ?? '') || GLOAMWOOD_VALLEY.spawnS
+  // On the road, which runs to one side of the route's centreline.
+  const startPoint = gloamwoodValleyPointAt(startS, gloamwoodValleyRoadOffset(startS))
+  const start = gloamwoodValleyConfine(startPoint.x, startPoint.z)
   const position = new THREE.Vector2(start.x, start.z)
   const held = new Set<string>()
   const onKeyDown = (event: KeyboardEvent) => {
@@ -145,12 +158,20 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
     }
     camera.lookAt(position.x, ground + 1.2, position.y)
 
-    valley.update(position.x, elapsed, fog)
+    const corridor = gloamwoodValleyCorridorAt(position.x, position.y)
+    valley.update({ x: position.x, z: position.y, s: corridor.s }, elapsed, fog, overhead)
     scene.background = fog.color
     valley.sun.position.set(position.x - 90, ground + 120, position.y + 60)
     valley.sun.target.position.set(position.x, ground, position.y)
     valley.sun.target.updateMatrixWorld()
 
+    if (overhead) {
+      const centre = gloamwoodValleyPointAt(GLOAMWOOD_VALLEY_LENGTH * 0.5, 0)
+      camera.position.set(centre.x - 60, 1250, centre.z + 420)
+      camera.lookAt(centre.x, 0, centre.z)
+      // Fog would swallow a shot taken from a thousand units up.
+      fog.density = 0.00035
+    }
     renderer.render(scene, camera)
 
     frames += 1
@@ -160,10 +181,12 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
       frames = 0
       fpsWindow = 0
     }
-    const region = gloamwoodValleyRegionAt(position.x)
-    const name = region ? labels.regions[region.id] : labels.choke
+    const region = gloamwoodValleyRegionAt(corridor.s)
+    const place = corridor.branch
+      ? labels.branches[corridor.branch.id] ?? corridor.branch.id
+      : region ? labels.regions[region.id] : labels.choke
     readout.textContent = [
-      `${name}　${Math.round(position.x)} / ${GLOAMWOOD_VALLEY.length}`,
+      `${place}　${Math.round(corridor.s)} / ${Math.round(GLOAMWOOD_VALLEY_LENGTH)}`,
       `${labels.props} ${valley.stats.props}　${labels.triangles} ${(valley.stats.triangles / 1000).toFixed(0)}k　${labels.batches} ${valley.stats.batches}`,
       `${fps} fps`,
     ].join('\n')
@@ -194,6 +217,7 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
   document.body.dataset.valleyTriangles = String(valley.stats.triangles)
   document.body.dataset.valleyBatches = String(valley.stats.batches)
   document.body.dataset.valleyRegions = String(GLOAMWOOD_VALLEY.regions.map((region) => gloamwoodValleyDressingFor(region.id).coverage).join(','))
+  document.body.dataset.valleyLength = String(Math.round(GLOAMWOOD_VALLEY_LENGTH))
 
   return () => {
     running = false
@@ -210,19 +234,35 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
 // Producer-facing text for a review tool, not player copy, so it stays here
 // rather than in the translation catalogue the game ships.
 const EN = {
-  help: 'WASD to walk · Shift to run · the map is the only thing here',
+  help: 'WASD to walk · Shift to run · the road turns, so steer',
   choke: 'Choke',
   props: 'props',
   triangles: 'tris',
   batches: 'batches',
   regions: { shallows: 'Shallows', gorge: 'Gorge', headwater: 'Headwater' },
+  branches: {
+    'fern-hollow': 'Fern Hollow',
+    'reed-ford': 'Reed Ford',
+    'scree-shelf': 'Scree Shelf',
+    'dead-grove': 'Dead Grove',
+    'high-terrace': 'High Terrace',
+    'stone-bowl': 'Stone Bowl',
+  } as Record<string, string>,
 } as const
 
 const ZH = {
-  help: 'WASD 行走 · Shift 奔跑 · 这里只有地图',
+  help: 'WASD 行走 · Shift 奔跑 · 路会拐弯，要自己转向',
   choke: '隘口',
   props: '道具',
   triangles: '三角',
   batches: '批次',
   regions: { shallows: '浅滩', gorge: '峡谷', headwater: '源头' },
+  branches: {
+    'fern-hollow': '蕨草洼',
+    'reed-ford': '芦苇浅滩',
+    'scree-shelf': '碎石台',
+    'dead-grove': '枯林',
+    'high-terrace': '高阶地',
+    'stone-bowl': '石碗',
+  } as Record<string, string>,
 } as const

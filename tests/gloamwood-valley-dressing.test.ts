@@ -5,16 +5,19 @@ import {
   GLOAMWOOD_TREE_VARIANTS,
   GLOAMWOOD_VEGETATION_VARIANTS,
 } from '../src/gloamwood-environment-kit'
+import { GLOAMWOOD_VALLEY_BRANCHES } from '../src/gloamwood-valley-branches'
 import {
   GLOAMWOOD_VALLEY,
+  GLOAMWOOD_VALLEY_LENGTH,
   gloamwoodValleyDominantSurface,
-  gloamwoodValleyWalkableHalfWidth,
+  gloamwoodValleyPointAt,
 } from '../src/gloamwood-valley-terrain'
 import {
   GLOAMWOOD_VALLEY_DRESSING,
   GLOAMWOOD_VALLEY_TREE_KINDS,
   gloamwoodValleyAtmosphereAt,
   gloamwoodValleyTreeVariantId,
+  gloamwoodValleyWallClearance,
   scatterGloamwoodValley,
   gloamwoodValleyDressingFor,
 } from '../src/gloamwood-valley-dressing'
@@ -107,7 +110,7 @@ describe('Valley atmosphere', () => {
     // One fog serves the whole scene, so it is driven off the camera. Stepping
     // it at the region boundary would recolour the entire valley at once.
     let worst = 0
-    for (let x = 0; x < GLOAMWOOD_VALLEY.length; x += 5) {
+    for (let x = 0; x < GLOAMWOOD_VALLEY_LENGTH; x += 5) {
       const here = gloamwoodValleyAtmosphereAt(x)
       const next = gloamwoodValleyAtmosphereAt(x + 5)
       worst = Math.max(worst, Math.abs(next.fogDensity - here.fogDensity))
@@ -117,7 +120,7 @@ describe('Valley atmosphere', () => {
 
   it('holds the end regions steady past their centres', () => {
     expect(gloamwoodValleyAtmosphereAt(0)).toEqual(gloamwoodValleyAtmosphereAt(120))
-    expect(gloamwoodValleyAtmosphereAt(GLOAMWOOD_VALLEY.length)).toEqual(gloamwoodValleyAtmosphereAt(1450))
+    expect(gloamwoodValleyAtmosphereAt(GLOAMWOOD_VALLEY_LENGTH)).toEqual(gloamwoodValleyAtmosphereAt(1450))
   })
 })
 
@@ -154,7 +157,9 @@ describe('Cliff massing', () => {
       if (prop.kind !== 'cliff' && prop.kind !== 'boulder') continue
       if (gloamwoodValleyDominantSurface(prop.x, prop.z) !== 'wall') continue
       const radius = GLOAMWOOD_ROCK_VARIANTS[prop.variant].diameter * prop.scale * 0.5
-      expect(Math.abs(prop.z) - radius).toBeGreaterThanOrEqual(gloamwoodValleyWalkableHalfWidth(prop.x) - 0.001)
+      // Measured against the corridor the rock actually stands beside, which on
+      // a route that folds is not always the main one.
+      expect(radius).toBeLessThanOrEqual(gloamwoodValleyWallClearance(prop.x, prop.z) * 0.75 + 0.001)
     }
   })
 
@@ -164,5 +169,35 @@ describe('Cliff massing', () => {
       .filter((prop) => gloamwoodValleyDominantSurface(prop.x, prop.z) === 'wall')
     const big = wall.filter((prop) => prop.scale >= 3)
     expect(big.length / wall.length).toBeGreaterThan(0.25)
+  })
+})
+
+describe('Branch character', () => {
+  it('makes each branch read as somewhere else, not as more road', () => {
+    const props = scatterGloamwoodValley(0x5a11e, 6200)
+    const inBranch = (id: string) => props.filter((prop) => prop.branch === id)
+    const share = (id: string, kind: string) => {
+      const all = inBranch(id)
+      return all.filter((prop) => prop.kind === kind).length / Math.max(1, all.length)
+    }
+    // Scree is bare rock; the fern hollow is the densest ground in the map.
+    expect(share('scree-shelf', 'boulder') + share('scree-shelf', 'cliff'))
+      .toBeGreaterThan(share('fern-hollow', 'boulder') + share('fern-hollow', 'cliff'))
+    expect(share('fern-hollow', 'undergrowth')).toBeGreaterThan(share('scree-shelf', 'undergrowth') * 2)
+  })
+
+  it('fills the dead grove with dead trees rather than live ones', () => {
+    const trees = scatterGloamwoodValley(0x5a11e, 6200)
+      .filter((prop) => prop.branch === 'dead-grove' && prop.kind === 'tree')
+    expect(trees.length).toBeGreaterThan(8)
+    const dead = trees.filter((prop) => gloamwoodValleyTreeVariantId(prop.variant) === 'dead-a')
+    expect(dead.length / trees.length).toBeGreaterThan(0.7)
+  })
+
+  it('gives every branch some props of its own', () => {
+    const props = scatterGloamwoodValley(0x5a11e, 6200)
+    for (const branch of GLOAMWOOD_VALLEY_BRANCHES) {
+      expect(props.filter((prop) => prop.branch === branch.id).length).toBeGreaterThan(20)
+    }
   })
 })
