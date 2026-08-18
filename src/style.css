@@ -1501,3 +1501,21 @@ body.is-gloamwood-3d * {
   .g3d-input-bindings button[data-capturing="true"] { animation: none; }
   .gloamwood-loading i em { animation: none; width: 100%; }
 }
+
+/* Held mutations. Effects stack rather than replace, so the row grows all run
+   and is where a player reads their own build back before the next choice. */
+.g3d-mutation-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.g3d-mutation-chip { position: relative; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--route, #7fdcc0); border-radius: 50%; color: var(--route, #7fdcc0); background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .14), rgba(9, 20, 15, .92)); cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
+.g3d-mutation-chip[data-family="fang"] { --route: #e07a5f; }
+.g3d-mutation-chip[data-family="shell"] { --route: #9fbb82; }
+.g3d-mutation-chip[data-family="swarm"] { --route: #64cbb0; }
+.g3d-mutation-chip[data-family="neutral"] { --route: #e2c777; }
+.g3d-mutation-chip svg { width: 18px; height: 18px; }
+.g3d-mutation-chip:hover, .g3d-mutation-chip:focus-visible { transform: translateY(-2px); outline: none; box-shadow: 0 0 0 2px rgba(255, 255, 255, .16), 0 6px 16px rgba(0, 0, 0, .5); }
+/* The tooltip. Opens on hover, on keyboard focus, and on tap - a phone has no
+   hover state, and this HUD is built for landscape phones first. */
+.g3d-mutation-chip i { position: absolute; bottom: calc(100% + 8px); left: 50%; z-index: 4; display: grid; gap: 3px; width: max-content; max-width: 220px; padding: 8px 10px; border: 1px solid rgba(226, 199, 119, .34); border-radius: 7px; background: rgba(8, 17, 12, .97); box-shadow: 0 12px 30px rgba(0, 0, 0, .6); opacity: 0; transform: translate(-50%, 4px); pointer-events: none; transition: opacity .12s ease, transform .12s ease; }
+.g3d-mutation-chip:hover i, .g3d-mutation-chip:focus-visible i, .g3d-mutation-chip[aria-expanded="true"] i { opacity: 1; transform: translate(-50%, 0); }
+.g3d-mutation-chip i strong { color: var(--route); font-size: 12px; font-style: normal; }
+.g3d-mutation-chip i span { color: #dce9dd; font-size: 11px; font-style: normal; line-height: 1.35; }
+.g3d-mutation-chip i em { color: #d9a38c; font-size: 11px; font-style: normal; line-height: 1.35; }

@@ -12,7 +12,9 @@ import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presenta
 import { SPORE_STALKER_PRESENTATION } from './spore-stalker-character-presentation'
 import { applyDocumentLocale, getLocale, persistLocale, setLocale, t, type Locale } from './i18n'
 import { gloamwoodFamilyPortrait } from './gloamwood-family-portraits'
+import { gloamwoodMutationIcon } from './gloamwood-mutation-icons'
 import {
+  GLOAMWOOD_MUTATION_POOL,
   accumulateGloamwoodMutationEffects,
   createGloamwoodMutationState,
   gloamwoodMutationOffersEarned,
@@ -2895,6 +2897,51 @@ class Gloamwood3DHunt {
    * withheld while a form evolution, the guardian or the boss is on screen: two
    * choice panels stacked on one another means the player remembers neither.
    */
+  /**
+   * The held-mutation strip.
+   *
+   * Effects accumulate - multipliers compound, bonuses add - so by the end of a
+   * run the player is carrying five of them at once. Without somewhere to read
+   * that back, the stacking is invisible and there is nothing to plan the next
+   * pick around, which is most of what the layer is for.
+   */
+  private updateMutationList() {
+    const list = this.hud?.querySelector<HTMLElement>('[data-g3d-mutations]')
+    if (!list) return
+    const held = this.mutationState.taken
+    if (held.length === 0) {
+      list.hidden = true
+      return
+    }
+    const signature = held.join('|')
+    if (list.dataset.signature === signature) return
+    list.dataset.signature = signature
+    list.hidden = false
+    const pool = new Map(GLOAMWOOD_MUTATION_POOL.map((mutation) => [mutation.id, mutation.family]))
+    list.innerHTML = held.map((id) => {
+      const name = t(`mutation.${id}.name` as 'mutation.fang-thin-hide.name')
+      const rule = t(`mutation.${id}.rule` as 'mutation.fang-thin-hide.rule')
+      const cost = t(`mutation.${id}.cost` as 'mutation.fang-thin-hide.cost')
+      return [
+        // A button rather than a div: hover is not available on the phone this
+        // is meant to be played on, so the tooltip has to open on tap and on
+        // keyboard focus too.
+        `<button type="button" class="g3d-mutation-chip" data-family="${pool.get(id) ?? 'neutral'}"`,
+        ` aria-expanded="false" aria-label="${name}">`,
+        gloamwoodMutationIcon(id),
+        `<i><strong>${name}</strong><span>${rule}</span><em>${cost}</em></i>`,
+        '</button>',
+      ].join('')
+    }).join('')
+    for (const chip of list.querySelectorAll<HTMLButtonElement>('.g3d-mutation-chip')) {
+      chip.addEventListener('click', () => {
+        const open = chip.getAttribute('aria-expanded') === 'true'
+        for (const other of list.querySelectorAll('.g3d-mutation-chip')) other.setAttribute('aria-expanded', 'false')
+        chip.setAttribute('aria-expanded', open ? 'false' : 'true')
+      })
+    }
+  }
+
   private updateMutationOffers() {
     if (this.mutationState.offering || this.paused) return
     if (this.runPhase !== 'hunt') return
@@ -2962,6 +3009,10 @@ class Gloamwood3DHunt {
     this.mutationEffects = accumulateGloamwoodMutationEffects(this.mutationState.taken)
     this.mutationOffersTaken += 1
     this.applyProgressionModifiers()
+    // Update the strip here rather than waiting for the next HUD tick: the
+    // panel closes on this click, and the chip should already be there when it
+    // does.
+    this.updateMutationList()
     this.playSound('evolution-select')
     this.combatMessage = t('mutation.gained', { name: candidate.name })
     if (this.mutationOverlay) this.mutationOverlay.hidden = true
@@ -3170,6 +3221,9 @@ class Gloamwood3DHunt {
       `<label>${t('hud.health')} <b data-g3d-player-health>100 / 100</b><i><em data-g3d-player-bar></em></i></label>`,
       '</div>',
       `<div class="g3d-nest-resources"><b data-g3d-remaining>${t('hud.undisturbed')}</b><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
+      // Mutations stack rather than replace, and a build the player cannot see
+      // is a build they cannot plan around. Hidden until the first one is taken.
+      '<div class="g3d-mutation-list" data-g3d-mutations hidden></div>',
       `<button class="g3d-hud-details-toggle" type="button" data-g3d-hud-details aria-expanded="false">${t('hud.expand')}</button>`,
       `<button class="g3d-fullscreen-toggle" type="button" data-g3d-fullscreen>${t('fs.enter')}</button>`,
       `<button class="g3d-settings-toggle" type="button" data-g3d-settings-toggle>${t('hud.settings')}</button>`,
@@ -3813,6 +3867,7 @@ class Gloamwood3DHunt {
         ? t('hud.titleVictory')
         : this.nestState.phase === 'cleared' ? t('hud.titleCleared') : t('hud.titleNest', { suffix: this.nestState.wave ? t('hud.waveSuffix', { wave: this.nestState.wave, total: GLOAMWOOD_NEST.waveCount }) : '' }))
     setText('[data-g3d-player-health]', `${this.playerCombat.health} / ${this.playerCombat.maxHealth}`)
+    this.updateMutationList()
     setText('[data-g3d-remaining]', this.runPhase === 'boss'
       ? `${this.bossPatternName(this.bossState.pattern)} · ${this.bossState.state === 'telegraph' ? t('enemy.telegraph') : this.bossState.state === 'attack' ? t('enemy.strike') : t('enemy.watch')}`
       : this.nestState.phase === 'dormant' ? t('hud.undisturbed') : this.nestState.phase === 'intermission' ? t('hud.incoming') : this.nestState.phase === 'cleared' ? t('hud.clearedKills', { kills: this.nestState.kills }) : t('hud.waveRemaining', { count: this.livePrey().length }))

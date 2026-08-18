@@ -12,6 +12,7 @@ import {
   selectGloamwoodMutation,
 } from '../src/gloamwood-3d-mutations'
 import { TRANSLATIONS } from '../src/i18n'
+import { gloamwoodMutationIconIds } from '../src/gloamwood-mutation-icons'
 
 const GENES = { fang: 4, shell: 1, swarm: 1 }
 
@@ -202,5 +203,48 @@ describe('Runtime wiring', () => {
     expect(ecology).toContain('player.slowAuraRadius')
     expect(ecology).toContain('function preyMoveSpeed(')
     expect(ecology).not.toMatch(/activationRadius \+/)
+  })
+})
+
+describe('The player can read their own build back', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+
+  it('draws an icon for every entry in the pool', () => {
+    // A missing glyph falls back to a bare circle, which reads as "some
+    // mutation" and tells the player nothing.
+    for (const mutation of GLOAMWOOD_MUTATION_POOL) {
+      expect(gloamwoodMutationIconIds(), mutation.id).toContain(mutation.id)
+    }
+  })
+
+  it('opens the tooltip on tap and on keyboard focus, not only on hover', () => {
+    // The HUD is built for landscape phones first, and a phone has no hover.
+    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8')
+    expect(source).toContain('<button type="button" class="g3d-mutation-chip"')
+    expect(source).toContain("aria-expanded=\"false\"")
+    expect(css).toContain('.g3d-mutation-chip[aria-expanded="true"] i')
+    expect(css).toContain('.g3d-mutation-chip:focus-visible i')
+  })
+
+  it('shows every mutation held, not just the last one taken', () => {
+    // Effects accumulate, so by the end of a run the player carries five at
+    // once. With nowhere to read that back the stacking is invisible and there
+    // is nothing to plan the next pick around.
+    expect(source).toContain('data-g3d-mutations')
+    expect(source).toContain('private updateMutationList()')
+    expect(source).toContain('const held = this.mutationState.taken')
+    // Every held id is rendered, rather than a single current one.
+    expect(source).toMatch(/held\.map\(\(id\) =>/)
+  })
+
+  it('updates on the click rather than on the next frame', () => {
+    // The panel closes on that click; the chip should already be there when it
+    // does, not one HUD tick later.
+    expect(source).toMatch(/private chooseMutation\(index: number\)[\s\S]*?this\.updateMutationList\(\)/)
+  })
+
+  it('stays out of the way until the first mutation is taken', () => {
+    expect(source).toContain("'<div class=\"g3d-mutation-list\" data-g3d-mutations hidden></div>'")
+    expect(source).toMatch(/if \(held\.length === 0\) \{\s*\n\s*list\.hidden = true/)
   })
 })

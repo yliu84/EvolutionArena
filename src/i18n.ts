@@ -332,6 +332,7 @@ const STRINGS = {
   'evo.swarm-hunting-cloud.name': { en: 'Hunting Bloom', zh: '猎行菌群' },
   'evo.swarm-hunting-cloud.stat': { en: 'Speed +14% · Biomass +12% · Health −10', zh: '移速 +14% · 生物质 +12% · 生命 −10' },
 
+  'hud.mutations': { en: 'Mutations {count}', zh: '变异 {count}' },
   'mutation.eyebrow': { en: 'MUTATION', zh: '变异 / MUTATION' },
   'mutation.title': { en: 'Your body is changing', zh: '你的身体正在改变' },
   'mutation.moulted': { en: 'You moulted and got back up', zh: '你蜕壳重新站起' },
