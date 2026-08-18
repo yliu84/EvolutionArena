@@ -277,6 +277,8 @@ Recommended order from here:
 2. In parallel, the user runs Meshy Image to 3D from the Swarm pack. Do not start Blender until that mesh passes the contract gates. A passing Swarm body is the second production-cost data point (Shell was 3 source + 2 rig).
 3. Two points give the slope that decides whether the species matrix is produced in full or cut.
 
+**Open design question, raised by the user on 2026-08-17 after their own playthrough**: the run is two minutes long and contains exactly one decision, so the three evolution routes read as skins. `docs/design/MUTATION-LOOP-PROPOSAL-V1.md` proposes the answer - splitting evolution into a cheap mutation layer that changes rules rather than percentages, and the existing expensive form layer - and argues for building the mutation layer first because it is the only change that tests whether players want a second run without spending any art. Proposal only; not implemented.
+
 Open and unclosed, carried forward:
 
 - Meshy commercial licence evidence is still unarchived. The Shell job selected the private licence; record it in `docs/concepts/evolution-v2/shell-stage1/source/SOURCE.md`. This is a release blocker, not a technical one.
