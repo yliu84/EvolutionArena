@@ -6,8 +6,23 @@ import { SPORE_STALKER_PRESENTATION } from './spore-stalker-character-presentati
 /**
  * Gene family a form belongs to. Stage 0 and the late-stage endpoints are shared
  * by every route, so they leave this undefined.
+ *
+ * Six, decided 2026-08-18. The eight MapLab 4 nest archetypes were authored
+ * against six families and the user chose to honour that rather than fold them
+ * into three, producing the missing bodies one at a time.
+ *
+ * `shell` rather than the nest data's `carapace`: MapLab 5 is the live body and
+ * its naming wins, so the open map translates once at the nest boundary instead
+ * of the runtime carrying a permanent alias.
+ *
+ * Three of the six have no body yet. That is deliberate and safe:
+ * resolveQuality3DGLBAsset reports `matchedFamily: false` when a route borrows
+ * another family's model, so an unproduced family is visible rather than silent.
  */
-export type Quality3DFormFamily = 'fang' | 'shell' | 'swarm'
+export type Quality3DFormFamily = 'fang' | 'shell' | 'swarm' | 'wing' | 'venom' | 'rift'
+
+/** Families with an authored stage-1 body today. The rest borrow and say so. */
+export const QUALITY_3D_PRODUCED_FAMILIES: readonly Quality3DFormFamily[] = ['fang', 'shell', 'swarm']
 
 export interface Quality3DGLBAsset {
   stage: 0 | 1 | 2 | 3 | 6

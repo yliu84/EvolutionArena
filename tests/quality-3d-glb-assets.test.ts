@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { AnimationClip, Euler, MathUtils, Quaternion, QuaternionKeyframeTrack } from 'three'
-import { getQuality3DGLBAsset, resolveQuality3DGLBAsset, QUALITY_3D_GLB_ASSETS } from '../src/quality-3d-glb-assets'
+import {
+  getQuality3DGLBAsset,
+  resolveQuality3DGLBAsset,
+  QUALITY_3D_GLB_ASSETS,
+  QUALITY_3D_PRODUCED_FAMILIES,
+  type Quality3DFormFamily,
+} from '../src/quality-3d-glb-assets'
 import { CORAL_GECKO_PRESENTATION } from '../src/quality-3d-character-presentation'
 import {
   SCARLET_GECKO_LOCOMOTION_STABILITY,
@@ -315,5 +321,31 @@ describe('quality 3D GLB vertical slice assets', () => {
       bodyLength: 0.62,
       groundLift: 0.045,
     })
+  })
+})
+
+describe('Six gene families, produced one at a time', () => {
+  it('names all six, including the three with no body yet', () => {
+    // Decided 2026-08-18: the eight MapLab 4 nest archetypes were authored
+    // against six families, and the user chose to honour that rather than fold
+    // them into three. Declaring them now means adding a body later is a data
+    // change rather than a structural one.
+    const families: Quality3DFormFamily[] = ['fang', 'shell', 'swarm', 'wing', 'venom', 'rift']
+    for (const family of families) {
+      const resolved = resolveQuality3DGLBAsset(1, family)
+      expect(resolved.asset, family).toBeDefined()
+    }
+  })
+
+  it('says so when an unproduced family borrows another body', () => {
+    // Silence here is the failure mode: a route whose card promises a different
+    // animal and quietly delivers the Fang gecko is exactly what stage 1 looked
+    // like before the Shell and Swarm bodies existed.
+    for (const family of QUALITY_3D_PRODUCED_FAMILIES) {
+      expect(resolveQuality3DGLBAsset(1, family).matchedFamily, family).toBe(true)
+    }
+    for (const family of ['wing', 'venom', 'rift'] as const) {
+      expect(resolveQuality3DGLBAsset(1, family).matchedFamily, family).toBe(false)
+    }
   })
 })

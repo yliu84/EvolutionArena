@@ -22,7 +22,13 @@ export interface GloamwoodCollisionResult {
   minimumClearance: number
 }
 
-export type GloamwoodPlayerFamily = 'fang' | 'shell' | 'swarm'
+/**
+ * Kept in step with Quality3DFormFamily by hand, because collision cannot import
+ * from the asset registry without a cycle. A family with no entry in the
+ * override table falls back to the stage profile, which is correct: a form with
+ * no body of its own is wearing another family's, and should collide like it.
+ */
+export type GloamwoodPlayerFamily = 'fang' | 'shell' | 'swarm' | 'wing' | 'venom' | 'rift'
 
 export const GLOAMWOOD_PLAYER_COLLISION_PROFILES = [
   { radius: 0.52, frontOffset: 0.46, rearOffset: 0.52 },
