@@ -13,6 +13,7 @@ import { SPORE_STALKER_PRESENTATION } from './spore-stalker-character-presentati
 import { applyDocumentLocale, getLocale, persistLocale, setLocale, t, type Locale } from './i18n'
 import { gloamwoodFamilyPortrait } from './gloamwood-family-portraits'
 import { gloamwoodMutationIcon } from './gloamwood-mutation-icons'
+import { GloamwoodSessionLog, summariseGloamwoodSession } from './gloamwood-3d-session-log'
 import {
   GLOAMWOOD_BLADESHELL_BOSS,
   gloamwoodBossClipForState,
@@ -538,6 +539,16 @@ class Gloamwood3DHunt {
   private mutationOffersTaken = 0
   /** Runs once the current mutation panel is answered, if anything was waiting. */
   private afterMutationChoice?: () => void
+  /**
+   * Observation only, never a decision.
+   *
+   * Every runtime defect so far was spotted by a person watching and then
+   * diagnosed by simulation, and one of those simulations was wrong. A recording
+   * takes the guessing out of the second half.
+   */
+  private readonly sessionLog = new GloamwoodSessionLog()
+  private sessionSampleAt = 0
+  private sessionRunPhase = 'hunt'
   private healthDecayElapsed = 0
   private reviveUsed = false
   private stage = 0
@@ -1794,6 +1805,7 @@ class Gloamwood3DHunt {
       this.mixer?.update(delta)
       this.applySecondaryMotion()
     }
+    this.updateSessionLog()
     this.updateModelledBoss(delta)
     this.updateHealthDecay(delta)
     this.updateMutationOffers()
@@ -2086,6 +2098,10 @@ class Gloamwood3DHunt {
       aimErrorDegrees: formalHuntAttackAimErrorDegrees(this.lastFacing, targetFacing),
       targetRadius,
     })
+    this.logSession({
+      kind: 'attack', by: 'player', who: target.kind, action, hit: valid, distance: Number(surfaceDistance.toFixed(2)),
+      reason: valid ? undefined : surfaceDistance > range ? 'out-of-range' : 'off-angle',
+    })
     if (!valid) {
       this.combatMessage = surfaceDistance > range ? t('hud.msg.missRange') : t('hud.msg.missAngle')
       return
@@ -2332,6 +2348,10 @@ class Gloamwood3DHunt {
       const attacker = this.nestState.prey.find((prey) => prey.id === event.preyId)
       if (!attacker) continue
       const previousHealth = this.playerCombat.health
+      this.logSession({
+        kind: 'attack', by: 'enemy', who: event.kind, action: 'strike', hit: true,
+        distance: Number(Math.hypot(attacker.x - this.playerRoot.position.x, attacker.z - this.playerRoot.position.z).toFixed(2)),
+      })
       const receivedDamage = this.takePlayerDamage(event.damage)
       if (this.playerCombat.health < previousHealth) {
         this.playSound('player-hit')
@@ -2401,6 +2421,10 @@ class Gloamwood3DHunt {
       }
       if (event.type !== 'boss-attack') continue
       const previousHealth = this.playerCombat.health
+      this.logSession({
+        kind: 'attack', by: 'enemy', who: 'boss', action: event.pattern, hit: true,
+        distance: Number(Math.hypot(this.bossState.x - this.playerRoot.position.x, this.bossState.z - this.playerRoot.position.z).toFixed(2)),
+      })
       const receivedDamage = this.takePlayerDamage(event.damage)
       if (this.playerCombat.health >= previousHealth) continue
       this.playSound('player-hit')
@@ -3130,6 +3154,37 @@ class Gloamwood3DHunt {
     }
   }
 
+  /** Append to the recording, stamping the time so callers never have to. */
+  private logSession(event: Parameters<GloamwoodSessionLog['record']>[0] extends infer E
+    ? E extends { t: number } ? Omit<E, 't'> : never : never) {
+    this.sessionLog.record({ ...event, t: Number(((performance.now() - this.runStartedAt) / 1000).toFixed(2)) } as never)
+  }
+
+  /**
+   * Periodic sample plus a phase marker.
+   *
+   * Four a second is enough to catch a player drifting outside the arena or an
+   * encounter going quiet, and cheap enough to leave on for a whole run.
+   */
+  private updateSessionLog() {
+    if (this.runPhase !== this.sessionRunPhase) {
+      this.sessionRunPhase = this.runPhase
+      this.logSession({ kind: 'phase', phase: this.runPhase })
+    }
+    const now = performance.now()
+    if (now - this.sessionSampleAt < 250) return
+    this.sessionSampleAt = now
+    this.logSession({
+      kind: 'sample',
+      phase: this.runPhase,
+      arenaOffset: Number(Math.hypot(
+        this.playerRoot.position.x - GLOAMWOOD_BOSS_ARENA.x,
+        this.playerRoot.position.z - GLOAMWOOD_BOSS_ARENA.z,
+      ).toFixed(2)),
+      health: this.playerCombat.health,
+    })
+  }
+
   private updateMutationOffers() {
     if (this.mutationState.offering || this.paused) return
     // Offers now arrive on run milestones, and two of those land inside the
@@ -3229,6 +3284,7 @@ class Gloamwood3DHunt {
     // panel closes on this click, and the chip should already be there when it
     // does.
     this.updateMutationList()
+    this.logSession({ kind: 'mutation', id: candidate.id, phase: this.runPhase })
     this.playSound('evolution-select')
     this.combatMessage = t('mutation.gained', { name: candidate.name })
     if (this.mutationOverlay) this.mutationOverlay.hidden = true
@@ -3358,6 +3414,7 @@ class Gloamwood3DHunt {
    * costs no life rather than a fourth one.
    */
   private spendLifeOrEndRun(reason: string) {
+    this.logSession({ kind: 'death', who: 'player', livesLeft: Math.max(0, this.livesRemaining - 1) })
     this.livesRemaining -= 1
     if (this.livesRemaining <= 0) {
       this.completeRunDefeat(reason)
@@ -3554,6 +3611,10 @@ class Gloamwood3DHunt {
           return this.mutationState.candidates.map((candidate) => candidate.id)
         },
         mutationsHeld: () => [...this.mutationState.taken],
+        // What actually happened, and what looks wrong about it. Paste the
+        // report into the conversation instead of describing the symptom.
+        sessionReport: () => summariseGloamwoodSession(this.sessionLog.all(), GLOAMWOOD_ARENA_PLAYER_RADIUS),
+        sessionDump: () => JSON.stringify(this.sessionLog.all()),
       }
       ;(window as Window & { __EA_DEBUG__?: typeof api }).__EA_DEBUG__ = api
     }
