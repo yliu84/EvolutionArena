@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import { getGloamwoodPlayerCollisionProfile } from '../src/gloamwood-3d-collision'
+import { CORAL_GECKO_PRESENTATION } from '../src/quality-3d-character-presentation'
+import { SCARLET_GECKO_PRESENTATION } from '../src/scarlet-gecko-character-presentation'
 import {
   GLOAMWOOD_BOSS,
   bossPatternHits,
@@ -19,8 +22,13 @@ describe('MapLab 5 Thorn Heart Warden', () => {
 
   it('has distinct circle, lane and donut answers', () => {
     const origin = { x: 0, z: 0, aimX: 6, aimZ: 0 }
-    expect(bossPatternHits({ ...origin, pattern: 'root-slam' }, { x: 3, z: 0 })).toBe(true)
-    expect(bossPatternHits({ ...origin, pattern: 'root-slam' }, { x: 4, z: 0 })).toBe(false)
+    // Sampled either side of the authored radius rather than at fixed numbers.
+    // The previous version asserted a miss at 4, which only held because the
+    // radius was 3.35 - too small to reach a player the collision floor keeps at
+    // 3.43 or further, so the pattern could never connect at all.
+    const slam = GLOAMWOOD_BOSS.patterns['root-slam'].radius
+    expect(bossPatternHits({ ...origin, pattern: 'root-slam' }, { x: slam - 0.5, z: 0 })).toBe(true)
+    expect(bossPatternHits({ ...origin, pattern: 'root-slam' }, { x: slam + 0.5, z: 0 })).toBe(false)
     expect(bossPatternHits({ ...origin, pattern: 'thorn-charge' }, { x: 4, z: 0.6 })).toBe(true)
     expect(bossPatternHits({ ...origin, pattern: 'thorn-charge' }, { x: 4, z: 1.2 })).toBe(false)
     expect(bossPatternHits({ ...origin, pattern: 'spore-ring' }, { x: 1, z: 0 })).toBe(false)
@@ -107,6 +115,44 @@ describe('A boss must be able to use its own patterns from its own spacing', () 
     if ('radius' in spec) return { floor: 0, ceiling: spec.radius }
     return { floor: 0, ceiling: spec.length }
   }
+
+  /**
+   * Closest the runtime will let a player stand to the boss, over every form.
+   *
+   * resolveObstacles pushes the player out to their combat body radius plus the
+   * boss body plus 0.22, so no pattern can ever resolve inside this.
+   */
+  function collisionFloor() {
+    const reserve = CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.visualTravel
+      * SCARLET_GECKO_PRESENTATION.combat.pounceVisualTravelScale
+    let worst = 0
+    for (const family of ['fang', 'shell', 'swarm'] as const) {
+      const profile = getGloamwoodPlayerCollisionProfile(1, family)
+      const neutral = profile.radius + Math.max(profile.frontOffset, profile.rearOffset)
+      const combatRadius = neutral + (family === 'shell' ? 0 : reserve)
+      worst = Math.max(worst, combatRadius + GLOAMWOOD_BOSS.bodyRadius + 0.22)
+    }
+    return worst
+  }
+
+  it('can reach a player it is physically unable to get closer to', () => {
+    // The one that cost the most. root-slam resolved inside 3.35 while the
+    // collision floor is 3.43 to 3.50 depending on form, so it could not connect
+    // with anything, ever - and it fills two of the three phase-one slots. Two
+    // thirds of the boss's early attacks were guaranteed misses for the whole
+    // life of the encounter, which is why the fight read as harmless.
+    const floor = collisionFloor()
+    for (const pattern of Object.keys(GLOAMWOOD_BOSS.patterns) as (keyof typeof GLOAMWOOD_BOSS.patterns)[]) {
+      expect(patternBand(pattern).ceiling, `${pattern} against the collision floor`).toBeGreaterThanOrEqual(floor)
+    }
+  })
+
+  it('waits at a distance it can actually reach', () => {
+    // Dropping preferredRange below the collision floor meant the boss could
+    // never arrive at the spacing it was waiting for, so it stopped attacking
+    // outright - a live fight went completely passive.
+    expect(GLOAMWOOD_BOSS.preferredRange).toBeGreaterThanOrEqual(collisionFloor())
+  })
 
   it('reaches the player at every distance it chooses to stand at', () => {
     // Found by measurement, not by looking: preferredRange was 3.82 while

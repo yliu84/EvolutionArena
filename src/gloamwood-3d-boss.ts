@@ -30,17 +30,25 @@ export const GLOAMWOOD_BOSS = {
   /**
    * Where the boss chooses to stand.
    *
-   * Must sit inside every pattern's reach or the boss walks to a distance where
-   * its own rotation misses. At 3.82 it stood beyond root-slam's 3.35 radius -
-   * its most frequent pattern could not connect from the spacing it chose for
-   * itself. `boss patterns must be usable at the boss's own spacing` holds this.
+   * Two constraints, and the second was missed once already at real cost.
+   *
+   * It must sit inside every pattern's reach, or the boss stands where its own
+   * rotation misses. And it must be at least the collision floor - the runtime
+   * pushes the player out to playerCombatBodyRadius + bodyRadius + 0.22, which
+   * is 3.50 for the widest form - or the boss can never reach the spacing it is
+   * waiting for and simply never attacks again. Lowering this to 3.3 did exactly
+   * that and stopped the fight dead.
    */
-  preferredRange: 3.3,
+  preferredRange: 3.82,
   /**
    * Closest the boss will willingly stand.
    *
-   * Just outside spore-ring's safe inner circle of 2.15, so the pattern it
-   * cycles through can actually connect.
+   * Just outside spore-ring's safe inner circle of 2.15.
+   *
+   * In practice the collision floor already keeps the player further out than
+   * this, so the retreat rarely runs. It was added on a measurement that placed
+   * the player at a fixed 3.4 with no collision at all, which made the ring look
+   * dead when it was not. Kept as a cheap guard, not as a load-bearing fix.
    */
   minimumRange: 2.6,
   moveSpeed: 1.62,
@@ -57,7 +65,12 @@ export const GLOAMWOOD_BOSS = {
    */
   recoverSeconds: { 1: 0.58, 2: 0.3 },
   patterns: {
-    'root-slam': { telegraphSeconds: 1.02, attackSeconds: 0.24, radius: 3.35, damage: 14, knockback: 1.25 },
+    // Radius 4.3, not 3.35. The player can never stand closer than the
+    // collision floor of 3.43 to 3.50 depending on form, so at 3.35 this pattern
+    // could not connect with anything, ever - and it is two of the three slots
+    // in the phase-one rotation. Two thirds of the boss's early attacks were
+    // guaranteed misses for the whole life of the encounter.
+    'root-slam': { telegraphSeconds: 1.02, attackSeconds: 0.24, radius: 4.3, damage: 14, knockback: 1.25 },
     'thorn-charge': { telegraphSeconds: 0.9, attackSeconds: 0.58, length: 6.4, halfWidth: 0.82, damage: 18, knockback: 1.55 },
     'spore-ring': { telegraphSeconds: 1.14, attackSeconds: 0.28, innerRadius: 2.15, outerRadius: 5.15, damage: 16, knockback: 0.9 },
   },
