@@ -152,6 +152,17 @@ export interface GloamwoodPlayerPresence {
   z: number
   alive: boolean
   bodyRadius?: number
+  /**
+   * Prey inside this radius move at `slowFactor` of their speed.
+   *
+   * Granted by the Sporehaze mutation. It is deliberately a defensive aura and
+   * not a lure: every prey in this game closes unconditionally, so anything
+   * that pulled more of them in could only raise the death rate, and once the
+   * larger map separates aggressive from passive creatures a lure would still
+   * have to pull only the passive ones to be a tool rather than a trap.
+   */
+  slowAuraRadius?: number
+  slowAuraFactor?: number
 }
 
 const WAVES: readonly (readonly GloamwoodPreyKind[])[] = [
@@ -300,6 +311,13 @@ function spawnWave(state: GloamwoodNestState, wave: number): GloamwoodNestState 
   return { ...state, phase: 'wave', wave, phaseElapsed: 0, prey }
 }
 
+/** Prey speed after any aura the player is projecting. */
+function preyMoveSpeed(spec: GloamwoodPreySpec, playerDistance: number, player: GloamwoodPlayerPresence) {
+  const radius = player.slowAuraRadius ?? 0
+  const factor = player.slowAuraFactor ?? 1
+  return radius > 0 && playerDistance <= radius ? spec.moveSpeed * factor : spec.moveSpeed
+}
+
 function stepPrey(
   state: GloamwoodNestPrey,
   delta: number,
@@ -339,11 +357,12 @@ function stepPrey(
     if (desiredDistance > 0.001) {
       const currentAngle = Math.atan2(next.z - player.z, next.x - player.x)
       const targetAngle = Math.atan2(slot.z - player.z, slot.x - player.x)
-      const radialStep = Math.min(Math.abs(playerDistance - stopDistance), spec.moveSpeed * delta)
+      const moveSpeed = preyMoveSpeed(spec, playerDistance, player)
+      const radialStep = Math.min(Math.abs(playerDistance - stopDistance), moveSpeed * delta)
       const nextRadius = Math.max(stopDistance, playerDistance + Math.sign(stopDistance - playerDistance) * radialStep)
       const angularStep = Math.min(
         Math.abs(shortestAngle(currentAngle, targetAngle)),
-        spec.moveSpeed * delta / Math.max(stopDistance, playerDistance, 0.001),
+        moveSpeed * delta / Math.max(stopDistance, playerDistance, 0.001),
       )
       const nextAngle = currentAngle + Math.sign(shortestAngle(currentAngle, targetAngle)) * angularStep
       next.x = player.x + Math.cos(nextAngle) * nextRadius

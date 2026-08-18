@@ -31,10 +31,9 @@ export interface GloamwoodMutationEffects {
   suppressKillHeal?: boolean
   /** Revive once per run at this share of maximum health. */
   reviveFraction?: number
-  /** Prey begin closing from this much further out. */
-  lureRadiusBonus?: number
-  /** Damage multiplier against prey currently closing because of a lure. */
-  luredTargetMultiplier?: number
+  /** Prey inside this radius of the player move at `slowAuraFactor` speed. */
+  slowAuraRadius?: number
+  slowAuraFactor?: number
   /** Maximum health shed every `healthDecayIntervalSeconds`. */
   healthDecayPerInterval?: number
   healthDecayIntervalSeconds?: number
@@ -92,7 +91,13 @@ export const GLOAMWOOD_MUTATION_POOL: readonly GloamwoodMutation[] = [
   { id: 'shell-symbiosis', family: 'shell', effects: { reflectFraction: 0.3, suppressKillHeal: true } },
   // Swarm: mobility and staying alive.
   { id: 'swarm-moult', family: 'swarm', effects: { reviveFraction: 0.3 } },
-  { id: 'swarm-glowtrap', family: 'swarm', effects: { lureRadiusBonus: 4.5, luredTargetMultiplier: 1.25 } },
+    // Sporehaze replaces a first pass called Glowtrap, which widened the nest's
+  // wake radius. Every prey in this game closes unconditionally, so pulling more
+  // of them in could only raise the death rate - and once the larger map splits
+  // aggressive from passive creatures, a lure would have to pull only the
+  // passive ones to be a tool instead of a trap. That distinction does not exist
+  // yet, so the entry became defensive rather than waiting on it.
+  { id: 'swarm-sporehaze', family: 'swarm', effects: { slowAuraRadius: 4.2, slowAuraFactor: 0.6, biomassMultiplier: 0.75 } },
   // Neutral: the expensive ones.
   { id: 'neutral-starving-metabolism', family: 'neutral', effects: { biomassMultiplier: 2, healthDecayPerInterval: 5, healthDecayIntervalSeconds: 30 } },
   { id: 'neutral-gluttony', family: 'neutral', effects: { bonusOfferEveryKills: 3, maximumHealthCostPerMutation: 8 } },

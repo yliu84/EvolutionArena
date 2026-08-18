@@ -12,6 +12,15 @@ import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presenta
 import { SPORE_STALKER_PRESENTATION } from './spore-stalker-character-presentation'
 import { applyDocumentLocale, getLocale, persistLocale, setLocale, t, type Locale } from './i18n'
 import { gloamwoodFamilyPortrait } from './gloamwood-family-portraits'
+import {
+  accumulateGloamwoodMutationEffects,
+  createGloamwoodMutationState,
+  gloamwoodMutationOffersEarned,
+  openGloamwoodMutationOffer,
+  selectGloamwoodMutation,
+  type GloamwoodMutationEffects,
+  type GloamwoodMutationState,
+} from './gloamwood-3d-mutations'
 import { CORAL_GECKO_PRESENTATION } from './quality-3d-character-presentation'
 import {
   applyScarletGeckoSurfaceGrade,
@@ -456,11 +465,30 @@ class Gloamwood3DHunt {
   private runStartedAt = performance.now()
   private runDeaths = 0
   private resultOverlay?: HTMLElement
+  /**
+   * Modifiers granted by the one form evolution. Mutations stack on top of
+   * these rather than replacing them, so both are folded in one place -
+   * `applyProgressionModifiers()` - and nothing else writes them.
+   */
+  private evolutionModifiers = {
+    damageMultiplier: 1, moveSpeedMultiplier: 1, damageReduction: 0,
+    biomassMultiplier: 1, killHeal: 0, maximumHealthBonus: 0,
+  }
   private damageMultiplier = 1
   private moveSpeedMultiplier = 1
   private damageReduction = 0
   private biomassMultiplier = 1
   private killHeal = 0
+  private mutationState: GloamwoodMutationState = createGloamwoodMutationState('gloamwood-first-run')
+  private mutationEffects: GloamwoodMutationEffects = {}
+  private mutationOverlay?: HTMLElement
+  /** Kills counted toward Gluttony's bonus offer, reset each time it pays out. */
+  private killsTowardBonusOffer = 0
+  /** Bonus offers Gluttony has bought, added to the biomass-earned count. */
+  private bonusOffersEarned = 0
+  private mutationOffersTaken = 0
+  private healthDecayElapsed = 0
+  private reviveUsed = false
   private stage = 0
   /** Gene family whose body the player currently wears; undefined before evolving. */
   private characterFamily?: Quality3DFormFamily
@@ -556,6 +584,9 @@ class Gloamwood3DHunt {
     this.audio = new GloamwoodAudioBus(this.feedbackSettings.volume)
     const params = new URLSearchParams(window.location.search)
     this.evolutionState = createGloamwoodEvolutionState(params.get('evolutionSeed') ?? 'gloamwood-first-run')
+    // Same seed as the form evolution: one seed reproduces a whole run, which is
+    // what Goal 3's acceptance actually checks.
+    this.mutationState = createGloamwoodMutationState(params.get('evolutionSeed') ?? 'gloamwood-first-run')
     this.scene.background = new THREE.Color(0x12251d)
     this.scene.fog = new THREE.FogExp2(0x1b3329, 0.026)
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65))
@@ -1696,6 +1727,8 @@ class Gloamwood3DHunt {
       this.mixer?.update(delta)
       this.applySecondaryMotion()
     }
+    this.updateHealthDecay(delta)
+    this.updateMutationOffers()
     this.updateCamera(delta)
     this.renderer.render(this.scene, this.camera)
     this.updateHud()
@@ -1958,8 +1991,12 @@ class Gloamwood3DHunt {
       this.combatMessage = surfaceDistance > range ? t('hud.msg.missRange') : t('hud.msg.missAngle')
       return
     }
-    const knockback = action === 'TailSwipe' ? 0.72 : action === 'Pounce' ? 0.52 : 0.34
+    const combo = this.combatProfile.primaryCombo
+    const isFinisher = action === combo[combo.length - 1]
+    const knockback = (action === 'TailSwipe' ? 0.72 : action === 'Pounce' ? 0.52 : 0.34)
+      + (isFinisher ? this.mutationEffects.finisherKnockback ?? 0 : 0)
     const baseDamage = this.attackBaseDamage(action)
+      * this.mutationDamageMultiplierAgainst(target.health / target.maxHealth)
     const damage = damageGloamwoodNestPrey(
       this.nestState,
       target.id,
@@ -1974,6 +2011,13 @@ class Gloamwood3DHunt {
     if (damage.killed && this.biomassMultiplier !== 1) {
       displayedBiomass = Math.round(damage.biomassGained * this.biomassMultiplier)
       this.nestState = { ...this.nestState, biomass: this.nestState.biomass + displayedBiomass - damage.biomassGained }
+    }
+    if (damage.killed && this.mutationEffects.bonusOfferEveryKills) {
+      this.killsTowardBonusOffer += 1
+      if (this.killsTowardBonusOffer >= this.mutationEffects.bonusOfferEveryKills) {
+        this.killsTowardBonusOffer = 0
+        this.bonusOffersEarned += 1
+      }
     }
     if (damage.killed && this.killHeal > 0) {
       this.playerCombat = { ...this.playerCombat, health: Math.min(this.playerCombat.maxHealth, this.playerCombat.health + this.killHeal) }
@@ -2024,7 +2068,12 @@ class Gloamwood3DHunt {
       return
     }
     const baseDamage = this.attackBaseDamage(action)
-    const result = damageGloamwoodBoss(this.bossState, baseDamage * this.damageMultiplier)
+    const result = damageGloamwoodBoss(
+      this.bossState,
+      baseDamage
+        * this.damageMultiplier
+        * this.mutationDamageMultiplierAgainst(this.bossState.health / this.bossState.maxHealth),
+    )
     this.bossState = result.state
     if (result.effectiveDamage <= 0) return
     this.playSound(result.defeated ? 'kill' : action === 'Pounce' || action === 'TailSwipe' ? 'hit-heavy' : 'hit-light')
@@ -2083,6 +2132,24 @@ class Gloamwood3DHunt {
     return feedback.biteDamage
   }
 
+  /**
+   * Mutation multipliers that depend on the target rather than the attack.
+   *
+   * Kept beside the base damage so every caller picks them up. Killer Instinct
+   * paying out only on the prey path and not on the boss is exactly the kind of
+   * split this file has been consolidating all day.
+   */
+  private mutationDamageMultiplierAgainst(healthFraction: number) {
+    const effects = this.mutationEffects
+    let multiplier = 1
+    if (effects.executeBelow !== undefined && effects.executeMultiplier !== undefined
+      && healthFraction < effects.executeBelow) multiplier *= effects.executeMultiplier
+    if (effects.healthyTargetMultiplier !== undefined && healthFraction >= 0.999) {
+      multiplier *= effects.healthyTargetMultiplier
+    }
+    return multiplier
+  }
+
   private updateEnemy(delta: number) {
     if (this.bossActive()) {
       this.updateBoss(delta)
@@ -2093,6 +2160,11 @@ class Gloamwood3DHunt {
       z: this.playerRoot.position.z,
       alive: this.playerCombat.alive,
       bodyRadius: gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily),
+      // Sporehaze slows whatever is already on top of the player. It is not a
+      // lure: nothing in this game may pull more prey in until the map can tell
+      // an aggressive creature from a passive one.
+      slowAuraRadius: this.mutationEffects.slowAuraRadius,
+      slowAuraFactor: this.mutationEffects.slowAuraFactor,
     })
     // stepGloamwoodNest already holds prey at their action ring, and it does so
     // knowing where each one stood a frame ago - which is how it tells a prey
@@ -2142,8 +2214,7 @@ class Gloamwood3DHunt {
       const attacker = this.nestState.prey.find((prey) => prey.id === event.preyId)
       if (!attacker) continue
       const previousHealth = this.playerCombat.health
-      const receivedDamage = Math.max(1, Math.round(event.damage * (1 - this.damageReduction)))
-      this.playerCombat = damageGloamwoodPlayer(this.playerCombat, receivedDamage)
+      const receivedDamage = this.takePlayerDamage(event.damage)
       if (this.playerCombat.health < previousHealth) {
         this.playSound('player-hit')
         this.lockedPreyId = assistGloamwoodAttackerLock(this.nestState.prey, this.lockedPreyId, attacker.id)
@@ -2208,9 +2279,8 @@ class Gloamwood3DHunt {
         continue
       }
       if (event.type !== 'boss-attack') continue
-      const receivedDamage = Math.max(1, Math.round(event.damage * (1 - this.damageReduction)))
       const previousHealth = this.playerCombat.health
-      this.playerCombat = damageGloamwoodPlayer(this.playerCombat, receivedDamage)
+      const receivedDamage = this.takePlayerDamage(event.damage)
       if (this.playerCombat.health >= previousHealth) continue
       this.playSound('player-hit')
       const dx = this.playerRoot.position.x - this.bossState.x
@@ -2735,6 +2805,181 @@ class Gloamwood3DHunt {
     this.evolutionOverlay?.querySelector<HTMLButtonElement>('[data-evolution-choice]')?.focus()
   }
 
+  /**
+   * Fold the form evolution and every mutation held into the live modifiers.
+   *
+   * One writer. Mutations stack on the evolution rather than replacing it, and
+   * routing both through here is what keeps a mutation from becoming a fourth
+   * place that decides damage - the failure this project has already paid for
+   * with three separate stage-keyed damage lookups.
+   */
+  /**
+   * One gate for every hit the player takes.
+   *
+   * Symbiosis redirects a share of it and Moult catches the killing blow, and
+   * both had to sit here rather than beside each incoming-damage site: prey and
+   * boss damage arrive through two different event loops, and a mutation that
+   * only worked against one of them would be a bug nobody notices until the
+   * boss fight.
+   */
+  private takePlayerDamage(rawDamage: number) {
+    const reflect = this.mutationEffects.reflectFraction ?? 0
+    const received = Math.max(1, Math.round(rawDamage * (1 - this.damageReduction) * (1 - reflect)))
+    if (reflect > 0) this.reflectDamageToNearestPrey(Math.round(rawDamage * reflect))
+    this.playerCombat = damageGloamwoodPlayer(this.playerCombat, received)
+    // Moult spends itself on the blow that would have ended the run.
+    const revive = this.mutationEffects.reviveFraction
+    if (!this.playerCombat.alive && revive && !this.reviveUsed) {
+      this.reviveUsed = true
+      this.playerCombat = {
+        ...this.playerCombat,
+        alive: true,
+        health: Math.max(1, Math.round(this.playerCombat.maxHealth * revive)),
+      }
+      this.combatMessage = t('mutation.moulted')
+      this.playSound('evolution-select')
+    }
+    return received
+  }
+
+  /** Symbiosis pays its redirected share to whoever is closest, prey only. */
+  private reflectDamageToNearestPrey(amount: number) {
+    if (amount <= 0) return
+    let nearest: { id: string; distance: number } | null = null
+    for (const prey of this.nestState.prey) {
+      if (prey.phase === 'dead') continue
+      const distance = Math.hypot(prey.x - this.playerRoot.position.x, prey.z - this.playerRoot.position.z)
+      if (!nearest || distance < nearest.distance) nearest = { id: prey.id, distance }
+    }
+    if (!nearest) return
+    const result = damageGloamwoodNestPrey(
+      this.nestState,
+      nearest.id,
+      amount,
+      'Claw',
+      { x: this.playerRoot.position.x, z: this.playerRoot.position.z },
+      0,
+    )
+    this.nestState = result.state
+  }
+
+  private applyProgressionModifiers() {
+    const evolution = this.evolutionModifiers
+    const mutation = this.mutationEffects
+    this.damageMultiplier = evolution.damageMultiplier * (mutation.damageMultiplier ?? 1)
+    this.moveSpeedMultiplier = evolution.moveSpeedMultiplier * (mutation.moveSpeedMultiplier ?? 1)
+    this.damageReduction = evolution.damageReduction
+    this.biomassMultiplier = evolution.biomassMultiplier * (mutation.biomassMultiplier ?? 1)
+    // Symbiosis trades away kill healing outright, whatever granted it.
+    this.killHeal = mutation.suppressKillHeal ? 0 : evolution.killHeal
+    const previousMaximum = this.playerCombat.maxHealth
+    const maximumHealth = Math.max(
+      20,
+      GLOAMWOOD_3D_COMBAT.playerMaxHealth
+        + evolution.maximumHealthBonus
+        + (mutation.maximumHealthBonus ?? 0)
+        - this.decayedMaximumHealth,
+    )
+    this.playerCombat = {
+      ...this.playerCombat,
+      maxHealth: maximumHealth,
+      health: Math.min(maximumHealth, this.playerCombat.health + Math.max(0, maximumHealth - previousMaximum)),
+    }
+  }
+
+  /** Maximum health already shed to Starving Metabolism. */
+  private decayedMaximumHealth = 0
+
+  /**
+   * Offers are earned by biomass, plus whatever Gluttony has bought. They are
+   * withheld while a form evolution, the guardian or the boss is on screen: two
+   * choice panels stacked on one another means the player remembers neither.
+   */
+  private updateMutationOffers() {
+    if (this.mutationState.offering || this.paused) return
+    if (this.runPhase !== 'hunt') return
+    if (this.evolutionState.phase === 'choosing') return
+    const earned = gloamwoodMutationOffersEarned(this.nestState.biomass) + this.bonusOffersEarned
+    if (earned <= this.mutationOffersTaken) return
+    this.mutationState = openGloamwoodMutationOffer(this.mutationState, this.nestState.genes)
+    if (!this.mutationState.offering) {
+      // Pool exhausted. Count it as taken so the check stops re-running.
+      this.mutationOffersTaken = earned
+      return
+    }
+    this.showMutationOverlay()
+  }
+
+  private showMutationOverlay() {
+    if (!this.mutationOverlay) {
+      const overlay = document.createElement('section')
+      overlay.className = 'gloamwood-evolution-overlay gloamwood-mutation-overlay'
+      overlay.setAttribute('role', 'dialog')
+      overlay.setAttribute('aria-modal', 'true')
+      overlay.setAttribute('aria-label', t('mutation.title'))
+      this.mutationOverlay = overlay
+      this.container.append(overlay)
+    }
+    this.keys.clear()
+    this.primaryHeld = false
+    this.touchMoveX = 0
+    this.touchMoveZ = 0
+    this.cancelAutoEngage()
+    this.renderMutationOffer()
+    this.mutationOverlay.hidden = false
+    this.playSound('evolution-open')
+    this.mutationOverlay.querySelector<HTMLButtonElement>('[data-mutation-choice]')?.focus()
+  }
+
+  private renderMutationOffer() {
+    if (!this.mutationOverlay) return
+    this.mutationOverlay.innerHTML = [
+      '<div class="g3d-evolution-panel">',
+      `<header><span>${t('mutation.eyebrow')}</span><h1>${t('mutation.title')}</h1></header>`,
+      '<div class="g3d-evolution-choices">',
+      ...this.mutationState.candidates.map((candidate, index) => [
+        `<button data-mutation-choice="${index}" data-family="${candidate.family}">`,
+        `<span><kbd>${index + 1}</kbd>${t(`family.${candidate.family}` as 'family.fang')}</span>`,
+        `<strong>${candidate.name}</strong>`,
+        // The rule comes first and the price second, because the price is what
+        // makes it a decision rather than a reward.
+        `<b>${candidate.rule}</b>`,
+        `<em>${candidate.cost}</em>`,
+        '</button>',
+      ].join('')),
+      '</div>',
+      '</div>',
+    ].join('')
+    for (const button of this.mutationOverlay.querySelectorAll<HTMLButtonElement>('[data-mutation-choice]')) {
+      button.addEventListener('click', () => this.chooseMutation(Number(button.dataset.mutationChoice)))
+    }
+  }
+
+  private chooseMutation(index: number) {
+    const candidate = this.mutationState.candidates[index]
+    if (!candidate || !this.mutationState.offering) return
+    this.mutationState = selectGloamwoodMutation(this.mutationState, candidate.id)
+    this.mutationEffects = accumulateGloamwoodMutationEffects(this.mutationState.taken)
+    this.mutationOffersTaken += 1
+    this.applyProgressionModifiers()
+    this.playSound('evolution-select')
+    this.combatMessage = t('mutation.gained', { name: candidate.name })
+    if (this.mutationOverlay) this.mutationOverlay.hidden = true
+    this.renderer.domElement.focus()
+  }
+
+  /** Starving Metabolism sheds maximum health on a clock rather than on hits. */
+  private updateHealthDecay(delta: number) {
+    const perInterval = this.mutationEffects.healthDecayPerInterval
+    const interval = this.mutationEffects.healthDecayIntervalSeconds
+    if (!perInterval || !interval) return
+    this.healthDecayElapsed += delta
+    if (this.healthDecayElapsed < interval) return
+    this.healthDecayElapsed -= interval
+    this.decayedMaximumHealth += perInterval
+    this.applyProgressionModifiers()
+  }
+
   private async chooseEvolution(index: number, nextEncounter: 'guardian' | 'boss' = 'guardian') {
     const candidate = this.evolutionState.candidates[index]
     if (!candidate || this.evolutionState.phase !== 'choosing') return
@@ -2744,23 +2989,20 @@ class Gloamwood3DHunt {
       this.evolutionOverlay.dataset.busy = 'true'
       for (const button of this.evolutionOverlay.querySelectorAll<HTMLButtonElement>('button')) button.disabled = true
     }
-    this.damageMultiplier = candidate.modifiers.damageMultiplier
-    this.moveSpeedMultiplier = candidate.modifiers.moveSpeedMultiplier
-    this.damageReduction = candidate.modifiers.damageReduction
-    this.biomassMultiplier = candidate.modifiers.biomassMultiplier
-    this.killHeal = candidate.modifiers.killHeal
+    this.evolutionModifiers = {
+      damageMultiplier: candidate.modifiers.damageMultiplier,
+      moveSpeedMultiplier: candidate.modifiers.moveSpeedMultiplier,
+      damageReduction: candidate.modifiers.damageReduction,
+      biomassMultiplier: candidate.modifiers.biomassMultiplier,
+      killHeal: candidate.modifiers.killHeal,
+      maximumHealthBonus: candidate.modifiers.maximumHealthBonus,
+    }
+    this.applyProgressionModifiers()
     this.attackState = createFormalHuntBasicAttackState()
     this.attackUntil = 0
     this.characterRoot.position.set(0, 0, 0)
     this.characterRoot.rotation.set(0, 0, 0)
     this.characterRoot.scale.setScalar(1)
-    const previousMaximum = this.playerCombat.maxHealth
-    const maximumHealth = Math.max(50, GLOAMWOOD_3D_COMBAT.playerMaxHealth + candidate.modifiers.maximumHealthBonus)
-    this.playerCombat = {
-      ...this.playerCombat,
-      maxHealth: maximumHealth,
-      health: Math.min(maximumHealth, this.playerCombat.health + Math.max(0, maximumHealth - previousMaximum)),
-    }
     await this.loadCharacter(1, candidate.family)
     // The accent is a placeholder for a route with no body of its own: it marks
     // an evolution the model cannot show. A family that loaded its own form
@@ -3008,6 +3250,18 @@ class Gloamwood3DHunt {
             0,
           ).state
         },
+        // Mutation offers are earned by biomass inside the frame loop, so
+        // reaching one normally means playing a third of a run. This opens the
+        // next one directly, for checking the panel and for trying a build
+        // without farming up to it.
+        offerMutation: () => {
+          if (this.mutationState.offering) return this.mutationState.candidates.map((candidate) => candidate.id)
+          this.mutationState = openGloamwoodMutationOffer(this.mutationState, this.nestState.genes)
+          if (!this.mutationState.offering) return []
+          this.showMutationOverlay()
+          return this.mutationState.candidates.map((candidate) => candidate.id)
+        },
+        mutationsHeld: () => [...this.mutationState.taken],
       }
       ;(window as Window & { __EA_DEBUG__?: typeof api }).__EA_DEBUG__ = api
     }

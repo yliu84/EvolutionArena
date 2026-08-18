@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -31,10 +32,19 @@ describe('Mutation pool', () => {
     for (const mutation of GLOAMWOOD_MUTATION_POOL) {
       const values = Object.entries(mutation.effects)
       const rewritesARule = values.some(([key]) =>
-        !key.endsWith('Multiplier') || ['executeMultiplier', 'luredTargetMultiplier'].includes(key))
+        !key.endsWith('Multiplier') || key === 'executeMultiplier')
       const movesANumberHard = values.some(([key, value]) =>
         key.endsWith('Multiplier') && typeof value === 'number' && Math.abs(value - 1) >= 0.1)
       expect(rewritesARule || movesANumberHard, mutation.id).toBe(true)
+    }
+  })
+
+  it('has a label for every family it uses, including neutral', () => {
+    // The offer panel prints t(`family.${family}`). Neutral entries had no such
+    // key, so the first neutral draw threw inside the render and the panel never
+    // appeared - a crash no unit test caught, only running the game did.
+    for (const mutation of GLOAMWOOD_MUTATION_POOL) {
+      expect(TRANSLATIONS[`family.${mutation.family}` as keyof typeof TRANSLATIONS], mutation.family).toBeDefined()
     }
   })
 
@@ -138,5 +148,59 @@ describe('Stacking', () => {
 
   it('is empty for a run that has taken nothing', () => {
     expect(accumulateGloamwoodMutationEffects([])).toEqual({})
+  })
+})
+
+describe('Runtime wiring', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+  const ecology = readFileSync(new URL('../src/gloamwood-3d-ecology.ts', import.meta.url), 'utf8')
+
+  it('folds evolution and mutations in exactly one place', () => {
+    // A mutation writing damageMultiplier on its own would become a fourth site
+    // that decides damage, after the three stage-keyed lookups consolidated
+    // earlier. One writer, or the drift starts again.
+    expect(source).toContain('private applyProgressionModifiers()')
+    expect(source).toContain('this.evolutionModifiers = {')
+    const writes = source.match(/this\.damageMultiplier = /g) ?? []
+    expect(writes).toHaveLength(1)
+  })
+
+  it('routes every hit the player takes through one gate', () => {
+    // Prey damage and boss damage arrive in two different event loops. A
+    // mutation wired to only one of them is a bug nobody finds until the boss.
+    expect(source).toContain('private takePlayerDamage(rawDamage: number)')
+    const gates = source.match(/this\.takePlayerDamage\(event\.damage\)/g) ?? []
+    expect(gates).toHaveLength(2)
+    expect(source).not.toMatch(/Math\.max\(1, Math\.round\(event\.damage \* \(1 - this\.damageReduction\)\)\)/)
+  })
+
+  it('applies target-dependent multipliers to prey and boss alike', () => {
+    // Exactly two call sites: the prey path and the boss path. Killer Instinct
+    // paying out on prey but not on the boss would be the same split this file
+    // spent the day consolidating.
+    const uses = source.match(/this\.mutationDamageMultiplierAgainst\(/g) ?? []
+    expect(uses).toHaveLength(2)
+  })
+
+  it('withholds an offer while another choice is already on screen', () => {
+    // Two panels stacked on each other means the player remembers neither.
+    expect(source).toMatch(/if \(this\.runPhase !== 'hunt'\) return/)
+    expect(source).toContain("if (this.evolutionState.phase === 'choosing') return")
+  })
+
+  it('seeds mutations from the same seed as the form evolution', () => {
+    // One seed has to reproduce a whole run, which is what Goal 3 checks.
+    expect(source).toContain("createGloamwoodMutationState(params.get('evolutionSeed') ?? 'gloamwood-first-run')")
+  })
+
+  it('never pulls more prey in, and reads the aura it does grant', () => {
+    // Every prey here closes unconditionally, so a lure could only raise the
+    // death rate; and once the larger map separates aggressive creatures from
+    // passive ones, a lure would still have to pull only the passive ones to be
+    // a tool rather than a trap. Nothing may widen aggro until then.
+    expect(ecology).not.toContain('lureRadiusBonus')
+    expect(ecology).toContain('player.slowAuraRadius')
+    expect(ecology).toContain('function preyMoveSpeed(')
+    expect(ecology).not.toMatch(/activationRadius \+/)
   })
 })

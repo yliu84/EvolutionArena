@@ -317,6 +317,8 @@ const STRINGS = {
   'family.fang': { en: 'Fang', zh: '裂牙' },
   'family.shell': { en: 'Carapace', zh: '岩盾' },
   'family.swarm': { en: 'Swarm', zh: '群生' },
+  // Mutations add a fourth bucket the three gene families never needed.
+  'family.neutral': { en: 'Universal', zh: '通用' },
   'evo.fang-serrated-pounce.name': { en: 'Serrated Pounce', zh: '锯齿扑爪' },
   'evo.fang-serrated-pounce.stat': { en: 'Basic attack +24% · Speed +4%', zh: '普通攻击 +24% · 移速 +4%' },
   'evo.fang-execution-jaw.name': { en: 'Executioner Jaw', zh: '处决颚肌' },
@@ -329,6 +331,11 @@ const STRINGS = {
   'evo.swarm-symbiotic-brood.stat': { en: 'Kill heal 7 · Biomass +18% · Damage −6%', zh: '击杀恢复 7 · 生物质 +18% · 伤害 −6%' },
   'evo.swarm-hunting-cloud.name': { en: 'Hunting Bloom', zh: '猎行菌群' },
   'evo.swarm-hunting-cloud.stat': { en: 'Speed +14% · Biomass +12% · Health −10', zh: '移速 +14% · 生物质 +12% · 生命 −10' },
+
+  'mutation.eyebrow': { en: 'MUTATION', zh: '变异 / MUTATION' },
+  'mutation.title': { en: 'Your body is changing', zh: '你的身体正在改变' },
+  'mutation.moulted': { en: 'You moulted and got back up', zh: '你蜕壳重新站起' },
+  'mutation.gained': { en: 'Mutated: {name}', zh: '获得变异：{name}' },
 
   // Mutations. Each entry states the rule it changes and the price it charges;
   // a stat percentage on its own belongs in neither field.
@@ -347,9 +354,9 @@ const STRINGS = {
   'mutation.swarm-moult.name': { en: 'Moult', zh: '蜕壳' },
   'mutation.swarm-moult.rule': { en: "The first time you would die, you get back up at 30% health.", zh: '首次死亡时以 30% 生命重新站起。' },
   'mutation.swarm-moult.cost': { en: "Once per run only.", zh: '每局仅一次。' },
-  'mutation.swarm-glowtrap.name': { en: 'Glowtrap', zh: '荧光诱捕' },
-  'mutation.swarm-glowtrap.rule': { en: "Your spore sac pulls enemies in from much further away, and you hit them 25% harder.", zh: '孢囊会从更远处吸引敌人接近，你对它们伤害提高 25%。' },
-  'mutation.swarm-glowtrap.cost': { en: "They come to you whether you are ready or not.", zh: '无论你是否准备好，它们都会来。' },
+  'mutation.swarm-sporehaze.name': { en: 'Sporehaze', zh: '孢子晕' },
+  'mutation.swarm-sporehaze.rule': { en: 'Enemies close to you move 40% slower.', zh: '靠近你的敌人移速降低 40%。' },
+  'mutation.swarm-sporehaze.cost': { en: 'The spores eat 25% of the Biomass you gather.', zh: '孢子会吃掉你 25% 的生物质。' },
   'mutation.neutral-starving-metabolism.name': { en: 'Starving Metabolism', zh: '饥饿代谢' },
   'mutation.neutral-starving-metabolism.rule': { en: "You gain twice as much Biomass.", zh: '生物质获取翻倍。' },
   'mutation.neutral-starving-metabolism.cost': { en: "Maximum health falls by 5 every 30 seconds.", zh: '每 30 秒最大生命降低 5。' },
