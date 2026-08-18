@@ -26,6 +26,7 @@ import {
   gloamwoodValleyWalkableHalfWidth,
 } from '../src/gloamwood-valley-terrain'
 import { gloamwoodValleyBranchHalfWidth } from '../src/gloamwood-valley-branches'
+import { planGloamwoodValleyEncounters } from '../src/gloamwood-valley-spawns'
 
 const SEED = 0x5a11e
 const WIDTH = 1500
@@ -83,7 +84,7 @@ const parts: string[] = []
 parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${WIDTH} ${HEIGHT}" width="${WIDTH}" height="${HEIGHT}" font-family="Helvetica,Arial">`)
 parts.push(`<rect width="${WIDTH}" height="${HEIGHT}" fill="#0a1410"/>`)
 parts.push(`<text x="${MARGIN}" y="38" fill="#e6efe4" font-size="22" font-weight="700">河谷 · 由真实地形函数生成的平面图</text>`)
-parts.push(`<text x="${MARGIN}" y="62" fill="#7d8f80" font-size="13">主路、支线、河与可行走边界全部读自 src/gloamwood-valley-*.ts。等比例，无夸张。</text>`)
+parts.push(`<text x="${MARGIN}" y="62" fill="#7d8f80" font-size="13">地形、路网与全部 87 只生物的位置都读自 src/gloamwood-valley-*.ts。等比例，无夸张。</text>`)
 
 parts.push(`<polygon points="${routeBand(() => 0, gloamwoodValleyHalfWidth)}" fill="#16241c" stroke="#2b4436" stroke-width="1"/>`)
 for (let index = 0; index < GLOAMWOOD_VALLEY_BRANCHES.length; index += 1) {
@@ -97,6 +98,23 @@ const COLORS: Record<string, string> = { tree: '#7fae6c', undergrowth: '#4f7a44'
 for (const prop of scatterGloamwoodValley(SEED, 6200)) {
   const radius = prop.kind === 'cliff' ? 1.9 : prop.kind === 'tree' ? 1.4 : 0.8
   parts.push(`<circle cx="${sx(prop.x).toFixed(1)}" cy="${sy(prop.z).toFixed(1)}" r="${radius}" fill="${COLORS[prop.kind]}" opacity=".7"/>`)
+}
+
+// The creatures, so the composition can be judged as a layout rather than as a
+// table of counts: what matters is where the packs sit relative to the nests,
+// the gates and the ground the player has to walk anyway.
+const SPAWN_STYLE: Record<string, { fill: string; radius: number }> = {
+  grazer: { fill: '#8fd6a0', radius: 3 },
+  pack: { fill: '#ff8f5c', radius: 3.4 },
+  nest: { fill: '#e0b45f', radius: 8 },
+  elite: { fill: '#c77dff', radius: 6.5 },
+  boss: { fill: '#d0604a', radius: 9 },
+}
+for (const spawn of planGloamwoodValleyEncounters('valley-first-run')) {
+  const style = SPAWN_STYLE[spawn.kind]
+  const stroke = spawn.kind === 'nest' || spawn.kind === 'boss' || spawn.kind === 'elite'
+    ? ` stroke="#0a1410" stroke-width="1.6"` : ''
+  parts.push(`<circle cx="${sx(spawn.x).toFixed(1)}" cy="${sy(spawn.z).toFixed(1)}" r="${style.radius}" fill="${style.fill}"${stroke}/>`)
 }
 
 const NAMES: Record<string, string> = {
@@ -136,7 +154,8 @@ parts.push(`<text x="${sx(spawn.x).toFixed(1)}" y="${(sy(spawn.z) - 14).toFixed(
 
 const legend: Array<[string, string]> = [
   ['#5a4a33', '主路'], ['#3c6f78', '河'], ['#1b3025', '支线'],
-  ['#7fae6c', '树'], ['#4f7a44', '灌草'], ['#b9bdb4', '崖石'],
+  ['#8fd6a0', '被动散怪'], ['#ff8f5c', '主动小队'], ['#e0b45f', '巢穴'],
+  ['#c77dff', '精英'], ['#d0604a', '首领'],
 ]
 for (const [index, [color, label]] of legend.entries()) {
   const x = MARGIN + index * 128

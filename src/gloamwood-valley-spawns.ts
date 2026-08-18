@@ -6,6 +6,7 @@ import type { GloamwoodCreatureRole } from './gloamwood-creature-aggro'
 import {
   GLOAMWOOD_VALLEY,
   gloamwoodValleyBranchPointAt,
+  gloamwoodValleyCorridorAt,
   gloamwoodValleyConfine,
   gloamwoodValleyPointAt,
   gloamwoodValleyRoadOffset,
@@ -171,11 +172,7 @@ export function planGloamwoodValleyEncounters(seed: string): GloamwoodValleySpaw
 
     for (let index = 0; index < plan.grazers; index += 1) {
       const at = region.from + span * ((index + 0.5) / plan.grazers) + (random() - 0.5) * 24
-      const limit = gloamwoodValleyWalkableHalfWidth(at)
-      // On the bank, off the path - a grazer standing in the road is one the
-      // player has to walk through and therefore has to fight.
-      const side = random() < 0.5 ? -1 : 1
-      const lateral = side * (limit * (0.55 + random() * 0.35))
+      const lateral = grazingSpot(at, random)
       spawns.push(place({
         id: `${plan.region}-grazer-${index + 1}`,
         kind: 'grazer',
@@ -245,6 +242,30 @@ export function planGloamwoodValleyEncounters(seed: string): GloamwoodValleySpaw
   }
 
   return spawns
+}
+
+/**
+ * A standable offset that is not on the path.
+ *
+ * A grazer in the road is one the player has to walk through, which makes it a
+ * fight they did not choose - and the whole point of a passive creature is that
+ * walking past it is an option. Sampling a share of the half-width is not
+ * enough: on the road's own side of the route that share lands inside the path.
+ */
+function grazingSpot(at: number, random: () => number) {
+  const limit = gloamwoodValleyWalkableHalfWidth(at)
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const side = attempt % 2 === 0 ? 1 : -1
+    const lateral = side * limit * (0.4 + random() * 0.55)
+    const point = gloamwoodValleyPointAt(at, lateral)
+    if (!gloamwoodValleyWalkable(point.x, point.z)) continue
+    const corridor = gloamwoodValleyCorridorAt(point.x, point.z)
+    if (corridor.pathDistance > corridor.pathHalfWidth * 1.35) return lateral
+  }
+  // The gates are narrow enough that there may be no such spot; a grazer is
+  // optional, so the outer edge is a better answer than one standing in the
+  // gateway.
+  return -limit * 0.9
 }
 
 /** Elites are the heavy families; a swarm elite is a bigger gnat. */

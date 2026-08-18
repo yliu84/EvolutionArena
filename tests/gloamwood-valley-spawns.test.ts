@@ -9,7 +9,7 @@ import {
 } from '../src/gloamwood-valley-spawns'
 import {
   GLOAMWOOD_VALLEY,
-  gloamwoodValleyProject,
+  gloamwoodValleyCorridorAt,
   gloamwoodValleyWalkable,
 } from '../src/gloamwood-valley-terrain'
 
@@ -63,11 +63,16 @@ describe('Passive and aggressive', () => {
     }
   })
 
-  it('keeps the grazers off the path', () => {
+  it('keeps the grazers off the path, not merely off the centreline', () => {
+    // A grazer in the road is one the player has to walk through, which makes
+    // it a fight they did not choose - and being able to walk past is the
+    // entire point of a passive creature. Measuring from the centreline passes
+    // while the creature stands squarely in the road, because the road does not
+    // run down the centreline.
     for (const spawn of spawns) {
       if (spawn.kind !== 'grazer') continue
-      const hit = gloamwoodValleyProject(spawn.x, spawn.z)
-      expect(Math.abs(hit.lateral)).toBeGreaterThan(3)
+      const corridor = gloamwoodValleyCorridorAt(spawn.x, spawn.z)
+      expect(corridor.pathDistance).toBeGreaterThan(corridor.pathHalfWidth)
     }
   })
 })
