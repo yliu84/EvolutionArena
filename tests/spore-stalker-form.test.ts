@@ -23,11 +23,41 @@ describe('Swarm stage-1 form', () => {
     expect(SPORE_STALKER_PRESENTATION.asset.bones).toBe(STONE_PANGOLIN_PRESENTATION.asset.bones)
   })
 
-  it('keeps the Fang chain rather than the Shell one', () => {
-    // Long hind legs can sell a leap; the Shell form's stout ones could not.
-    expect(SPORE_STALKER_PRESENTATION.combat.primaryCombo).toEqual(['Bite', 'Pounce', 'TailSwipe'])
-    expect(SPORE_STALKER_PRESENTATION.asset.clips).toContain('Pounce')
-    expect(SPORE_STALKER_PRESENTATION.asset.clips).not.toContain('Slam')
+  it('fights on four steps with the payoff at the end, not three with it in the middle', () => {
+    const swarm = SPORE_STALKER_PRESENTATION.combat
+    const fang = SCARLET_GECKO_PRESENTATION.combat
+    expect(swarm.primaryCombo).toEqual(['Pounce', 'Claw', 'Claw', 'TailSwipe'])
+    expect(swarm.primaryCombo.length).toBeGreaterThan(fang.primaryCombo.length)
+    // Shipping this form on the Fang chain was a cost decision, not a design
+    // one, and it read exactly as what it was.
+    expect(swarm.primaryCombo).not.toEqual(fang.primaryCombo)
+
+    const swarmTotal = 11 + 9 + 9 + 21
+    const fangFeedback = fang.hitFeedback
+    const fangTotal = fangFeedback.biteDamage + fangFeedback.pounceDamage + fangFeedback.tailSwipeDamage
+    // Comparable total: this is a different shape, not a buff.
+    expect(Math.abs(swarmTotal - fangTotal)).toBeLessThanOrEqual(4)
+    // But the payoff sits at the end rather than the middle.
+    expect(swarm.hitFeedback.tailSwipeDamage / swarmTotal).toBeGreaterThan(0.4)
+    expect(fangFeedback.tailSwipeDamage / fangTotal).toBeLessThan(0.32)
+    expect(swarm.hitFeedback.pounceDamage).toBeLessThan(fangFeedback.pounceDamage)
+
+    // The cheap middle is the shortest reach in this chain, so the leap that
+    // opens it lands the body further out than the rakes that follow can hold:
+    // a fragile creature has to close through the part that pays least.
+    const chainRanges = { Pounce: swarm.hitFeedback.pounceRange, Claw: swarm.hitFeedback.clawRange, TailSwipe: swarm.hitFeedback.tailSwipeRange }
+    expect(Math.min(...Object.values(chainRanges))).toBe(swarm.hitFeedback.clawRange)
+    expect(swarm.hitFeedback.clawRange).toBeLessThan(swarm.hitFeedback.pounceRange)
+    expect(swarm.clawDurationSeconds).toBeLessThan(fang.clawDurationSeconds)
+  })
+
+  it('is the form the runtime actually arms, not documentation', () => {
+    const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+    // Selecting the profile on stage alone ran every stage-1 body on the Fang
+    // numbers and left each form's combat block as dead data.
+    expect(source).toContain('gloamwoodFormCombatProfile(asset?.formId, stage)')
+    expect(source).toContain("formId === 'spore-stalker'")
+    expect(source).not.toMatch(/this\.combatProfile = stage >= 2/)
   })
 
   it('gets a narrower collision footprint than the stage default', () => {

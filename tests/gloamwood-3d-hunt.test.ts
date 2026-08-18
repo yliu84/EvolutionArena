@@ -142,8 +142,12 @@ describe('Shell attack chain', () => {
     // the player to read three abilities, which is the boundary AGENTS.md draws.
     expect(source).not.toContain('attackName(action)')
     expect(source).not.toMatch(/private attackName\(/)
-    // The vocabulary still lives in the presentation contract, just not in the HUD.
+    // Slam is a clip name, not an action. Written into primaryCombo it made the
+    // Shell block unusable as a combat profile, which is part of why no form's
+    // profile was ever wired up. The redirect is what actually swaps the motion.
+    const source3d = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+    expect(source3d).toContain("'Slam'")
     const presentation = readFileSync(new URL('../src/stone-pangolin-character-presentation.ts', import.meta.url), 'utf8')
-    expect(presentation).toContain("primaryCombo: ['Bite', 'Slam', 'TailSwipe']")
+    expect(presentation).toContain("primaryCombo: ['Bite', 'Pounce', 'TailSwipe']")
   })
 })

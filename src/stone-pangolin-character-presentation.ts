@@ -30,8 +30,12 @@ export const STONE_PANGOLIN_PRESENTATION = {
     profileId: 'stone-pangolin-combat-master-v1',
     system: 'basic-attack',
     skillsEnabled: false,
-    primaryCombo: ['Bite', 'Slam', 'TailSwipe'],
-    attackNames: { Bite: '低扑咬', Slam: '压甲撞', TailSwipe: '重尾扫' },
+    // Slam is a clip name, not an action: the runtime redirects the Pounce clip
+    // to Slam for this family and the authority still resolves Pounce. Written
+    // as ['Bite', 'Slam', 'TailSwipe'] this block was unusable as a combat
+    // profile, which is part of why it was never wired up - the whole file sat
+    // as documentation while every stage-1 form ran the Fang numbers.
+    primaryCombo: ['Bite', 'Pounce', 'TailSwipe'],
     targeting: {
       ...CORAL_GECKO_PRESENTATION.combat.targeting,
       mode: 'player-selected-live-target',

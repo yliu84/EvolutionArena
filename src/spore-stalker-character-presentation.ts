@@ -40,12 +40,56 @@ export const SPORE_STALKER_PRESENTATION = {
     footstepEventsPerSecond: 7.4,
     authoredStrideAmplification: 1.32,
   },
+  /**
+   * Four steps where both other forms have three, and the payoff sits at the
+   * end instead of the middle.
+   *
+   * The Fang chain is Bite 16 / Pounce 18 / TailSwipe 14: 48 damage over 2.37s,
+   * with the heavy hit in the middle. Shipping the Swarm form on that same chain
+   * was a cost decision, not a design one, and it showed - the route's own
+   * identity is speed and fragility, and it fought exactly like the Fang gecko.
+   *
+   * This chain opens with the leap instead of centring on it, so the first press
+   * closes distance. The two rakes are the cheapest hits in the game and have
+   * the shortest reach in this chain, which forces the fragile body to stay
+   * close through the middle. 42% of the chain's damage is in the final tail
+   * whip against the Fang chain's 29%, so breaking off early costs far more
+   * here than it does on either other form.
+   *
+   * Total comes to 50 damage over 2.52s against the Fang chain's 48 over 2.37s.
+   * The trade is not raw time - four fast steps land in about the same window as
+   * three ordinary ones - it is where the payoff sits and how close you must
+   * stand to reach it.
+   */
   combat: {
     ...CORAL_GECKO_PRESENTATION.combat,
     profileId: 'spore-stalker-combat-master-v1',
     system: 'basic-attack',
     skillsEnabled: false,
-    primaryCombo: ['Bite', 'Pounce', 'TailSwipe'],
+    primaryCombo: ['Pounce', 'Claw', 'Claw', 'TailSwipe'],
+    hitFeedback: {
+      ...CORAL_GECKO_PRESENTATION.combat.hitFeedback,
+      pounceDamage: 11,
+      clawDamage: 9,
+      tailSwipeDamage: 21,
+      pounceRange: 3.05,
+      // Shortest reach in the chain, and shorter than any step either other
+      // form has: the cheap middle is where this body has to commit.
+      clawRange: 2.72,
+      tailSwipeRange: 3.22,
+      knockbackSpeed: 2.6,
+      cameraTrauma: 0.3,
+      particleCount: 7,
+    },
+    // A single Claw clip contains both paws, left then right, so playing it
+    // twice in a row reads as a flurry rather than a stutter.
+    pounceDurationSeconds: 0.68,
+    pounceContactSeconds: 0.32,
+    clawDurationSeconds: 0.5,
+    clawContactSeconds: 0.21,
+    tailSwipeDurationSeconds: 0.84,
+    tailSwipeContactSeconds: 0.38,
+    comboResetSeconds: 1.3,
     targeting: {
       ...CORAL_GECKO_PRESENTATION.combat.targeting,
       mode: 'player-selected-live-target',
@@ -54,7 +98,7 @@ export const SPORE_STALKER_PRESENTATION = {
   asset: {
     triangles: 19_992,
     bones: 27,
-    clips: ['Idle', 'Walk', 'Run', 'Turn', 'Bite', 'Pounce', 'TailSwipe', 'Hit', 'Death'],
+    clips: ['Idle', 'Walk', 'Run', 'Turn', 'Bite', 'Claw', 'Pounce', 'TailSwipe', 'Hit', 'Death'],
     sourceModel: 'Meshy_AI_model_Animation_Walking_withSkin (4).glb',
     runtimeModel: 'spore-stalker-rigged-runtime-v1.glb',
     bodyPlan: 'long-limbed-bioluminescent-stalker',

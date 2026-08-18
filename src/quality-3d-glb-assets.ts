@@ -99,7 +99,7 @@ export const QUALITY_3D_GLB_ASSETS: readonly Quality3DGLBAsset[] = [
   asset(
     1,
     'spore-stalker',
-    '/assets/quality-3d/models/spore-stalker-rigged-runtime-v1.glb?v=swarm-stage1-v1-masked-emissive',
+    '/assets/quality-3d/models/spore-stalker-rigged-runtime-v1.glb?v=swarm-stage1-v2-claw-chain',
     SPORE_STALKER_PRESENTATION.displayScale,
     ['SporeStalkerMesh', 'Hips', 'chest', 'head', 'frontleg', 'frontleg2', 'R_frontleg', 'R_frontleg2', 'backleg', 'backleg2', 'R_backleg', 'R_backleg2', 'tail', 'tail3'],
     'embedded',

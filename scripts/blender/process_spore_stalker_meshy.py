@@ -470,6 +470,42 @@ make_action(
     ],
 )
 
+# Claw is a two-paw rake inside a single clip: left lead, then right. The chain
+# plays it twice in a row, and one paw repeated would read as a stutter while a
+# built-in alternation reads as a flurry. Short and shallow - this is the cheap
+# middle of the chain, not a payoff.
+make_action(
+    "Claw",
+    18,
+    [
+        (0, {}, {}),
+        (3, {
+            "chest": (math.radians(4), math.radians(-7), 0),
+            "head": (math.radians(3), math.radians(-6), 0),
+            "frontleg": (math.radians(-21), 0, 0),
+            "frontleg0": (math.radians(-17), 0, 0),
+            "tail1": (0, math.radians(5), 0),
+        }, {"Hips": (0, 0, -0.00022)}),
+        (7, {
+            "chest": (math.radians(-3), math.radians(6), 0),
+            "head": (math.radians(-4), math.radians(5), 0),
+            "frontleg": (math.radians(16), 0, 0),
+            "frontleg0": (math.radians(13), 0, 0),
+            "R_frontleg": (math.radians(-19), 0, 0),
+            "R_frontleg0": (math.radians(-15), 0, 0),
+            "tail1": (0, math.radians(-4), 0),
+        }, {"Hips": (0, 0, -0.00010)}),
+        (12, {
+            "chest": (math.radians(-2), math.radians(-4), 0),
+            "head": (math.radians(-3), math.radians(-3), 0),
+            "R_frontleg": (math.radians(14), 0, 0),
+            "R_frontleg0": (math.radians(11), 0, 0),
+            "tail1": (0, math.radians(3), 0),
+        }, {}),
+        (18, {}, {}),
+    ],
+)
+
 # Pounce is this form's signature and the thing the Shell form could not do.
 # Four beats: coil onto the hind legs, launch, an airborne frame with the body
 # extended and the tail streamed out as a counterweight, then a absorbed landing
@@ -566,13 +602,30 @@ make_action(
             "backleg0": (math.radians(4), 0, math.radians(-4)),
             "R_backleg0": (math.radians(4), 0, math.radians(4)),
         }, {"Hips": (0, 0, -0.00014)}),
+        # The chain's last step ends the creature already leaning off the
+        # target with its weight over the hind legs, rather than settling back
+        # to neutral. The disengage is a pose, not translation: world movement
+        # belongs to the runtime, and a clip that walked the body backwards
+        # would fight the approach order that walked it in.
         (23, {
-            "Hips": (0, math.radians(9), 0),
+            "Hips": (math.radians(7), math.radians(11), 0),
+            "chest": (math.radians(-6), math.radians(-8), 0),
+            "head": (math.radians(-9), math.radians(-7), 0),
+            "frontleg": (math.radians(12), 0, 0),
+            "frontleg0": (math.radians(9), 0, 0),
+            "R_frontleg": (math.radians(11), 0, 0),
+            "R_frontleg0": (math.radians(8), 0, 0),
+            "backleg0": (math.radians(-8), 0, 0),
+            "R_backleg0": (math.radians(-8), 0, 0),
             "tail1": (0, math.radians(9), 0),
             "tail2": (0, math.radians(12), 0),
             "tail3": (0, math.radians(14), 0),
-        }, {}),
-        (30, {}, {}),
+        }, {"Hips": (0, 0, 0.00030)}),
+        (30, {
+            "Hips": (math.radians(3), math.radians(4), 0),
+            "chest": (math.radians(-2), math.radians(-3), 0),
+            "head": (math.radians(-4), math.radians(-3), 0),
+        }, {"Hips": (0, 0, 0.00010)}),
     ],
 )
 

@@ -52,13 +52,15 @@ describe('quality 3D GLB vertical slice assets', () => {
     expect(resolveQuality3DGLBAsset(0, 'shell').matchedFamily).toBe(true)
   })
 
-  it('gives the Swarm stage-1 form its own mesh while keeping the Fang chain', () => {
+  it('gives the Swarm stage-1 form its own mesh and its own chain', () => {
     const swarm = resolveQuality3DGLBAsset(1, 'swarm').asset
     expect(swarm?.url).toContain('spore-stalker-rigged-runtime-v1.glb')
     // Cache tag must change whenever the GLB is rebuilt, or browsers serve the old one.
-    expect(swarm?.url).toContain('v=swarm-stage1-v1')
-    // Unlike the Shell form, this one keeps Pounce: long hind legs can leap.
+    expect(swarm?.url).toContain('v=swarm-stage1-v2')
+    // Four steps against three, opening on the leap instead of centring on it,
+    // with a Claw clip neither other stage-1 form carries.
     expect(swarm?.requiredClips).toContain('Pounce')
+    expect(swarm?.requiredClips).toContain('Claw')
     expect(swarm?.requiredClips).not.toContain('Slam')
     // Same 27-bone Meshy quadruped template as both other stage-1 rigs.
     expect(swarm?.rig).toEqual(resolveQuality3DGLBAsset(1, 'fang').asset?.rig)

@@ -216,6 +216,46 @@ function gloamwoodFormBaseline(formId: string | undefined, stage: number) {
   return { baselineId: 'inherited-pbr-baseline', artStyle: 'pbr', triangles: 32_000 }
 }
 
+/**
+ * One profile carries both the chain state machine's timings and the reach and
+ * damage each step resolves at. They were separate lookups keyed on different
+ * things, which is how a form could be given its own combo and still fight with
+ * another form's numbers.
+ */
+interface GloamwoodCombatHitFeedback {
+  biteDamage: number
+  pounceDamage: number
+  clawDamage: number
+  tailSwipeDamage: number
+  biteRange: number
+  pounceRange: number
+  clawRange: number
+  tailSwipeRange: number
+  flashSeconds: number
+  cameraTrauma: number
+  knockbackSpeed: number
+  particleCount: number
+}
+
+type GloamwoodCombatProfile = FormalHuntBasicAttackProfile & {
+  hitFeedback: GloamwoodCombatHitFeedback
+}
+
+/**
+ * The combat authority for the body actually on screen.
+ *
+ * Stage still answers for forms that have no profile of their own - stage 0 and
+ * the late-stage endpoints are route-independent - but a form that declares one
+ * gets it.
+ */
+function gloamwoodFormCombatProfile(formId: string | undefined, stage: number): GloamwoodCombatProfile {
+  if (formId === 'spore-stalker') return SPORE_STALKER_PRESENTATION.combat
+  if (formId === 'stone-pangolin') return STONE_PANGOLIN_PRESENTATION.combat
+  if (stage >= 2) return SCARLET_HUNTER_PRESENTATION.combat
+  if (stage >= 1) return SCARLET_GECKO_PRESENTATION.combat
+  return CORAL_GECKO_PRESENTATION.combat
+}
+
 interface DustParticle {
   sprite: THREE.Sprite
   velocity: THREE.Vector3
@@ -405,7 +445,7 @@ class Gloamwood3DHunt {
   private nestState: GloamwoodNestState = createGloamwoodNestState()
   private playerCombat: GloamwoodPlayerCombatState = createGloamwoodPlayerCombatState()
   private attackState: FormalHuntBasicAttackState = createFormalHuntBasicAttackState()
-  private combatProfile: FormalHuntBasicAttackProfile = CORAL_GECKO_PRESENTATION.combat
+  private combatProfile: GloamwoodCombatProfile = CORAL_GECKO_PRESENTATION.combat
   private evolutionState: GloamwoodEvolutionState
   private evolutionOverlay?: HTMLElement
   private evolutionAccent?: THREE.Group
@@ -1398,13 +1438,13 @@ class Gloamwood3DHunt {
     const stage = requestedStage >= 2 ? 2 : requestedStage >= 1 ? 1 : 0
     this.stage = stage
     if (familyOverride) this.characterFamily = familyOverride
-    this.combatProfile = stage >= 2
-      ? SCARLET_HUNTER_PRESENTATION.combat
-      : stage >= 1
-        ? SCARLET_GECKO_PRESENTATION.combat
-        : CORAL_GECKO_PRESENTATION.combat
     const resolved = resolveQuality3DGLBAsset(stage, this.characterFamily)
     const asset = resolved.asset
+    // Keyed by form, not by stage. Selecting on stage alone meant all three
+    // stage-1 bodies ran the Fang gecko's damage, reach, timing and combo, so
+    // the per-form combat blocks in their presentation modules were dead data
+    // and every form fought identically no matter what it looked like.
+    this.combatProfile = gloamwoodFormCombatProfile(asset?.formId, stage)
     this.characterFamilyMatched = resolved.matchedFamily
     if (!asset) throw new Error(`Missing stage-${stage} GLB`)
     const gltf = await this.loader.loadAsync(assetUrl(asset.url))
@@ -1719,8 +1759,10 @@ class Gloamwood3DHunt {
   /** Shortest reach in the current form's chain, so approach stops where the
    *  opener can actually land rather than where the longest step could. */
   private primaryAttackReach() {
-    const feedback = this.combatHitFeedback()
-    return Math.min(feedback.biteRange, feedback.pounceRange, feedback.tailSwipeRange)
+    // Over the steps this form actually runs. Hardcoding Bite/Pounce/TailSwipe
+    // measured a Bite the Swarm chain never throws while ignoring the Claw it
+    // leans on, so the approach stopped at the wrong distance for that form.
+    return Math.min(...this.combatProfile.primaryCombo.map((action) => this.attackRange(action)))
   }
 
   private cancelAutoEngage() {
@@ -1903,15 +1945,7 @@ class Gloamwood3DHunt {
     const targetRadius = gloamwoodPreyBodyRadius(target)
     const surfaceDistance = formalHuntTargetSurfaceDistance(distance, targetRadius)
     const targetFacing = gloamwoodMovementFacingRadians(dx, dz)
-    const range = action === 'Pounce'
-      ? this.stage >= 2
-        ? SCARLET_HUNTER_PRESENTATION.combat.hitFeedback.pounceRange
-        : CORAL_GECKO_PRESENTATION.combat.hitFeedback.pounceRange
-      : action === 'Claw'
-        ? SCARLET_HUNTER_PRESENTATION.combat.hitFeedback.clawRange
-        : action === 'TailSwipe'
-          ? SCARLET_HUNTER_PRESENTATION.combat.hitFeedback.tailSwipeRange
-          : 2.72
+    const range = this.attackRange(action)
     const valid = canFormalHuntBasicAttackContact({
       targetLocked: this.lockedPreyId === target.id,
       targetAvailable: target.phase !== 'dead',
@@ -1925,11 +1959,7 @@ class Gloamwood3DHunt {
       return
     }
     const knockback = action === 'TailSwipe' ? 0.72 : action === 'Pounce' ? 0.52 : 0.34
-    const baseDamage = action === 'Pounce'
-      ? this.stage >= 2
-        ? SCARLET_HUNTER_PRESENTATION.combat.hitFeedback.pounceDamage
-        : CORAL_GECKO_PRESENTATION.combat.hitFeedback.pounceDamage
-      : GLOAMWOOD_3D_COMBAT.attackDamage[action]
+    const baseDamage = this.attackBaseDamage(action)
     const damage = damageGloamwoodNestPrey(
       this.nestState,
       target.id,
@@ -1980,14 +2010,7 @@ class Gloamwood3DHunt {
     const distance = Math.hypot(dx, dz)
     const surfaceDistance = formalHuntTargetSurfaceDistance(distance, GLOAMWOOD_BOSS.bodyRadius)
     const targetFacing = gloamwoodMovementFacingRadians(dx, dz)
-    const hitFeedback = this.combatHitFeedback()
-    const range = action === 'Pounce'
-      ? hitFeedback.pounceRange
-      : action === 'Claw'
-        ? hitFeedback.clawRange
-        : action === 'TailSwipe'
-          ? hitFeedback.tailSwipeRange
-          : hitFeedback.biteRange
+    const range = this.attackRange(action)
     const valid = canFormalHuntBasicAttackContact({
       targetLocked: this.bossLocked,
       targetAvailable: this.bossActive(),
@@ -2000,13 +2023,7 @@ class Gloamwood3DHunt {
       this.combatMessage = surfaceDistance > range ? t('hud.msg.missBossRange') : t('hud.msg.missAngle')
       return
     }
-    const baseDamage = action === 'Pounce'
-      ? hitFeedback.pounceDamage
-      : action === 'Claw'
-        ? hitFeedback.clawDamage
-        : action === 'TailSwipe'
-          ? hitFeedback.tailSwipeDamage
-          : hitFeedback.biteDamage
+    const baseDamage = this.attackBaseDamage(action)
     const result = damageGloamwoodBoss(this.bossState, baseDamage * this.damageMultiplier)
     this.bossState = result.state
     if (result.effectiveDamage <= 0) return
@@ -2041,11 +2058,29 @@ class Gloamwood3DHunt {
   }
 
   private combatHitFeedback() {
-    return this.stage >= 2
-      ? SCARLET_HUNTER_PRESENTATION.combat.hitFeedback
-      : this.stage >= 1
-        ? SCARLET_GECKO_PRESENTATION.combat.hitFeedback
-        : CORAL_GECKO_PRESENTATION.combat.hitFeedback
+    // Follows the armed profile rather than the stage. Keyed on stage this
+    // returned the Fang gecko's damage and reach for every stage-1 body, so
+    // giving a form its own combat block changed the order of its chain and
+    // nothing else about it.
+    return this.combatProfile.hitFeedback
+  }
+
+  /** Authoritative reach for one chain step, from the armed profile. */
+  private attackRange(action: FormalHuntBasicAttackAction) {
+    const feedback = this.combatHitFeedback()
+    if (action === 'Pounce') return feedback.pounceRange
+    if (action === 'Claw') return feedback.clawRange
+    if (action === 'TailSwipe') return feedback.tailSwipeRange
+    return feedback.biteRange
+  }
+
+  /** Authoritative damage for one chain step, from the armed profile. */
+  private attackBaseDamage(action: FormalHuntBasicAttackAction) {
+    const feedback = this.combatHitFeedback()
+    if (action === 'Pounce') return feedback.pounceDamage
+    if (action === 'Claw') return feedback.clawDamage
+    if (action === 'TailSwipe') return feedback.tailSwipeDamage
+    return feedback.biteDamage
   }
 
   private updateEnemy(delta: number) {
