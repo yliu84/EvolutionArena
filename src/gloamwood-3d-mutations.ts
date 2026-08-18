@@ -85,16 +85,23 @@ export interface GloamwoodMutationState {
  * from - not a rising price, but the next mutation sitting somewhere more
  * dangerous.
  *
- * These five are the demo map's milestones. On the open map they become region
- * entries and region bosses; the shape is the same and only the source changes,
- * which is why the runtime records opaque ids rather than knowing what a wave is.
+ * Every one of these sits at a boundary between fights, never inside one.
+ *
+ * A fifth used to fire when the boss reached its second phase, and the panel
+ * opened mid-fight. It was not unfair - the world freezes - but it asked the
+ * player to weigh three rules and three costs while they were still in the
+ * headspace of reading telegraphs, so they pick fast and badly, which is exactly
+ * what this layer exists not to be.
+ *
+ * On the open map the count returns to five without that problem: three region
+ * entries and two region bosses are all boundaries. The runtime records opaque
+ * ids and does not know what a wave is, so only the source changes.
  */
 export const GLOAMWOOD_MUTATION_MILESTONES = [
   'wave-1-cleared',
   'wave-2-cleared',
   'nest-cleared',
   'guardian-defeated',
-  'boss-phase-2',
 ] as const
 
 export type GloamwoodMutationMilestone = typeof GLOAMWOOD_MUTATION_MILESTONES[number]

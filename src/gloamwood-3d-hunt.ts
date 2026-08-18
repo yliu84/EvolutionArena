@@ -521,6 +521,8 @@ class Gloamwood3DHunt {
   /** Bonus offers Gluttony has bought, added to the biomass-earned count. */
   private bonusOffersEarned = 0
   private mutationOffersTaken = 0
+  /** Runs once the current mutation panel is answered, if anything was waiting. */
+  private afterMutationChoice?: () => void
   private healthDecayElapsed = 0
   private reviveUsed = false
   private stage = 0
@@ -2281,7 +2283,9 @@ class Gloamwood3DHunt {
         this.lockedPreyId = null
         if (this.runPhase === 'guardian') {
           this.combatMessage = t('hud.msg.guardianBroken', { name: t('creature.guardian') })
-          this.startBossEncounter()
+          // The guardian's reward is taken between the two fights, not during
+          // the boss it leads straight into, so the boss waits for the pick.
+          if (!this.presentGuardianMutation()) this.startBossEncounter()
           continue
         }
         this.combatMessage = t('hud.msg.nestDone', { biomass: event.biomass })
@@ -2355,7 +2359,6 @@ class Gloamwood3DHunt {
     )
     for (const event of frame.events) {
       if (event.type === 'phase-changed') {
-        this.mutationState = recordGloamwoodMutationMilestone(this.mutationState, 'boss-phase-2')
         this.playSound('boss-phase')
         this.combatMessage = t('hud.msg.bossPhase2', { name: t('creature.boss') })
         this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.74)
@@ -3096,6 +3099,10 @@ class Gloamwood3DHunt {
     // hunt. It still refuses to stack on the evolution choice or a finished run.
     if (this.evolutionState.phase === 'choosing') return
     if (this.runPhase === 'victory' || this.runPhase === 'defeat') return
+    // Never inside an encounter. A panel mid-fight is not unfair - the world
+    // stops - but it asks for a considered choice from a player still in the
+    // headspace of dodging, and they answer it in a second.
+    if (this.runPhase === 'guardian' || this.runPhase === 'boss') return
     const earned = gloamwoodMutationOffersEarned(this.mutationState) + this.bonusOffersEarned
     if (earned <= this.mutationOffersTaken) return
     this.mutationState = openGloamwoodMutationOffer(this.mutationState, this.nestState.genes)
@@ -3105,6 +3112,27 @@ class Gloamwood3DHunt {
       return
     }
     this.showMutationOverlay()
+  }
+
+  /**
+   * Offer the guardian's mutation before the boss begins.
+   *
+   * Returns true when a panel opened, in which case starting the boss is the
+   * panel's job. Clearing the guardian runs straight into the boss encounter, so
+   * without this the reward arrives during the intro and is read while something
+   * is already winding up.
+   */
+  private presentGuardianMutation() {
+    const earned = gloamwoodMutationOffersEarned(this.mutationState) + this.bonusOffersEarned
+    if (earned <= this.mutationOffersTaken) return false
+    this.mutationState = openGloamwoodMutationOffer(this.mutationState, this.nestState.genes)
+    if (!this.mutationState.offering) {
+      this.mutationOffersTaken = earned
+      return false
+    }
+    this.afterMutationChoice = () => this.startBossEncounter()
+    this.showMutationOverlay()
+    return true
   }
 
   private showMutationOverlay() {
@@ -3167,6 +3195,9 @@ class Gloamwood3DHunt {
     this.combatMessage = t('mutation.gained', { name: candidate.name })
     if (this.mutationOverlay) this.mutationOverlay.hidden = true
     this.renderer.domElement.focus()
+    const queued = this.afterMutationChoice
+    this.afterMutationChoice = undefined
+    queued?.()
   }
 
   /** Starving Metabolism sheds maximum health on a clock rather than on hits. */

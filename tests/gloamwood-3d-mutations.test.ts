@@ -76,12 +76,15 @@ describe('Mutation pacing', () => {
     expect(gloamwoodMutationOffersEarned(again)).toBe(1)
   })
 
-  it('has exactly one milestone per intended mutation, none of them repeatable', () => {
-    // Five milestones, five mutations, roughly one per three minutes once the
-    // run is long enough. Each happens once and each is further in than the
-    // last, which is where "harder to mutate as you go" comes from.
-    expect(GLOAMWOOD_MUTATION_MILESTONES).toHaveLength(5)
-    expect(new Set(GLOAMWOOD_MUTATION_MILESTONES).size).toBe(5)
+  it('places every milestone at a boundary between fights, never inside one', () => {
+    // A fifth used to fire when the boss reached phase two, opening the panel
+    // mid-fight. Not unfair - the world freezes - but it asks a player still in
+    // the headspace of reading telegraphs to weigh three rules and three costs,
+    // and they answer in a second. The open map gets back to five without that:
+    // three region entries and two region bosses are all boundaries.
+    expect(GLOAMWOOD_MUTATION_MILESTONES).toHaveLength(4)
+    expect(new Set(GLOAMWOOD_MUTATION_MILESTONES).size).toBe(4)
+    expect(GLOAMWOOD_MUTATION_MILESTONES).not.toContain('boss-phase-2')
   })
 
   it('leaves Gluttony as the only farmable source, and it charges for itself', () => {
@@ -227,7 +230,18 @@ describe('Runtime wiring', () => {
     // A guardian wave clearing is not a hunt wave; crediting both would pay twice.
     expect(source).toMatch(/this\.runPhase === 'hunt' && event\.wave < GLOAMWOOD_NEST\.waveCount/)
     expect(source).toContain("this.runPhase === 'guardian' ? 'guardian-defeated' : 'nest-cleared'")
-    expect(source).toContain("recordGloamwoodMutationMilestone(this.mutationState, 'boss-phase-2')")
+  })
+
+  it('never opens a panel inside an encounter', () => {
+    expect(source).toMatch(/if \(this\.runPhase === 'guardian' \|\| this\.runPhase === 'boss'\) return/)
+  })
+
+  it('takes the guardian\'s reward between the two fights, not during the boss', () => {
+    // Clearing the guardian runs straight into the boss, so without this the
+    // reward lands during the intro and is read while something is winding up.
+    expect(source).toContain('private presentGuardianMutation()')
+    expect(source).toContain('if (!this.presentGuardianMutation()) this.startBossEncounter()')
+    expect(source).toContain('this.afterMutationChoice = () => this.startBossEncounter()')
   })
 
   it('seeds mutations from the same seed as the form evolution', () => {
