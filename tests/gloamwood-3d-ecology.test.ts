@@ -359,3 +359,61 @@ describe('The guardian fights back inside its arena', () => {
     expect(inspectGloamwoodPreyPairClearance(state.prey)).toBeGreaterThan(-0.2)
   })
 })
+
+describe('Being hit cannot silence a creature outright', () => {
+  const ARENA = { x: 0, z: 0 }
+  const ARENA_RADIUS = 4.2
+
+  function fightWhileAttacking(secondsBetweenHits: number, seconds = 30) {
+    let state = awakenGloamwoodNestGuardian(createGloamwoodNestState())
+    state = { ...state, prey: [{ ...state.prey[0], x: ARENA.x, z: ARENA.z, health: 1e9, maxHealth: 1e9 }] }
+    const player = { x: 3.6, z: 0, alive: true, bodyRadius: 1.5296 }
+    let attacks = 0
+    let elapsed = 0
+    let lastHit = 0
+    for (let frame = 0; frame < 60 * seconds; frame += 1) {
+      elapsed += 1 / 60
+      if (elapsed - lastHit >= secondsBetweenHits) {
+        lastHit = elapsed
+        state = damageGloamwoodNestPrey(state, GLOAMWOOD_NEST_GUARDIAN.id, 5, 'Claw', player, 0).state
+      }
+      const step = stepGloamwoodNest(state, 1 / 60, player)
+      state = { ...step.state, prey: step.state.prey.map((prey) => clampGloamwoodPreyToArena(prey, ARENA, ARENA_RADIUS)) }
+      attacks += step.events.filter((event) => event.type === 'prey-attack').length
+    }
+    return attacks
+  }
+
+  it('lets the guardian act at every attack cadence a player can produce', () => {
+    // Regression: every hit reset the phase to chase, so the wind-up restarted
+    // from zero. The Carapace telegraph is 1.05s and both authored chains land a
+    // hit every 0.63s to 0.79s, so the guardian could not finish a single
+    // wind-up while it was being attacked - the player took the whole fight
+    // without losing a point of health. Measured before the fix: 0 attacks at
+    // 0.63s, 0 at 0.79s, 0 even at 1.2s, against 11 when left alone.
+    for (const cadence of [0.4, 0.63, 0.79, 1.2, 2]) {
+      expect(fightWhileAttacking(cadence), `hit every ${cadence}s`).toBeGreaterThan(5)
+    }
+  })
+
+  it('still lets a hit interrupt, so the immunity is a window and not a shield', () => {
+    let state = stepGloamwoodNest(createGloamwoodNestState(), 0.05, { x: GLOAMWOOD_NEST.centerX, z: GLOAMWOOD_NEST.centerZ, alive: true }).state
+    const target = { ...state.prey[0], x: 0, z: 0, phase: 'telegraph' as const, phaseElapsed: 0, health: 999, maxHealth: 999 }
+    state = { ...state, prey: [target] }
+    const hit = damageGloamwoodNestPrey(state, target.id, 5, 'Claw', { x: 2, z: 0 }, 0)
+    expect(hit.state.prey[0].phase).toBe('stunned')
+    // The very next hit must not re-stun, or the lock returns.
+    const again = damageGloamwoodNestPrey(hit.state, target.id, 5, 'Claw', { x: 2, z: 0 }, 0)
+    expect(again.state.prey[0].phaseElapsed).toBe(hit.state.prey[0].phaseElapsed)
+    expect(again.state.prey[0].health).toBeLessThan(hit.state.prey[0].health)
+  })
+
+  it('covers immunity long enough for one full telegraph and strike', () => {
+    let state = stepGloamwoodNest(createGloamwoodNestState(), 0.05, { x: GLOAMWOOD_NEST.centerX, z: GLOAMWOOD_NEST.centerZ, alive: true }).state
+    const target = { ...state.prey[0], id: 'shell', kind: 'shell' as const, x: 0, z: 0, health: 999, maxHealth: 999 }
+    state = { ...state, prey: [target] }
+    const hit = damageGloamwoodNestPrey(state, 'shell', 5, 'Claw', { x: 2, z: 0 }, 0)
+    expect(hit.state.prey[0].stunImmuneSeconds)
+      .toBeCloseTo(GLOAMWOOD_PREY.shell.telegraphSeconds + GLOAMWOOD_PREY.shell.strikeSeconds, 5)
+  })
+})

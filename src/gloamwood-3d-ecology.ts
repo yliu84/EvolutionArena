@@ -41,6 +41,16 @@ export interface GloamwoodNestPrey {
   facingRadians: number
   attackResolved: boolean
   slot: number
+  /**
+   * Time left during which further hits cannot interrupt this creature.
+   *
+   * Granted the moment it is stunned, and long enough to cover one telegraph
+   * plus one strike. Without it a hit reset the whole wind-up, and the Carapace
+   * family's 1.05s telegraph is longer than any attack chain's cadence: the nest
+   * guardian could not land a single blow while it was being hit, which is to
+   * say never.
+   */
+  stunImmuneSeconds?: number
 }
 
 export interface GloamwoodGeneBank { fang: number; shell: number; swarm: number }
@@ -265,14 +275,21 @@ export function damageGloamwoodNestPrey(
   const dx = target.x - attacker.x
   const dz = target.z - attacker.z
   const inverse = 1 / Math.max(0.001, Math.hypot(dx, dz))
+  // Interrupting matters, but it cannot be free every time or a creature whose
+  // wind-up is longer than the player's attack cadence never acts at all. One
+  // stun buys immunity for a full telegraph and strike, so every creature gets
+  // one guaranteed attempt between interruptions.
+  const interruptible = (target.stunImmuneSeconds ?? 0) <= 0
+  const stunImmunity = spec.telegraphSeconds + spec.strikeSeconds
   const nextPrey = state.prey.map((prey) => prey.id === preyId ? {
     ...prey,
     health,
     x: prey.x + dx * inverse * knockback * (target.kind === 'shell' ? 0.35 : 1),
     z: prey.z + dz * inverse * knockback * (target.kind === 'shell' ? 0.35 : 1),
-    phase: killed ? 'dead' as const : 'stunned' as const,
-    phaseElapsed: 0,
-    attackResolved: false,
+    phase: killed ? 'dead' as const : interruptible ? 'stunned' as const : prey.phase,
+    phaseElapsed: killed || interruptible ? 0 : prey.phaseElapsed,
+    attackResolved: killed || interruptible ? false : prey.attackResolved,
+    stunImmuneSeconds: interruptible ? stunImmunity : prey.stunImmuneSeconds,
   } : prey)
   const biomassGained = killed ? spec.biomass : 0
   const genes = killed ? { ...state.genes, [spec.gene]: state.genes[spec.gene] + 1 } : state.genes
@@ -327,6 +344,7 @@ function stepPrey(
   const spec = GLOAMWOOD_PREY[state.kind]
   let next = { ...state, phaseElapsed: state.phaseElapsed + delta }
   const events: GloamwoodNestEvent[] = []
+  next.stunImmuneSeconds = Math.max(0, (next.stunImmuneSeconds ?? 0) - delta)
   if (next.phase === 'stunned') {
     if (next.phaseElapsed >= spec.stunSeconds) next = enterPhase(next, 'chase')
     return { state: next, events }
