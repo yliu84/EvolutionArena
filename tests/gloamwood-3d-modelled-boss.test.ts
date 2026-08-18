@@ -74,6 +74,15 @@ describe('Runtime wiring', () => {
     expect(source).toContain("get('bossModel') === 'bladeshell'")
   })
 
+  it('lets an encounter shortcut work where the game is actually reviewed', () => {
+    // bossGate and evolutionGate required a dev build, so on the deployed site -
+    // the only place the game gets looked at - they silently did nothing and the
+    // reviewer just played a normal run.
+    expect(source).toContain("const debugGatesAllowed = import.meta.env.DEV || debugParams.get('debug') === '1'")
+    expect(source).not.toMatch(/import\.meta\.env\.DEV && debugParams\.get\('bossGate'\)/)
+    expect(source).not.toMatch(/import\.meta\.env\.DEV && debugParams\.get\('evolutionGate'\)/)
+  })
+
   it('lets the clip own the motion instead of nudging the root as well', () => {
     expect(source).toContain('visual.body.position.x = visual.model ? 0 : strike * 0.65')
   })

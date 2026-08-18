@@ -676,11 +676,16 @@ class Gloamwood3DHunt {
     this.camera.lookAt(this.playerRoot.position.x, CAMERA_LOOK_HEIGHT, this.playerRoot.position.z)
     await this.loadCharacter()
     const debugParams = new URLSearchParams(window.location.search)
-    if (import.meta.env.DEV && debugParams.get('bossGate') === '1') {
+    // These jump straight to an encounter, and they used to require a dev build,
+    // which made them useless on the deployed site - the one place the game is
+    // actually reviewed. They now follow the same rule as every other debug
+    // surface: available when ?debug=1 is present.
+    const debugGatesAllowed = import.meta.env.DEV || debugParams.get('debug') === '1'
+    if (debugGatesAllowed && debugParams.get('bossGate') === '1') {
       this.openEvolutionGateForDebug()
       const choice = THREE.MathUtils.clamp(Number(debugParams.get('evolutionChoice')) || 0, 0, 2)
       await this.chooseEvolution(choice, 'boss')
-    } else if (import.meta.env.DEV && debugParams.get('evolutionGate') === '1') {
+    } else if (debugGatesAllowed && debugParams.get('evolutionGate') === '1') {
       this.openEvolutionGateForDebug()
     }
     this.lastFrameAt = performance.now()
