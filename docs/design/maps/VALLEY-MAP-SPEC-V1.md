@@ -124,7 +124,7 @@
 
 **隘口一 · 溯流刀甲**（原名蟹将）　教一个机制：横向躲避
 
-概念图 **3 号，用户 2026-08-18 选定**。选它的依据是可量的：
+概念图 **3 号 / C 檐盾，用户 2026-08-18 选定**。身份锁：`docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/river-crustacean-boss-concept-c-rim-visor.png`。Meshy 作业包：`docs/concepts/valley/tide-cleaver/source/SOURCE.md`。选它的依据是可量的：
 
 | | 壳宽 | 钳展 | 比值 |
 | --- | --- | --- | --- |
@@ -138,10 +138,10 @@
 
 改名为「刀甲」：它的钳读起来是刀而不是夹具，而横扫本来就不需要夹取——刀更准确地预告了会发生什么。
 
-进 Meshy 前的两项：
+进 Meshy 前的两项（2026-08-18 已完成，未开 Meshy、未开 Blender）：
 
-1. **钳片加厚约 50%**，轮廓不变。3 号的钳非常扁平，而细薄几何正是 Meshy 产生脆弱拓扑的地方（群生的小腿已经吃过一次）。
-2. **补一张严格侧视图**放第二重建槽。岩盾那次靠它把长高比从 3.23 纠正到 2.54。
+1. **钳片加厚约 50%**，轮廓不变。主重建图：`docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/tide-cleaver-meshy-source-three-quarter.png`。原 C 仍作身份锁，不要当 Meshy 主图上传——细薄钳片正是 Meshy 产生脆弱拓扑的地方（群生的小腿已经吃过一次）。
+2. **严格侧视 + 正视**已补，作额外重建槽，禁止拼进主图：`tide-cleaver-meshy-source-side.png`、`tide-cleaver-meshy-source-front.png`。岩盾那次靠侧视把长高比从 3.23 纠正到 2.54。
 
 三张概念图都满足了最关键的约束——**恰好四肢、前两肢为钳**——所以已验证的 27 骨四足骨架可直接复用。
 

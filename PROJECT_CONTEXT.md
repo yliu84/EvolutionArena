@@ -1,6 +1,6 @@
 # Evolution Arena Lite — Project Context
 
-Last updated: 2026-08-17
+Last updated: 2026-08-18
 Repository: `https://github.com/yliu84/EvolutionArena.git`  
 Project path: `/Users/yangliu/Documents/EvolutionArenaLite`  
 Branch: `main`  
@@ -271,11 +271,13 @@ Commercial vertical-slice Goals 1-4 are user-accepted. Goal 5 is developed but *
 
 The Shell first evolution was completed and accepted on 2026-08-17 as the first measurement of production cost. Swarm stage-1 concept B was accepted the same day as the modelling target; the source GLB does not exist yet.
 
+Valley gate-1 boss design was locked on 2026-08-18 to concept C (rim visor) as `tide-cleaver` / 溯流刀甲. This is the first modelled boss in the project; 荆心守卫 remains primitives and 腐根巢卫 remains a scaled Shell grunt until a passing source exists. Meshy pack: `docs/concepts/valley/tide-cleaver/source/SOURCE.md`. Do not start Blender until that mesh passes the contract gates. Valley map implementation is still a separate, unaccepted spec.
+
 Recommended order from here:
 
 1. Close Goal 5 - capture the `PERF` line on a real mid-range phone, then run at least three strangers with only the URL. The key question is whether they notice their creature became a different animal.
-2. In parallel, the user runs Meshy Image to 3D from the Swarm pack. Do not start Blender until that mesh passes the contract gates. A passing Swarm body is the second production-cost data point (Shell was 3 source + 2 rig).
-3. Two points give the slope that decides whether the species matrix is produced in full or cut.
+2. In parallel, the user runs Meshy Image to 3D from the Swarm pack and, separately, from the 溯流刀甲 pack. Do not start Blender on either until that mesh passes its contract gates. A passing Swarm body is the second player-form production-cost data point (Shell was 3 source + 2 rig). A passing 溯流刀甲 body is the first modelled-boss cost number.
+3. Two player-form points give the slope that decides whether the species matrix is produced in full or cut. The boss number decides whether valley's three modelled bosses are affordable.
 
 **Open design question, raised by the user on 2026-08-17 after their own playthrough**: the run is two minutes long and contains exactly one decision, so the three evolution routes read as skins. `docs/design/MUTATION-LOOP-PROPOSAL-V1.md` proposes the answer - splitting evolution into a cheap mutation layer that changes rules rather than percentages, and the existing expensive form layer - and argues for building the mutation layer first because it is the only change that tests whether players want a second run without spending any art. Proposal only; not implemented.
 
