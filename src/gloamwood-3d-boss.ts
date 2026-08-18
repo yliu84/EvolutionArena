@@ -27,11 +27,35 @@ export const GLOAMWOOD_BOSS = {
   name: '荆心守卫',
   maxHealth: 420,
   bodyRadius: 1.72,
-  preferredRange: 3.82,
+  /**
+   * Where the boss chooses to stand.
+   *
+   * Must sit inside every pattern's reach or the boss walks to a distance where
+   * its own rotation misses. At 3.82 it stood beyond root-slam's 3.35 radius -
+   * its most frequent pattern could not connect from the spacing it chose for
+   * itself. `boss patterns must be usable at the boss's own spacing` holds this.
+   */
+  preferredRange: 3.3,
+  /**
+   * Closest the boss will willingly stand.
+   *
+   * Just outside spore-ring's safe inner circle of 2.15, so the pattern it
+   * cycles through can actually connect.
+   */
+  minimumRange: 2.6,
   moveSpeed: 1.62,
   turnSpeed: 4.2,
   introSeconds: 1.55,
-  recoverSeconds: { 1: 1.05, 2: 0.76 },
+  /**
+   * Standing still after a blow.
+   *
+   * Playtest, 2026-08-18: the boss was measured attacking once every 2.50s in
+   * phase one, with 43% of the whole fight spent in recovery - it stood still
+   * longer than it wound up. Recovery is the right lever for pressure because
+   * cutting it costs the player nothing they were reading; the telegraphs are
+   * where the fight is legible and they are deliberately untouched.
+   */
+  recoverSeconds: { 1: 0.58, 2: 0.3 },
   patterns: {
     'root-slam': { telegraphSeconds: 1.02, attackSeconds: 0.24, radius: 3.35, damage: 14, knockback: 1.25 },
     'thorn-charge': { telegraphSeconds: 0.9, attackSeconds: 0.58, length: 6.4, halfWidth: 0.82, damage: 18, knockback: 1.55 },
@@ -106,6 +130,23 @@ export function stepGloamwoodBoss(
       next.z += dz / distance * travel
       return { state: next, events }
     }
+    // Spacing is maintained, not merely approached. Chase only ever closed, so
+    // once anything left the boss standing on the player it stayed there, and
+    // spore-ring - safe inside 2.15 - connected once in thirty-one seconds. A
+    // boss that cannot restore its distance cannot use a pattern with a safe
+    // centre, which made a third of its phase-two rotation dead time.
+    if (distance < GLOAMWOOD_BOSS.minimumRange - 0.001) {
+      // A charge ends on the aim point, which is where the player was standing,
+      // so the two can be exactly coincident and there is no direction to back
+      // along. Falling out here is what left the first attempt at this with no
+      // effect at all: retreat behind the boss's own facing instead.
+      const retreatX = distance > 0.001 ? -dx / distance : -Math.cos(next.facingRadians)
+      const retreatZ = distance > 0.001 ? -dz / distance : Math.sin(next.facingRadians)
+      const travel = Math.min(GLOAMWOOD_BOSS.minimumRange - distance, GLOAMWOOD_BOSS.moveSpeed * delta)
+      next.x += retreatX * travel
+      next.z += retreatZ * travel
+      return { state: next, events }
+    }
     const sequence = next.phase === 1 ? PHASE_ONE : PHASE_TWO
     const pattern = sequence[next.turn % sequence.length]
     return {
@@ -130,10 +171,21 @@ export function stepGloamwoodBoss(
     if (next.pattern === 'thorn-charge') {
       const aimDx = next.aimX - next.x
       const aimDz = next.aimZ - next.z
-      const aimDistance = Math.max(0.001, Math.hypot(aimDx, aimDz))
-      const travel = GLOAMWOOD_BOSS.patterns['thorn-charge'].length / spec.attackSeconds * delta
-      next.x += aimDx / aimDistance * travel
-      next.z += aimDz / aimDistance * travel
+      // Pull up short of where it aimed rather than ending on top of it. The
+      // line stays exactly as dodgeable - the aim point is fixed at telegraph -
+      // but the boss no longer finishes every charge coincident with the player
+      // and then spends 1.6s walking backwards to make room for its next
+      // pattern.
+      const aimDistance = Math.max(0, Math.hypot(aimDx, aimDz) - GLOAMWOOD_BOSS.minimumRange)
+      const travel = Math.min(aimDistance, GLOAMWOOD_BOSS.patterns['thorn-charge'].length / spec.attackSeconds * delta)
+      // Stop at the aim point instead of running past it. Recomputing the
+      // heading toward a fixed point every frame meant that once the charge
+      // overshot it reversed, oscillated, and left the boss standing on the
+      // player - which is also why its ring pattern could never connect.
+      if (aimDistance > 0.001) {
+        next.x += aimDx / aimDistance * travel
+        next.z += aimDz / aimDistance * travel
+      }
     }
     if (next.elapsed >= spec.attackSeconds) next = { ...next, state: 'recover', elapsed: 0 }
     return { state: next, events }

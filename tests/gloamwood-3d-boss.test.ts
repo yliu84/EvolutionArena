@@ -95,3 +95,60 @@ describe('The boss never stops fighting back', () => {
     expect(chaseFrames).toBeLessThan(60 * 3)
   })
 })
+
+describe('A boss must be able to use its own patterns from its own spacing', () => {
+  /**
+   * The reach band each pattern can resolve within, as the authority computes it.
+   * A ring has a safe centre, so it has a floor as well as a ceiling.
+   */
+  function patternBand(pattern: keyof typeof GLOAMWOOD_BOSS.patterns) {
+    const spec = GLOAMWOOD_BOSS.patterns[pattern] as Record<string, number>
+    if ('innerRadius' in spec) return { floor: spec.innerRadius, ceiling: spec.outerRadius }
+    if ('radius' in spec) return { floor: 0, ceiling: spec.radius }
+    return { floor: 0, ceiling: spec.length }
+  }
+
+  it('reaches the player at every distance it chooses to stand at', () => {
+    // Found by measurement, not by looking: preferredRange was 3.82 while
+    // root-slam resolves inside 3.35, so the boss walked to a distance where its
+    // most frequent pattern could not connect. This is exactly the class of
+    // error that is computable before a creature ships.
+    for (const pattern of Object.keys(GLOAMWOOD_BOSS.patterns) as (keyof typeof GLOAMWOOD_BOSS.patterns)[]) {
+      const band = patternBand(pattern)
+      expect(GLOAMWOOD_BOSS.preferredRange, `${pattern} at preferred range`).toBeLessThanOrEqual(band.ceiling)
+      expect(GLOAMWOOD_BOSS.minimumRange, `${pattern} at minimum range`).toBeGreaterThanOrEqual(band.floor)
+    }
+  })
+
+  it('keeps enough room for a pattern with a safe centre to land', () => {
+    // spore-ring is safe inside 2.15. Chase only ever closed, so once a charge
+    // left the boss standing on the player it stayed there and the ring landed
+    // once in thirty-one seconds - a third of the phase-two rotation was dead.
+    const ring = GLOAMWOOD_BOSS.patterns['spore-ring']
+    expect(GLOAMWOOD_BOSS.minimumRange).toBeGreaterThan(ring.innerRadius)
+    expect(GLOAMWOOD_BOSS.minimumRange).toBeLessThan(GLOAMWOOD_BOSS.preferredRange)
+  })
+
+  function attacksPerMinute(phase: 1 | 2) {
+    let boss = { ...createGloamwoodBossState(), state: 'chase' as const, phase,
+      health: phase === 2 ? GLOAMWOOD_BOSS.maxHealth * 0.4 : GLOAMWOOD_BOSS.maxHealth }
+    const player = { x: boss.x + 3.4, z: boss.z, alive: true }
+    let attacks = 0
+    for (let frame = 0; frame < 60 * 120; frame += 1) {
+      const step = stepGloamwoodBoss(boss, 1 / 60, player)
+      boss = { ...step.state, health: phase === 2 ? GLOAMWOOD_BOSS.maxHealth * 0.4 : boss.health }
+      attacks += step.events.filter((event) => event.type === 'boss-attack').length
+    }
+    return attacks / 2
+  }
+
+  it('presses harder in its second phase than its first', () => {
+    // Measured before this work: 24 attacks a minute in phase one against 21 in
+    // phase two, so reaching half health made the boss safer. Phase two spent
+    // longer winding up than phase one saved in recovery.
+    const first = attacksPerMinute(1)
+    const second = attacksPerMinute(2)
+    expect(first).toBeGreaterThan(24)
+    expect(second).toBeGreaterThan(first)
+  })
+})
