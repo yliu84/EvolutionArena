@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest'
 
-import { GLOAMWOOD_VALLEY, gloamwoodValleyDominantSurface } from '../src/gloamwood-valley-terrain'
+import {
+  GLOAMWOOD_ROCK_VARIANTS,
+  GLOAMWOOD_TREE_VARIANTS,
+  GLOAMWOOD_VEGETATION_VARIANTS,
+} from '../src/gloamwood-environment-kit'
+import {
+  GLOAMWOOD_VALLEY,
+  gloamwoodValleyDominantSurface,
+  gloamwoodValleyWalkableHalfWidth,
+} from '../src/gloamwood-valley-terrain'
 import {
   GLOAMWOOD_VALLEY_DRESSING,
+  GLOAMWOOD_VALLEY_TREE_KINDS,
+  gloamwoodValleyAtmosphereAt,
+  gloamwoodValleyTreeVariantId,
   scatterGloamwoodValley,
   gloamwoodValleyDressingFor,
 } from '../src/gloamwood-valley-dressing'
@@ -79,5 +91,78 @@ describe('Dressing a valley with only plants and rocks', () => {
 
   it('falls back to a real dressing for an unknown region', () => {
     expect(gloamwoodValleyDressingFor('shallows').id).toBe('shallows')
+  })
+})
+
+describe('Valley atmosphere', () => {
+  it('darkens and thickens as the player climbs the valley', () => {
+    const samples = [60, 400, 830, 1200, 1520].map((x) => gloamwoodValleyAtmosphereAt(x))
+    for (let index = 1; index < samples.length; index += 1) {
+      expect(samples[index].fogDensity).toBeGreaterThan(samples[index - 1].fogDensity)
+      expect(samples[index].sunIntensity).toBeLessThan(samples[index - 1].sunIntensity)
+    }
+  })
+
+  it('changes gradually rather than at a line the player crosses', () => {
+    // One fog serves the whole scene, so it is driven off the camera. Stepping
+    // it at the region boundary would recolour the entire valley at once.
+    let worst = 0
+    for (let x = 0; x < GLOAMWOOD_VALLEY.length; x += 5) {
+      const here = gloamwoodValleyAtmosphereAt(x)
+      const next = gloamwoodValleyAtmosphereAt(x + 5)
+      worst = Math.max(worst, Math.abs(next.fogDensity - here.fogDensity))
+    }
+    expect(worst).toBeLessThan(0.0004)
+  })
+
+  it('holds the end regions steady past their centres', () => {
+    expect(gloamwoodValleyAtmosphereAt(0)).toEqual(gloamwoodValleyAtmosphereAt(120))
+    expect(gloamwoodValleyAtmosphereAt(GLOAMWOOD_VALLEY.length)).toEqual(gloamwoodValleyAtmosphereAt(1450))
+  })
+})
+
+describe('Scattered variants map onto real kit models', () => {
+  it('never asks for a tree the kit does not have', () => {
+    const ids = new Set(GLOAMWOOD_TREE_VARIANTS.map((variant) => variant.id))
+    for (const prop of scatterGloamwoodValley(0x51a7f0, 4000)) {
+      if (prop.kind === 'tree') expect(ids.has(gloamwoodValleyTreeVariantId(prop.variant))).toBe(true)
+      if (prop.kind === 'undergrowth') expect(prop.variant).toBeLessThan(GLOAMWOOD_VEGETATION_VARIANTS.length)
+      if (prop.kind === 'boulder' || prop.kind === 'cliff') {
+        expect(prop.variant).toBeLessThan(GLOAMWOOD_ROCK_VARIANTS.length)
+      }
+    }
+  })
+
+  it('puts conifers in the gorge and broadleaf in the shallows, not the reverse', () => {
+    // The kit's array is ordered by when each model was added, so reading the
+    // scatter's number straight off it swaps the two.
+    const conifers = new Set<string>(GLOAMWOOD_VALLEY_TREE_KINDS.conifer)
+    const share = (from: number, to: number) => {
+      const trees = scatterGloamwoodValley(0x51a7f0, 6000)
+        .filter((prop) => prop.kind === 'tree' && prop.x >= from && prop.x <= to)
+      return trees.filter((prop) => conifers.has(gloamwoodValleyTreeVariantId(prop.variant))).length / trees.length
+    }
+    expect(share(580, 1080)).toBeGreaterThan(share(0, 500) * 1.8)
+  })
+})
+
+describe('Cliff massing', () => {
+  it('never reaches out over the floor the player fights on', () => {
+    // Unclamped, the region's cliffScale put nine-times rocks on a choke seven
+    // units wide: the gate read superbly and the camera was inside the rock.
+    for (const prop of scatterGloamwoodValley(0x5a11e, 6200)) {
+      if (prop.kind !== 'cliff' && prop.kind !== 'boulder') continue
+      if (gloamwoodValleyDominantSurface(prop.x, prop.z) !== 'wall') continue
+      const radius = GLOAMWOOD_ROCK_VARIANTS[prop.variant].diameter * prop.scale * 0.5
+      expect(Math.abs(prop.z) - radius).toBeGreaterThanOrEqual(gloamwoodValleyWalkableHalfWidth(prop.x) - 0.001)
+    }
+  })
+
+  it('still masses the walls where there is room for it', () => {
+    // Capping must not quietly turn the cliffs back into pebbles.
+    const wall = scatterGloamwoodValley(0x5a11e, 6200)
+      .filter((prop) => gloamwoodValleyDominantSurface(prop.x, prop.z) === 'wall')
+    const big = wall.filter((prop) => prop.scale >= 3)
+    expect(big.length / wall.length).toBeGreaterThan(0.25)
   })
 })

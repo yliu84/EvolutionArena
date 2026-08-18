@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isGloamwood3DEntry } from '../src/entry-routing'
+import { isGloamwood3DEntry, isGloamwoodValleyEntry } from '../src/entry-routing'
 
 describe('What a bare URL opens', () => {
   it('opens the live body, since that is what the playtest link is for', () => {
@@ -30,5 +30,21 @@ describe('What a bare URL opens', () => {
   it('is not confused by unrelated query parameters', () => {
     expect(isGloamwood3DEntry('?lang=zh&evolutionSeed=goal5')).toBe(true)
     expect(isGloamwood3DEntry('?maplab=2&lang=en')).toBe(false)
+  })
+})
+
+describe('The valley walkthrough entry', () => {
+  it('answers only to its own query', () => {
+    expect(isGloamwoodValleyEntry('?map=valley')).toBe(true)
+    expect(isGloamwoodValleyEntry('?map=valley&mapSeed=7')).toBe(true)
+    expect(isGloamwoodValleyEntry('')).toBe(false)
+    expect(isGloamwoodValleyEntry('?map=gloamwood')).toBe(false)
+  })
+
+  it('never takes the front door away from the game', () => {
+    // A half-built map reachable from a bare URL is how a tester ends up
+    // recording a session against the wrong build.
+    expect(isGloamwoodValleyEntry('')).toBe(false)
+    expect(isGloamwood3DEntry('')).toBe(true)
   })
 })

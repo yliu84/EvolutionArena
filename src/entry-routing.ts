@@ -33,3 +33,15 @@ export function isGloamwood3DEntry(search = window.location.search) {
   if (params.get('maplab') === '4' && params.get('live') === '1') return true
   return !FROZEN_STACK_SELECTORS.some(([key, value]) => params.get(key) === value)
 }
+
+/**
+ * The valley walkthrough.
+ *
+ * Its own entry rather than a flag inside the hunt: the valley has no
+ * encounters on it yet, and a half-built map reachable from the game's front
+ * door is exactly how a tester ends up recording a session against the wrong
+ * build. It is a review tool until the encounters move onto it.
+ */
+export function isGloamwoodValleyEntry(search = window.location.search) {
+  return new URLSearchParams(search).get('map') === 'valley'
+}

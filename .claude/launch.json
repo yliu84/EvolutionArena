@@ -4,9 +4,8 @@
     {
       "name": "evolution-arena-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 5174,
-      "autoPort": true
+      "runtimeArgs": ["run", "dev", "--", "--port", "5186", "--strictPort"],
+      "port": 5186
     }
   ]
 }

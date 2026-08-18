@@ -138,6 +138,13 @@ import {
   type GloamwoodInputBindings,
 } from './gloamwood-input-settings'
 import { assetUrl } from './asset-url'
+import {
+  GLOAMWOOD_ROCK_GRADE,
+  GLOAMWOOD_TREE_GRADE,
+  GLOAMWOOD_VEGETATION_GRADE,
+  loadGloamwoodKitTemplate,
+  type GloamwoodKitGrade,
+} from './gloamwood-kit-loader'
 
 const WORLD_HALF_WIDTH = 25
 const WORLD_HALF_DEPTH = 18
@@ -1031,108 +1038,20 @@ class Gloamwood3DHunt {
    * translate directly into world units.
    */
   private async loadEnvironmentModels() {
-    interface KitGrade {
-      saturation: number
-      exposure: number
-      tint: readonly [number, number, number]
-      windAmp: number
-    }
-    const TREE_GRADE: KitGrade = { saturation: -0.06, exposure: 0.72, tint: [0.92, 0.98, 0.86], windAmp: 0.038 }
-    const ROCK_GRADE: KitGrade = { saturation: -0.12, exposure: 0.68, tint: [1, 1, 1], windAmp: 0 }
-    const VEGETATION_GRADE: KitGrade = { saturation: -0.02, exposure: 0.92, tint: [1.02, 1.06, 0.78], windAmp: 0.22 }
-    const loadTemplate = async (url: string, mode: 'height' | 'lateral', grade: KitGrade) => {
-      const gltf = await this.loader.loadAsync(assetUrl(url))
-      const source = gltf.scene
-      source.traverse((node) => {
-        if (!(node instanceof THREE.Mesh)) return
-        node.castShadow = true
-        node.receiveShadow = true
-        const hasVertexColors = Boolean(node.geometry.attributes.color)
-        node.material = Array.isArray(node.material)
-          ? node.material.map((material) => this.toKitMaterial(material, grade, hasVertexColors))
-          : this.toKitMaterial(node.material, grade, hasVertexColors)
-      })
-      const box = new THREE.Box3().setFromObject(source)
-      const size = box.getSize(new THREE.Vector3())
-      const center = box.getCenter(new THREE.Vector3())
-      source.position.set(-center.x, -box.min.y, -center.z)
-      const wrapper = new THREE.Group()
-      wrapper.add(source)
-      const extent = mode === 'height' ? size.y : Math.max(size.x, size.z)
-      wrapper.scale.setScalar(1 / Math.max(extent, 0.0001))
-      return wrapper
-    }
+    const load = (url: string, mode: 'height' | 'lateral', grade: GloamwoodKitGrade) =>
+      loadGloamwoodKitTemplate(this.loader, url, mode, grade, this.foliageTime)
     const uniqueTrees = [...new Map(GLOAMWOOD_TREE_VARIANTS.map((variant) => [variant.id, variant])).values()]
     await Promise.all([
       ...uniqueTrees.map(async (variant) => {
-        this.treeTemplates.set(variant.id, await loadTemplate(variant.url, 'height', TREE_GRADE))
+        this.treeTemplates.set(variant.id, await load(variant.url, 'height', GLOAMWOOD_TREE_GRADE))
       }),
       ...GLOAMWOOD_ROCK_VARIANTS.map(async (variant) => {
-        this.rockTemplates.set(variant.id, await loadTemplate(variant.url, 'lateral', ROCK_GRADE))
+        this.rockTemplates.set(variant.id, await load(variant.url, 'lateral', GLOAMWOOD_ROCK_GRADE))
       }),
       ...GLOAMWOOD_VEGETATION_VARIANTS.map(async (variant) => {
-        this.vegetationTemplates.set(variant.id, await loadTemplate(variant.url, variant.mode, VEGETATION_GRADE))
+        this.vegetationTemplates.set(variant.id, await load(variant.url, variant.mode, GLOAMWOOD_VEGETATION_GRADE))
       }),
     ])
-  }
-
-  private toKitMaterial(
-    material: THREE.Material,
-    grade: { saturation: number; exposure: number; tint: readonly [number, number, number]; windAmp: number },
-    vertexColors: boolean,
-  ) {
-    const color = 'color' in material && material.color instanceof THREE.Color
-      ? material.color.clone()
-      : new THREE.Color(0xffffff)
-    color.offsetHSL(0, grade.saturation, 0)
-    color.multiplyScalar(grade.exposure)
-    color.r *= grade.tint[0]
-    color.g *= grade.tint[1]
-    color.b *= grade.tint[2]
-    const map = 'map' in material && material.map instanceof THREE.Texture ? material.map : null
-    const name = `${material.name} ${map?.name ?? ''}`
-    const isFoliage = material.transparent
-      || material.alphaTest > 0
-      || /leaf|leaves|grass|fern|plant|bush/i.test(name)
-    const lit = new THREE.MeshStandardMaterial({
-      color,
-      map,
-      roughness: 0.92,
-      metalness: 0,
-      // Foliage vertex colors in this kit darken billboard cards to near-black
-      // under the overhead camera; keep them on bark/rock only.
-      vertexColors: vertexColors && !isFoliage,
-      side: isFoliage ? THREE.DoubleSide : THREE.FrontSide,
-      alphaTest: isFoliage && map ? 0.18 : 0,
-      transparent: false,
-      depthWrite: true,
-    })
-    if (isFoliage && grade.windAmp > 0) this.applyFoliageWind(lit, grade.windAmp)
-    return lit
-  }
-
-  private applyFoliageWind(material: THREE.MeshStandardMaterial, amplitude: number) {
-    const time = this.foliageTime
-    material.onBeforeCompile = (shader) => {
-      shader.uniforms.uFoliageTime = time
-      shader.uniforms.uWindAmp = { value: amplitude }
-      shader.vertexShader = `uniform float uFoliageTime;\nuniform float uWindAmp;\n${shader.vertexShader}`
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-        {
-          float lift = clamp(transformed.y * 0.18, 0.0, 1.0);
-          vec3 windPos = transformed;
-          #ifdef USE_INSTANCING
-            windPos = (instanceMatrix * vec4(transformed, 1.0)).xyz;
-          #endif
-          float gust = sin(uFoliageTime * 1.18 + windPos.x * 0.42 + windPos.z * 0.31);
-          transformed.x += gust * uWindAmp * lift;
-          transformed.z += cos(uFoliageTime * 0.94 + windPos.z * 0.27) * uWindAmp * 0.65 * lift;
-        }`,
-      )
-    }
-    material.customProgramCacheKey = () => `gloamwood-foliage-wind:${amplitude}`
   }
 
   private createTree(x: number, z: number, scale: number, index: number) {
