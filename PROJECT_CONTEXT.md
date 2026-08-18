@@ -142,7 +142,19 @@ The first non-Fang player form, and the first creature produced specifically to 
 
 `QUALITY_3D_GLB_ASSETS` carries an optional `family`, and `resolveQuality3DGLBAsset(stage, family)` prefers the exact family, then a route-independent form, then the stage default. It returns `matchedFamily`, which debug state reports, so a route wearing another family's body is visible rather than silent.
 
-Before this, choosing Shell or Swarm silently loaded the Fang body: three evolution choices presented one creature. Fang and Shell now own separate bodies; Swarm still borrows and still receives the procedural evolution accent, which is now created only when a route has no body of its own.
+Before this, choosing Shell or Swarm silently loaded the Fang body: three evolution choices presented one creature. Fang and Shell now own separate bodies. Swarm stage-1 design is locked to concept B (`brood-stalker` / 荧囊猎蜥) and is waiting on a user-run Meshy Image-to-3D job; until that GLB is accepted it still borrows another body and still receives the procedural evolution accent, which is created only when a route has no body of its own.
+
+## Swarm first evolution — design locked, awaiting source
+
+The third stage-1 body. No runtime GLB yet.
+
+- form: `brood-stalker` / 荧囊猎蜥 (Chinese name not locked for HUD strings)
+- contract: `docs/concepts/evolution-v2/swarm-stage1/PRODUCTION-MODEL-CONTRACT-V1.md`
+- Meshy pack: `docs/concepts/evolution-v2/swarm-stage1/source/SOURCE.md`
+- primary image: `docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/swarm-stage1-concept-b-flank-sac-three-quarter.png`
+- shape lock: compact — tall on solid slender legs, short torso, short tail; cyan spore sac high on the upper flank just below the spine, readable from above. Not a biped, not a gecko crawler, not a pangolin, no floating orbs, no long whip tail
+- intended combat chain after the mesh lands: `Bite → Pounce → TailSwipe` (long hind legs can sell a leap; do not inherit Shell's Slam)
+- do not start Blender until the downloaded mesh passes the silhouette gates in the contract
 
 Form-specific handling must key on `formId` or family, never on stage. Three separate defects came from stage-keyed branches: the scarlet-gecko locomotion stabiliser flattening other stage-1 motion, the scarlet-gecko material grade tinting and flattening the Shell body, and debug state reporting the wrong baseline and triangle count.
 
@@ -257,11 +269,13 @@ The MapLab 5 vertical slice now contains one complete clearable Corrupted Brood 
 
 Commercial vertical-slice Goals 1-4 are user-accepted. Goal 5 is developed but **not closed**: `docs/GOAL-5-PLAYTEST-RECORD.md` still has no physical-device `PERF` reading and no outside no-instruction playtest. Those two remain the honest acceptance gates, and the roadmap makes them the input that decides whether the map and species lines expand at all.
 
-The Shell first evolution was completed and accepted on 2026-08-17 as the first measurement of production cost. Recommended order from here:
+The Shell first evolution was completed and accepted on 2026-08-17 as the first measurement of production cost. Swarm stage-1 concept B was accepted the same day as the modelling target; the source GLB does not exist yet.
+
+Recommended order from here:
 
 1. Close Goal 5 - capture the `PERF` line on a real mid-range phone, then run at least three strangers with only the URL. The key question is whether they notice their creature became a different animal.
-2. Only then decide the third evolution line. Swarm is the remaining route with no body of its own, and its identity - light, fast, fragile, symbiotic - contrasts most with the heavy Shell form. Being light and long-limbed it can keep `Bite → Pounce → TailSwipe`, so it needs no new attack chain.
-3. Producing Swarm gives the second data point, and two points give the slope that decides whether the species matrix is produced in full or cut.
+2. In parallel, the user runs Meshy Image to 3D from the Swarm pack. Do not start Blender until that mesh passes the contract gates. A passing Swarm body is the second production-cost data point (Shell was 3 source + 2 rig).
+3. Two points give the slope that decides whether the species matrix is produced in full or cut.
 
 Open and unclosed, carried forward:
 

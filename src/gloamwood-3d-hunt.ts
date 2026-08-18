@@ -9,6 +9,7 @@ import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 
 import { resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
 import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presentation'
+import { SPORE_STALKER_PRESENTATION } from './spore-stalker-character-presentation'
 import { applyDocumentLocale, getLocale, persistLocale, setLocale, t, type Locale } from './i18n'
 import { gloamwoodFamilyPortrait } from './gloamwood-family-portraits'
 import { CORAL_GECKO_PRESENTATION } from './quality-3d-character-presentation'
@@ -181,6 +182,38 @@ function gloamwoodPlayerCombatBodyRadius(stage: number, family?: Quality3DFormFa
     ? CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.visualTravel * SCARLET_GECKO_PRESENTATION.combat.pounceVisualTravelScale
     : 0
   return neutralRadius + stageOnePounceReserve
+}
+
+/**
+ * Which authored baseline describes the body actually on screen.
+ *
+ * Keyed by form, never by stage. Stage 1 now serves the Fang scarlet-gecko, the
+ * Shell stone-pangolin and the Swarm spore-stalker, so a stage test answers for
+ * whichever of the three it was written before.
+ */
+function gloamwoodFormBaseline(formId: string | undefined, stage: number) {
+  const byForm = {
+    'stone-pangolin': STONE_PANGOLIN_PRESENTATION,
+    'spore-stalker': SPORE_STALKER_PRESENTATION,
+    'scarlet-hunter': SCARLET_HUNTER_PRESENTATION,
+    'scarlet-gecko': SCARLET_GECKO_PRESENTATION,
+  } as const
+  const presentation = formId && formId in byForm ? byForm[formId as keyof typeof byForm] : undefined
+  if (presentation) {
+    return {
+      baselineId: presentation.baselineId,
+      artStyle: presentation.asset.artStyle,
+      triangles: presentation.asset.triangles,
+    }
+  }
+  if (stage >= 2) {
+    return {
+      baselineId: SCARLET_HUNTER_PRESENTATION.baselineId,
+      artStyle: SCARLET_HUNTER_PRESENTATION.asset.artStyle,
+      triangles: SCARLET_HUNTER_PRESENTATION.asset.triangles,
+    }
+  }
+  return { baselineId: 'inherited-pbr-baseline', artStyle: 'pbr', triangles: 32_000 }
 }
 
 interface DustParticle {
@@ -1430,6 +1463,22 @@ class Gloamwood3DHunt {
           material.emissiveIntensity = SCARLET_GECKO_PRESENTATION.material.emissiveIntensity
           applyScarletGeckoSurfaceGrade(material)
           if (material.normalMap) material.normalScale.setScalar(SCARLET_GECKO_PRESENTATION.material.normalStrength)
+          material.needsUpdate = true
+        } else if (asset.formId === 'spore-stalker') {
+          // Graded by form for the same reason the branch above is: this hide is
+          // a near-black teal that has to stay dark and take light, which is the
+          // opposite of what the scarlet-gecko grade does.
+          const grade = SPORE_STALKER_PRESENTATION.material
+          material.flatShading = false
+          material.roughness = THREE.MathUtils.clamp(material.roughness, grade.minimumRoughness, grade.maximumRoughness)
+          material.metalness = Math.min(material.metalness, grade.maximumMetalness)
+          material.envMapIntensity = grade.environmentIntensity
+          // Emissive is genuine on this form, but it is a baked mask covering
+          // 5.7% of the texture - the spore sac, spine speckles and eye. Never
+          // substitute the base-color map here the way the scarlet-gecko branch
+          // does: that lights the whole body, and the sac stops being the
+          // brightest thing on a creature whose silhouette is built around it.
+          material.emissiveIntensity = grade.emissiveIntensity
           material.needsUpdate = true
         } else {
           material.roughness = THREE.MathUtils.clamp(material.roughness, 0.58, 0.84)
@@ -3560,29 +3609,12 @@ class Gloamwood3DHunt {
       modelReady: this.modelReady,
       characterFamily: this.characterFamily ?? 'origin',
       characterFamilyMatched: this.characterFamilyMatched,
+      // Reported by form rather than by stage: three different bodies now share
+      // stage 1, and a stage-keyed chain silently reports whichever one it was
+      // written for. Looking the form up means adding a body cannot leave this
+      // describing a different creature than the one on screen.
       presentation: {
-        // Reported by form, not by stage: two different bodies now share stage 1.
-        baselineId: asset?.formId === 'stone-pangolin'
-          ? STONE_PANGOLIN_PRESENTATION.baselineId
-          : stage >= 2
-            ? SCARLET_HUNTER_PRESENTATION.baselineId
-            : stage >= 1
-              ? SCARLET_GECKO_PRESENTATION.baselineId
-              : 'inherited-pbr-baseline',
-        artStyle: asset?.formId === 'stone-pangolin'
-          ? STONE_PANGOLIN_PRESENTATION.asset.artStyle
-          : stage >= 2
-            ? SCARLET_HUNTER_PRESENTATION.asset.artStyle
-            : stage >= 1
-              ? SCARLET_GECKO_PRESENTATION.asset.artStyle
-              : 'pbr',
-        triangles: asset?.formId === 'stone-pangolin'
-          ? STONE_PANGOLIN_PRESENTATION.asset.triangles
-          : stage >= 2
-            ? SCARLET_HUNTER_PRESENTATION.asset.triangles
-            : stage >= 1
-              ? SCARLET_GECKO_PRESENTATION.asset.triangles
-              : 32_000,
+        ...gloamwoodFormBaseline(asset?.formId, stage),
         modelUrl: asset?.url ?? 'missing',
       },
       activeClip: this.activeClip,

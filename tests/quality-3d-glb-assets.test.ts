@@ -12,12 +12,13 @@ import { SCARLET_HUNTER_PRESENTATION } from '../src/scarlet-hunter-character-pre
 
 describe('quality 3D GLB vertical slice assets', () => {
   it('defines independent stage-0, first-evolution, second-evolution, wyvern and ancient assets', () => {
-    // Stage 1 now carries two bodies: the Fang scarlet-gecko and the Shell stone-pangolin.
-    expect(QUALITY_3D_GLB_ASSETS.map((asset) => asset.stage)).toEqual([0, 1, 2, 1, 3, 6])
-    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.formId)).size).toBe(6)
-    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.url)).size).toBe(6)
+    // Stage 1 now carries all three bodies: Fang scarlet-gecko, Shell
+    // stone-pangolin and Swarm spore-stalker.
+    expect(QUALITY_3D_GLB_ASSETS.map((asset) => asset.stage)).toEqual([0, 1, 2, 1, 1, 3, 6])
+    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.formId)).size).toBe(7)
+    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.url)).size).toBe(7)
     // Every form still owns a distinct GLB; none may share a runtime file.
-    expect(QUALITY_3D_GLB_ASSETS).toHaveLength(6)
+    expect(QUALITY_3D_GLB_ASSETS).toHaveLength(7)
   })
 
   it('keys evolved forms by gene family so routes can own separate bodies', () => {
@@ -37,12 +38,31 @@ describe('quality 3D GLB vertical slice assets', () => {
     expect(shell.asset?.formId).toBe('stone-pangolin')
     expect(shell.matchedFamily).toBe(true)
 
-    // Swarm still has none, so it borrows - and must say so.
+    // Swarm now has one too, so every stage-1 route serves its own animal. This
+    // was the last card on the evolution screen whose picture and stat line were
+    // true while the body it handed you was the Fang gecko under another name.
     const swarm = resolveQuality3DGLBAsset(1, 'swarm')
-    expect(swarm.matchedFamily).toBe(false)
+    expect(swarm.asset?.formId).toBe('spore-stalker')
+    expect(swarm.matchedFamily).toBe(true)
+    for (const family of ['fang', 'shell', 'swarm'] as const) {
+      expect(resolveQuality3DGLBAsset(1, family).matchedFamily, family).toBe(true)
+    }
 
     // Stage 0 serves every route, so it is not a substitution.
     expect(resolveQuality3DGLBAsset(0, 'shell').matchedFamily).toBe(true)
+  })
+
+  it('gives the Swarm stage-1 form its own mesh while keeping the Fang chain', () => {
+    const swarm = resolveQuality3DGLBAsset(1, 'swarm').asset
+    expect(swarm?.url).toContain('spore-stalker-rigged-runtime-v1.glb')
+    // Cache tag must change whenever the GLB is rebuilt, or browsers serve the old one.
+    expect(swarm?.url).toContain('v=swarm-stage1-v1')
+    // Unlike the Shell form, this one keeps Pounce: long hind legs can leap.
+    expect(swarm?.requiredClips).toContain('Pounce')
+    expect(swarm?.requiredClips).not.toContain('Slam')
+    // Same 27-bone Meshy quadruped template as both other stage-1 rigs.
+    expect(swarm?.rig).toEqual(resolveQuality3DGLBAsset(1, 'fang').asset?.rig)
+    expect(swarm?.requiredNodes).toContain('SporeStalkerMesh')
   })
 
   it('gives the Shell stage-1 form its own chain and mesh, sharing the rig template', () => {

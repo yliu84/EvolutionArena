@@ -42,6 +42,12 @@ const GLOAMWOOD_PLAYER_FAMILY_COLLISION_PROFILES: Partial<
   Record<GloamwoodPlayerFamily, Partial<Record<0 | 1 | 2, GloamwoodPlayerCollisionProfile>>>
 > = {
   shell: { 1: { radius: 0.72, frontOffset: 0.74, rearOffset: 0.84 } },
+  // The Swarm stage-1 body is 1.40 wide and 4.34 long: the narrowest form in the
+  // game but not the shortest. Radius follows measured half-width, so it comes
+  // in under the stage profile's 0.62. The probes stay close to the Fang form's
+  // because the extra length is almost all tail, and a tail tip is deliberately
+  // not an authoritative body.
+  swarm: { 1: { radius: 0.56, frontOffset: 0.60, rearOffset: 0.68 } },
 }
 
 export function getGloamwoodPlayerCollisionProfile(
