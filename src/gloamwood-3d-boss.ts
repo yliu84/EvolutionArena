@@ -94,7 +94,13 @@ export function stepGloamwoodBoss(
     return { state: next, events }
   }
   if (next.state === 'chase') {
-    if (distance > GLOAMWOOD_BOSS.preferredRange && distance > 0.001) {
+    // Closing stops just inside the ring rather than exactly on it. The step
+    // below clamps travel to `distance - preferredRange`, so a boss walking in
+    // lands on the boundary and the strict comparison keeps answering true by a
+    // rounding error: it edges forward by 1e-16 a frame and never leaves chase.
+    // A player who backed off past 3.82 - or got knocked back past it - watched
+    // the boss walk up and then stop fighting for the rest of the run.
+    if (distance > GLOAMWOOD_BOSS.preferredRange + 0.001 && distance > 0.001) {
       const travel = Math.min(distance - GLOAMWOOD_BOSS.preferredRange, GLOAMWOOD_BOSS.moveSpeed * delta)
       next.x += dx / distance * travel
       next.z += dz / distance * travel

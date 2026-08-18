@@ -54,3 +54,44 @@ describe('MapLab 5 Thorn Heart Warden', () => {
     expect(Math.hypot(clamped.x, clamped.z)).toBeCloseTo(6)
   })
 })
+
+describe('The boss never stops fighting back', () => {
+  function fight(standoff: number, seconds = 40) {
+    let boss = { ...createGloamwoodBossState(), state: 'chase' as const }
+    const player = { x: boss.x + standoff, z: boss.z, alive: true }
+    let attacks = 0
+    for (let frame = 0; frame < 60 * seconds; frame += 1) {
+      const step = stepGloamwoodBoss(boss, 1 / 60, player)
+      boss = step.state
+      attacks += step.events.filter((event) => event.type === 'boss-attack').length
+    }
+    return attacks
+  }
+
+  it('attacks from any starting distance, including beyond its preferred range', () => {
+    // Regression: closing clamped travel to exactly `distance - preferredRange`,
+    // so a boss that had to walk in landed on the boundary and the strict
+    // comparison kept answering true by a rounding error. It edged forward by
+    // 1e-16 a frame and never left chase. Any player standing further out than
+    // 3.82 - or knocked back past it - saw the boss walk up and then stand
+    // there for the rest of the run.
+    const inside = fight(3)
+    expect(inside).toBeGreaterThan(10)
+    for (const standoff of [4.5, 6, 9, 14]) {
+      expect(fight(standoff), `standoff ${standoff}`).toBeGreaterThan(10)
+    }
+  })
+
+  it('leaves chase once it has closed, rather than hovering on the boundary', () => {
+    let boss = { ...createGloamwoodBossState(), state: 'chase' as const }
+    const player = { x: boss.x + 6, z: boss.z, alive: true }
+    let chaseFrames = 0
+    for (let frame = 0; frame < 60 * 10; frame += 1) {
+      boss = stepGloamwoodBoss(boss, 1 / 60, player).state
+      if (boss.state === 'chase') chaseFrames += 1
+    }
+    // Walking 2.18 units at 1.62/s is about 1.35s; anything near the full ten
+    // seconds means it is stuck at the threshold again.
+    expect(chaseFrames).toBeLessThan(60 * 3)
+  })
+})
