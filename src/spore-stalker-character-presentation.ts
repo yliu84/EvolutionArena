@@ -50,13 +50,18 @@ export const SPORE_STALKER_PRESENTATION = {
    * identity is speed and fragility, and it fought exactly like the Fang gecko.
    *
    * This chain opens with the leap instead of centring on it, so the first press
-   * closes distance. The two rakes are the cheapest hits in the game and have
-   * the shortest reach in this chain, which forces the fragile body to stay
-   * close through the middle. 42% of the chain's damage is in the final tail
-   * whip against the Fang chain's 29%, so breaking off early costs far more
-   * here than it does on either other form.
+   * closes distance. The two rakes are the cheapest hits and have the shortest
+   * reach of the first three steps, which forces the fragile body to stay close
+   * through the part that pays least.
    *
-   * Total comes to 50 damage over 2.52s against the Fang chain's 48 over 2.37s.
+   * It finishes on a committed kill bite. Every form used to end on TailSwipe,
+   * which made the most distinctive step in a chain the one step all three
+   * shared; this form now never throws a tail sweep at all. The finisher also
+   * has the shortest reach in the chain, so the 42% of chain damage it carries
+   * is only available right on top of the target - against the Fang chain's 29%
+   * in its finisher, breaking off early costs far more here.
+   *
+   * Total comes to 50 damage over 2.60s against the Fang chain's 48 over 2.37s.
    * The trade is not raw time - four fast steps land in about the same window as
    * three ordinary ones - it is where the payoff sits and how close you must
    * stand to reach it.
@@ -66,29 +71,35 @@ export const SPORE_STALKER_PRESENTATION = {
     profileId: 'spore-stalker-combat-master-v1',
     system: 'basic-attack',
     skillsEnabled: false,
-    primaryCombo: ['Pounce', 'Claw', 'Claw', 'TailSwipe'],
+    primaryCombo: ['Pounce', 'Claw', 'Claw', 'Bite'],
     hitFeedback: {
       ...CORAL_GECKO_PRESENTATION.combat.hitFeedback,
       pounceDamage: 11,
       clawDamage: 9,
-      tailSwipeDamage: 21,
+      biteDamage: 21,
       pounceRange: 3.05,
-      // Shortest reach in the chain, and shorter than any step either other
-      // form has: the cheap middle is where this body has to commit.
       clawRange: 2.72,
-      tailSwipeRange: 3.22,
+      // Shortest reach in the chain sits on the step that pays most, so the
+      // payoff is only available at closest quarters.
+      biteRange: 2.6,
       knockbackSpeed: 2.6,
       cameraTrauma: 0.3,
       particleCount: 7,
     },
     // A single Claw clip contains both paws, left then right, so playing it
-    // twice in a row reads as a flurry rather than a stutter.
+    // twice in a row reads as a flurry rather than a stutter. Its motion is
+    // roughly double a first pass the user reported as barely visible, with the
+    // chest, head and hips counter-rotating so the whole silhouette moves - a
+    // limb swinging alone still reads small at 13.3% of screen height.
     pounceDurationSeconds: 0.68,
     pounceContactSeconds: 0.32,
-    clawDurationSeconds: 0.5,
-    clawContactSeconds: 0.21,
-    tailSwipeDurationSeconds: 0.84,
-    tailSwipeContactSeconds: 0.38,
+    clawDurationSeconds: 0.54,
+    clawContactSeconds: 0.23,
+    // The finisher is the longest step in the chain by a wide margin: wind-up,
+    // driven strike, then a hold on the clamp. Fast symmetric motion is what
+    // makes a heavy hit read as weightless.
+    biteDurationSeconds: 0.84,
+    biteContactSeconds: 0.4,
     comboResetSeconds: 1.3,
     targeting: {
       ...CORAL_GECKO_PRESENTATION.combat.targeting,

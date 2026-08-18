@@ -56,7 +56,7 @@ describe('quality 3D GLB vertical slice assets', () => {
     const swarm = resolveQuality3DGLBAsset(1, 'swarm').asset
     expect(swarm?.url).toContain('spore-stalker-rigged-runtime-v1.glb')
     // Cache tag must change whenever the GLB is rebuilt, or browsers serve the old one.
-    expect(swarm?.url).toContain('v=swarm-stage1-v2')
+    expect(swarm?.url).toContain('v=swarm-stage1-v3')
     // Four steps against three, opening on the leap instead of centring on it,
     // with a Claw clip neither other stage-1 form carries.
     expect(swarm?.requiredClips).toContain('Pounce')

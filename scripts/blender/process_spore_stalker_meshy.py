@@ -446,63 +446,118 @@ make_action(
     ],
 )
 
-# Bite opens the chain. The long neck does the work, so the reach comes from the
-# head and chest rather than a step forward.
+# Bite is this chain's finisher, not its opener, so it is authored as a
+# committed kill bite rather than the quick snap the Fang form leads with. It
+# carries 42% of the chain's damage and it is the one step that has to read as
+# heavy: long wind-up with the head reared back, a driven strike that plants
+# both forelimbs, then a hold on the clamp before releasing.
+#
+# All three forms used to end on TailSwipe, which made the most distinctive step
+# in a chain the one every form shared. This form now never throws a tail sweep.
 make_action(
     "Bite",
-    20,
+    36,
     [
         (0, {}, {}),
-        (5, {
-            "Hips": (math.radians(-3), 0, 0),
-            "chest": (math.radians(9), 0, 0),
-            "head": (math.radians(13), 0, 0),
-        }, {"Hips": (0, 0, -0.00034)}),
-        (8, {
+        (9, {
+            "Hips": (math.radians(-12), 0, 0),
+            "chest": (math.radians(16), 0, 0),
+            "head": (math.radians(19), 0, 0),
+            "backleg0": (math.radians(14), 0, 0),
+            "R_backleg0": (math.radians(14), 0, 0),
+            "frontleg0": (math.radians(-10), 0, 0),
+            "R_frontleg0": (math.radians(-10), 0, 0),
+            "tail1": (0, math.radians(-7), 0),
+            "tail2": (0, math.radians(-9), 0),
+        }, {"Hips": (0, 0, 0.00070)}),
+        (14, {
+            "Hips": (math.radians(12), 0, 0),
+            "chest": (math.radians(-19), 0, 0),
+            "head": (math.radians(-27), 0, 0),
+            "frontleg": (math.radians(20), 0, 0),
+            "frontleg0": (math.radians(24), 0, 0),
+            "R_frontleg": (math.radians(20), 0, 0),
+            "R_frontleg0": (math.radians(24), 0, 0),
+            "backleg0": (math.radians(-9), 0, 0),
+            "R_backleg0": (math.radians(-9), 0, 0),
+            "tail1": (0, math.radians(9), 0),
+            "tail2": (0, math.radians(12), 0),
+            "tail3": (0, math.radians(14), 0),
+        }, {"Hips": (0, 0, -0.00105)}),
+        # The clamp. Holding here is what separates a kill bite from a nip.
+        (21, {
+            "Hips": (math.radians(9), math.radians(-5), 0),
+            "chest": (math.radians(-15), math.radians(6), 0),
+            "head": (math.radians(-23), math.radians(7), 0),
+            "frontleg0": (math.radians(18), 0, 0),
+            "R_frontleg0": (math.radians(18), 0, 0),
+            "tail1": (0, math.radians(-6), 0),
+        }, {"Hips": (0, 0, -0.00080)}),
+        (26, {
+            "Hips": (math.radians(8), math.radians(6), 0),
+            "chest": (math.radians(-14), math.radians(-7), 0),
+            "head": (math.radians(-22), math.radians(-8), 0),
+            "frontleg0": (math.radians(16), 0, 0),
+            "R_frontleg0": (math.radians(16), 0, 0),
+            "tail1": (0, math.radians(7), 0),
+        }, {"Hips": (0, 0, -0.00074)}),
+        (31, {
             "Hips": (math.radians(3), 0, 0),
-            "chest": (math.radians(-12), 0, 0),
-            "head": (math.radians(-19), 0, 0),
-            "tail1": (0, math.radians(3), 0),
-            "tail2": (0, math.radians(4), 0),
-        }, {"Hips": (0, 0, -0.00010)}),
-        (13, {"chest": (math.radians(-4), 0, 0), "head": (math.radians(-6), 0, 0)}, {}),
-        (20, {}, {}),
+            "chest": (math.radians(-5), 0, 0),
+            "head": (math.radians(-8), 0, 0),
+        }, {"Hips": (0, 0, -0.00022)}),
+        (36, {}, {}),
     ],
 )
 
 # Claw is a two-paw rake inside a single clip: left lead, then right. The chain
 # plays it twice in a row, and one paw repeated would read as a stutter while a
-# built-in alternation reads as a flurry. Short and shallow - this is the cheap
-# middle of the chain, not a payoff.
+# built-in alternation reads as a flurry.
+#
+# Amplitudes are roughly double a first pass that the user reported as barely
+# visible. The increase is not in the forelimb alone - a limb swinging further
+# on a still body still reads small at 13.3% of screen height. The chest, head
+# and hips now counter-rotate through each swipe so the whole silhouette moves,
+# which is what actually reads at that size. Rotations stay inside what the
+# source skin weights tolerate; the coral-gecko V3 stretch came from exceeding
+# that, not from amplitude as such.
 make_action(
     "Claw",
-    18,
+    22,
     [
         (0, {}, {}),
-        (3, {
-            "chest": (math.radians(4), math.radians(-7), 0),
-            "head": (math.radians(3), math.radians(-6), 0),
-            "frontleg": (math.radians(-21), 0, 0),
-            "frontleg0": (math.radians(-17), 0, 0),
-            "tail1": (0, math.radians(5), 0),
-        }, {"Hips": (0, 0, -0.00022)}),
-        (7, {
-            "chest": (math.radians(-3), math.radians(6), 0),
-            "head": (math.radians(-4), math.radians(5), 0),
-            "frontleg": (math.radians(16), 0, 0),
-            "frontleg0": (math.radians(13), 0, 0),
-            "R_frontleg": (math.radians(-19), 0, 0),
-            "R_frontleg0": (math.radians(-15), 0, 0),
-            "tail1": (0, math.radians(-4), 0),
-        }, {"Hips": (0, 0, -0.00010)}),
-        (12, {
-            "chest": (math.radians(-2), math.radians(-4), 0),
-            "head": (math.radians(-3), math.radians(-3), 0),
-            "R_frontleg": (math.radians(14), 0, 0),
-            "R_frontleg0": (math.radians(11), 0, 0),
-            "tail1": (0, math.radians(3), 0),
-        }, {}),
-        (18, {}, {}),
+        (4, {
+            "Hips": (0, math.radians(-7), 0),
+            "chest": (math.radians(8), math.radians(-14), 0),
+            "head": (math.radians(6), math.radians(-12), 0),
+            "frontleg": (math.radians(-40), 0, 0),
+            "frontleg0": (math.radians(-30), 0, 0),
+            "frontleg1": (math.radians(-14), 0, 0),
+            "tail1": (0, math.radians(10), 0),
+            "tail2": (0, math.radians(13), 0),
+        }, {"Hips": (0, 0, -0.00030)}),
+        (9, {
+            "Hips": (0, math.radians(8), 0),
+            "chest": (math.radians(-6), math.radians(13), 0),
+            "head": (math.radians(-5), math.radians(11), 0),
+            "frontleg": (math.radians(31), 0, 0),
+            "frontleg0": (math.radians(24), 0, 0),
+            "R_frontleg": (math.radians(-38), 0, 0),
+            "R_frontleg0": (math.radians(-28), 0, 0),
+            "R_frontleg1": (math.radians(-13), 0, 0),
+            "tail1": (0, math.radians(-9), 0),
+            "tail2": (0, math.radians(-12), 0),
+        }, {"Hips": (0, 0, -0.00016)}),
+        (15, {
+            "Hips": (0, math.radians(-4), 0),
+            "chest": (math.radians(-3), math.radians(-7), 0),
+            "head": (math.radians(-4), math.radians(-6), 0),
+            "R_frontleg": (math.radians(28), 0, 0),
+            "R_frontleg0": (math.radians(21), 0, 0),
+            "tail1": (0, math.radians(6), 0),
+            "tail2": (0, math.radians(8), 0),
+        }, {"Hips": (0, 0, -0.00006)}),
+        (22, {}, {}),
     ],
 )
 

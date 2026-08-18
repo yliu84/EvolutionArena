@@ -26,7 +26,7 @@ describe('Swarm stage-1 form', () => {
   it('fights on four steps with the payoff at the end, not three with it in the middle', () => {
     const swarm = SPORE_STALKER_PRESENTATION.combat
     const fang = SCARLET_GECKO_PRESENTATION.combat
-    expect(swarm.primaryCombo).toEqual(['Pounce', 'Claw', 'Claw', 'TailSwipe'])
+    expect(swarm.primaryCombo).toEqual(['Pounce', 'Claw', 'Claw', 'Bite'])
     expect(swarm.primaryCombo.length).toBeGreaterThan(fang.primaryCombo.length)
     // Shipping this form on the Fang chain was a cost decision, not a design
     // one, and it read exactly as what it was.
@@ -38,16 +38,26 @@ describe('Swarm stage-1 form', () => {
     // Comparable total: this is a different shape, not a buff.
     expect(Math.abs(swarmTotal - fangTotal)).toBeLessThanOrEqual(4)
     // But the payoff sits at the end rather than the middle.
-    expect(swarm.hitFeedback.tailSwipeDamage / swarmTotal).toBeGreaterThan(0.4)
+    expect(swarm.hitFeedback.biteDamage / swarmTotal).toBeGreaterThan(0.4)
     expect(fangFeedback.tailSwipeDamage / fangTotal).toBeLessThan(0.32)
     expect(swarm.hitFeedback.pounceDamage).toBeLessThan(fangFeedback.pounceDamage)
 
-    // The cheap middle is the shortest reach in this chain, so the leap that
-    // opens it lands the body further out than the rakes that follow can hold:
-    // a fragile creature has to close through the part that pays least.
-    const chainRanges = { Pounce: swarm.hitFeedback.pounceRange, Claw: swarm.hitFeedback.clawRange, TailSwipe: swarm.hitFeedback.tailSwipeRange }
-    expect(Math.min(...Object.values(chainRanges))).toBe(swarm.hitFeedback.clawRange)
+    // Every form used to end on TailSwipe, which made the most distinctive step
+    // in a chain the one step all three shared. This one never throws it.
+    expect(swarm.primaryCombo).not.toContain('TailSwipe')
+    expect(fang.primaryCombo.at(-1)).toBe('TailSwipe')
+
+    // The rakes are cheap and short-reaching; the leap that opens the chain
+    // lands the body further out than they can hold, so a fragile creature has
+    // to keep closing through the part that pays least.
+    // Shortest reach in the chain sits on the finisher, so the step that pays
+    // most is only available at closest quarters.
+    const chainRanges = [swarm.hitFeedback.pounceRange, swarm.hitFeedback.clawRange, swarm.hitFeedback.biteRange]
+    expect(Math.min(...chainRanges)).toBe(swarm.hitFeedback.biteRange)
     expect(swarm.hitFeedback.clawRange).toBeLessThan(swarm.hitFeedback.pounceRange)
+    // And the finisher is the longest step: a heavy hit needs time to read.
+    expect(swarm.biteDurationSeconds).toBeGreaterThan(swarm.clawDurationSeconds * 1.4)
+    expect(swarm.biteDurationSeconds).toBeGreaterThan(fang.biteDurationSeconds)
     expect(swarm.clawDurationSeconds).toBeLessThan(fang.clawDurationSeconds)
   })
 
