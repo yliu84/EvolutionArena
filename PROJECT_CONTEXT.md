@@ -279,6 +279,8 @@ Recommended order from here:
 
 **Open design question, raised by the user on 2026-08-17 after their own playthrough**: the run is two minutes long and contains exactly one decision, so the three evolution routes read as skins. `docs/design/MUTATION-LOOP-PROPOSAL-V1.md` proposes the answer - splitting evolution into a cheap mutation layer that changes rules rather than percentages, and the existing expensive form layer - and argues for building the mutation layer first because it is the only change that tests whether players want a second run without spending any art. Proposal only; not implemented.
 
+`docs/design/OPEN-MAP-RUN-STRUCTURE-V1.md` proposes the run structure the open map needs, and exists because depth has to be real before it can gate anything. Its core move: mutations unlock on depth rather than on biomass, because biomass is unbounded on an open map and gating on it means whoever grinds gets stronger without limit. It builds on the eight MapLab 4 nest archetypes already authored in art and data, whose core health ladder of 18 to 30 is already a difficulty curve, and whose existing `heal` reward keeps healing an earned reward rather than a scattered pickup that would undo the life budget. Proposal only; not implemented.
+
 Open and unclosed, carried forward:
 
 - Meshy commercial licence evidence is still unarchived. The Shell job selected the private licence; record it in `docs/concepts/evolution-v2/shell-stage1/source/SOURCE.md`. This is a release blocker, not a technical one.
