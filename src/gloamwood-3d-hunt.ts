@@ -136,6 +136,8 @@ const WORLD_HALF_DEPTH = 18
 const PLAYER_SPEED = 6.2
 const GLOAMWOOD_BOSS_ARENA = { x: 0, z: 0, playerX: -6, playerZ: 3 } as const
 const GLOAMWOOD_BOSS_ARENA_RADIUS = 4.2
+/** Lives a run starts with. Reaching zero ends it. */
+const GLOAMWOOD_RUN_LIVES = 3
 const GLOAMWOOD_BOSS_ARENA_CLEAR_RADIUS = 7.8
 const PLAYER_FEEDBACK_SETTINGS_KEY = 'evolution-arena-combat-feedback-v1'
 export const GLOAMWOOD_3D_CHARACTER_HEIGHTS = [1.8, 2.16, 2.55] as const
@@ -466,6 +468,20 @@ class Gloamwood3DHunt {
   private runPhase: GloamwoodRunPhase = 'hunt'
   private runStartedAt = performance.now()
   private runDeaths = 0
+  /**
+   * Lives left this run.
+   *
+   * Playtest, 2026-08-18: the run was cleared in two and a half minutes with
+   * two thirds of the player's health after several deaths, because a death
+   * cost nothing at all - prey were repositioned and every point of biomass,
+   * gene and mutation was kept. A roguelite's pull is "I died there, so next
+   * run I go another way", and there is no first half of that sentence while
+   * dying is free.
+   *
+   * Three is deliberately forgiving. The point is that the number can reach
+   * zero, not that it usually does.
+   */
+  private livesRemaining = GLOAMWOOD_RUN_LIVES
   private resultOverlay?: HTMLElement
   /**
    * Modifiers granted by the one form evolution. Mutations stack on top of
@@ -1923,7 +1939,19 @@ class Gloamwood3DHunt {
     this.playerCombat = stepGloamwoodPlayerCombat(this.playerCombat, delta)
     if (!previousAlive && this.playerCombat.alive) {
       this.playerCombat = { ...this.playerCombat, invulnerabilitySeconds: 1.5 }
-      this.playerRoot.position.set(GLOAMWOOD_3D_COMBAT.playerSpawnX, 0, GLOAMWOOD_3D_COMBAT.playerSpawnZ)
+      // Respawning at the hunt's spawn point during the guardian or the boss
+      // would teleport the player out of the encounter they just spent a life
+      // on, and neither fight can be re-entered.
+      const arenaFight = this.runPhase === 'guardian' || this.runPhase === 'boss'
+      if (arenaFight) {
+        this.playerRoot.position.set(
+          GLOAMWOOD_BOSS_ARENA.playerX,
+          terrainHeight(GLOAMWOOD_BOSS_ARENA.playerX, GLOAMWOOD_BOSS_ARENA.playerZ),
+          GLOAMWOOD_BOSS_ARENA.playerZ,
+        )
+      } else {
+        this.playerRoot.position.set(GLOAMWOOD_3D_COMBAT.playerSpawnX, 0, GLOAMWOOD_3D_COMBAT.playerSpawnZ)
+      }
       this.target.copy(this.playerRoot.position)
       this.attackState = createFormalHuntBasicAttackState()
       this.combatMessage = t('hud.msg.backToHunt')
@@ -2258,8 +2286,10 @@ class Gloamwood3DHunt {
         if (!this.playerCombat.alive) {
           this.attackState = createFormalHuntBasicAttackState()
           this.lockedPreyId = null
-          if (this.runPhase === 'guardian') this.completeRunDefeat(t('hud.msg.killedByGuardian', { name: t('creature.guardian') }))
-          else this.resetLivePreyToNest()
+          const reason = this.runPhase === 'guardian'
+            ? t('hud.msg.killedByGuardian', { name: t('creature.guardian') })
+            : t('hud.msg.killedByPrey')
+          if (!this.spendLifeOrEndRun(reason) && this.runPhase !== 'guardian') this.resetLivePreyToNest()
         }
       }
     }
@@ -2306,7 +2336,7 @@ class Gloamwood3DHunt {
       this.combatMessage = this.playerCombat.alive
         ? t('hud.msg.bossHit', { name: this.bossPatternName(event.pattern), damage: receivedDamage })
         : t('hud.msg.bossFatal', { name: this.bossPatternName(event.pattern) })
-      if (!this.playerCombat.alive) this.completeRunDefeat(t('hud.msg.killedByBoss', { name: this.bossPatternName(event.pattern) }))
+      if (!this.playerCombat.alive) this.spendLifeOrEndRun(t('hud.msg.killedByBoss', { name: this.bossPatternName(event.pattern) }))
     }
     this.syncBossVisual()
   }
@@ -3137,6 +3167,25 @@ class Gloamwood3DHunt {
     this.showRunResult(true, t('result.bossDown'))
   }
 
+  /**
+   * Spend a life on this death. Returns true when the run is over.
+   *
+   * Every death routes through here - hunt, guardian and boss alike - so the
+   * budget cannot be bypassed by whichever encounter happened to kill you. The
+   * Moult mutation is not handled here: it revives inside takePlayerDamage
+   * before the player is ever counted as dead, which makes it a death that
+   * costs no life rather than a fourth one.
+   */
+  private spendLifeOrEndRun(reason: string) {
+    this.livesRemaining -= 1
+    if (this.livesRemaining <= 0) {
+      this.completeRunDefeat(reason)
+      return true
+    }
+    this.combatMessage = t('hud.msg.livesLeft', { count: this.livesRemaining })
+    return false
+  }
+
   private completeRunDefeat(reason: string) {
     if (this.runPhase === 'defeat') return
     this.runPhase = 'defeat'
@@ -3228,7 +3277,7 @@ class Gloamwood3DHunt {
       '<div class="g3d-combat-bars">',
       `<label>${t('hud.health')} <b data-g3d-player-health>100 / 100</b><i><em data-g3d-player-bar></em></i></label>`,
       '</div>',
-      `<div class="g3d-nest-resources"><b data-g3d-remaining>${t('hud.undisturbed')}</b><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
+      `<div class="g3d-nest-resources"><b data-g3d-remaining>${t('hud.undisturbed')}</b><span>${t('hud.lives')} <strong data-g3d-lives>${GLOAMWOOD_RUN_LIVES}</strong></span><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
       // Mutations stack rather than replace, and a build the player cannot see
       // is a build they cannot plan around. Hidden until the first one is taken.
       '<div class="g3d-mutation-list" data-g3d-mutations hidden></div>',
@@ -3875,6 +3924,7 @@ class Gloamwood3DHunt {
         ? t('hud.titleVictory')
         : this.nestState.phase === 'cleared' ? t('hud.titleCleared') : t('hud.titleNest', { suffix: this.nestState.wave ? t('hud.waveSuffix', { wave: this.nestState.wave, total: GLOAMWOOD_NEST.waveCount }) : '' }))
     setText('[data-g3d-player-health]', `${this.playerCombat.health} / ${this.playerCombat.maxHealth}`)
+    setText('[data-g3d-lives]', String(Math.max(0, this.livesRemaining)))
     this.updateMutationList()
     setText('[data-g3d-remaining]', this.runPhase === 'boss'
       ? `${this.bossPatternName(this.bossState.pattern)} · ${this.bossState.state === 'telegraph' ? t('enemy.telegraph') : this.bossState.state === 'attack' ? t('enemy.strike') : t('enemy.watch')}`

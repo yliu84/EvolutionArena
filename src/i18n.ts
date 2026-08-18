@@ -332,6 +332,9 @@ const STRINGS = {
   'evo.swarm-hunting-cloud.name': { en: 'Hunting Bloom', zh: '猎行菌群' },
   'evo.swarm-hunting-cloud.stat': { en: 'Speed +14% · Biomass +12% · Health −10', zh: '移速 +14% · 生物质 +12% · 生命 −10' },
 
+  'hud.msg.killedByPrey': { en: 'The nest brought you down', zh: '你被窝点里的猎物放倒了' },
+  'hud.msg.livesLeft': { en: 'You get back up. {count} left', zh: '你重新站起。还剩 {count} 次' },
+  'hud.lives': { en: 'Lives', zh: '存活次数' },
   'hud.mutations': { en: 'Mutations {count}', zh: '变异 {count}' },
   'mutation.eyebrow': { en: 'MUTATION', zh: '变异 / MUTATION' },
   'mutation.title': { en: 'Your body is changing', zh: '你的身体正在改变' },
@@ -353,7 +356,7 @@ const STRINGS = {
   'mutation.shell-symbiosis.rule': { en: "30% of the damage you take is dealt to the nearest enemy instead.", zh: '你受到的伤害有 30% 转嫁给最近的敌人。' },
   'mutation.shell-symbiosis.cost': { en: "Killing no longer heals you.", zh: '击杀不再回复生命。' },
   'mutation.swarm-moult.name': { en: 'Moult', zh: '蜕壳' },
-  'mutation.swarm-moult.rule': { en: "The first time you would die, you get back up at 30% health.", zh: '首次死亡时以 30% 生命重新站起。' },
+  'mutation.swarm-moult.rule': { en: 'A death that costs no life: you get back up at 30% health.', zh: '一次不消耗存活次数的死亡：以 30% 生命重新站起。' },
   'mutation.swarm-moult.cost': { en: "Once per run only.", zh: '每局仅一次。' },
   'mutation.swarm-sporehaze.name': { en: 'Sporehaze', zh: '孢子晕' },
   'mutation.swarm-sporehaze.rule': { en: 'Enemies close to you move 40% slower.', zh: '靠近你的敌人移速降低 40%。' },

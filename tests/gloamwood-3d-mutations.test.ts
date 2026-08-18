@@ -284,3 +284,33 @@ describe('The chips are actually reachable by a cursor', () => {
     expect(css).toMatch(/\.g3d-mutation-chip \{[^}]*pointer-events: auto/s)
   })
 })
+
+describe('A death has to cost something', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+
+  it('spends a life on every death, whatever killed the player', () => {
+    // Playtest: the run was cleared in two and a half minutes with two thirds
+    // of the player's health after several deaths, because a hunt death only
+    // repositioned the prey and kept every point of biomass, gene and mutation.
+    expect(source).toContain('private spendLifeOrEndRun(reason: string)')
+    expect(source).toContain('const GLOAMWOOD_RUN_LIVES = 3')
+    // Hunt, guardian and boss all route through it; none may end the run alone.
+    const spends = source.match(/this\.spendLifeOrEndRun\(/g) ?? []
+    expect(spends.length).toBeGreaterThanOrEqual(2)
+    const direct = source.match(/this\.completeRunDefeat\(/g) ?? []
+    // completeRunDefeat survives only inside spendLifeOrEndRun and the timeout.
+    expect(direct.length).toBeLessThanOrEqual(3)
+  })
+
+  it('puts the player back inside the arena when a life is spent there', () => {
+    // The hunt spawn point is outside both arenas, and neither fight can be
+    // re-entered, so respawning there would end the encounter by accident.
+    expect(source).toMatch(/const arenaFight = this\.runPhase === 'guardian' \|\| this\.runPhase === 'boss'/)
+    expect(source).toMatch(/if \(arenaFight\) \{[\s\S]*?GLOAMWOOD_BOSS_ARENA\.playerX/)
+  })
+
+  it('shows the budget, since it cannot be played around unseen', () => {
+    expect(source).toContain('data-g3d-lives')
+    expect(source).toContain("setText('[data-g3d-lives]'")
+  })
+})
