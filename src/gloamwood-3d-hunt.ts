@@ -143,6 +143,21 @@ const WORLD_HALF_DEPTH = 18
 const PLAYER_SPEED = 6.2
 const GLOAMWOOD_BOSS_ARENA = { x: 0, z: 0, playerX: -6, playerZ: 3 } as const
 const GLOAMWOOD_BOSS_ARENA_RADIUS = 4.2
+/**
+ * How far the player may stray from the arena during an arena fight.
+ *
+ * The boss is clamped inside 4.2 and the player was clamped only to the world,
+ * which is 50 by 36: walk far enough and the boss physically cannot follow, so
+ * it stands at the arena edge and never attacks again. Knockback pushes the
+ * player out a little on every hit, which is why the fight died late rather
+ * than immediately.
+ *
+ * The bound has to keep the boss able to reach its own preferred range - it can
+ * only close to `playerDistance - 4.2` - so anything past 8.02 strands it. 7.6
+ * leaves margin and sits just inside the 7.8 radius props are cleared from, so
+ * the wall never lands the player inside scenery.
+ */
+const GLOAMWOOD_ARENA_PLAYER_RADIUS = 7.6
 /** Lives a run starts with. Reaching zero ends it. */
 const GLOAMWOOD_RUN_LIVES = 3
 const GLOAMWOOD_BOSS_ARENA_CLEAR_RADIUS = 7.8
@@ -1788,6 +1803,24 @@ class Gloamwood3DHunt {
     this.updateDebug()
   }
 
+  /**
+   * Hold the player inside the arena during an arena fight.
+   *
+   * Called from movement and from knockback, because knockback writes the
+   * player's position directly and would otherwise walk them out one hit at a
+   * time - which is how the boss fight died three quarters of the way in rather
+   * than at the start.
+   */
+  private confineToArena(position: THREE.Vector3) {
+    if (this.runPhase !== 'guardian' && this.runPhase !== 'boss') return
+    const offsetX = position.x - GLOAMWOOD_BOSS_ARENA.x
+    const offsetZ = position.z - GLOAMWOOD_BOSS_ARENA.z
+    const distance = Math.hypot(offsetX, offsetZ)
+    if (distance <= GLOAMWOOD_ARENA_PLAYER_RADIUS || distance < 0.001) return
+    position.x = GLOAMWOOD_BOSS_ARENA.x + offsetX / distance * GLOAMWOOD_ARENA_PLAYER_RADIUS
+    position.z = GLOAMWOOD_BOSS_ARENA.z + offsetZ / distance * GLOAMWOOD_ARENA_PLAYER_RADIUS
+  }
+
   private updatePlayer(delta: number) {
     this.updateAutoEngage()
     const inputX = Number(this.keys.has(this.inputBindings.moveRight) || this.keys.has('ArrowRight')) - Number(this.keys.has(this.inputBindings.moveLeft) || this.keys.has('ArrowLeft')) + this.touchMoveX
@@ -1829,6 +1862,7 @@ class Gloamwood3DHunt {
       const next = this.playerRoot.position.clone().addScaledVector(this.movement, PLAYER_SPEED * this.moveSpeedMultiplier * this.movementInputStrength * delta)
       next.x = THREE.MathUtils.clamp(next.x, -WORLD_HALF_WIDTH, WORLD_HALF_WIDTH)
       next.z = THREE.MathUtils.clamp(next.z, -WORLD_HALF_DEPTH, WORLD_HALF_DEPTH)
+      this.confineToArena(next)
       this.resolveObstacles(next)
       this.playerRoot.position.x = next.x
       this.playerRoot.position.z = next.z
@@ -2314,6 +2348,7 @@ class Gloamwood3DHunt {
         this.knockbackRecoverySeconds = GLOAMWOOD_PLAYER_HIT_REACTION.recoverySeconds
         this.playerRoot.position.x += dx * inverse * knockbackDistance
         this.playerRoot.position.z += dz * inverse * knockbackDistance
+        this.confineToArena(this.playerRoot.position)
         this.playerRoot.position.x = THREE.MathUtils.clamp(this.playerRoot.position.x, -WORLD_HALF_WIDTH, WORLD_HALF_WIDTH)
         this.playerRoot.position.z = THREE.MathUtils.clamp(this.playerRoot.position.z, -WORLD_HALF_DEPTH, WORLD_HALF_DEPTH)
         this.resolveObstacles(this.playerRoot.position)
@@ -2375,6 +2410,9 @@ class Gloamwood3DHunt {
       const knockback = Math.min(0.78, event.knockback * 0.38)
       this.playerRoot.position.x += dx * inverse * knockback
       this.playerRoot.position.z += dz * inverse * knockback
+      // The boss's own knockback pushes outward from it, so without this it
+      // walks the player out of the arena it cannot leave.
+      this.confineToArena(this.playerRoot.position)
       this.resolveObstacles(this.playerRoot.position)
       this.target.copy(this.playerRoot.position)
       this.playerFlashRemaining = this.feedbackSettings.flash ? 0.2 : 0

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import { getGloamwoodPlayerCollisionProfile } from '../src/gloamwood-3d-collision'
@@ -196,5 +197,34 @@ describe('A boss must be able to use its own patterns from its own spacing', () 
     const second = attacksPerMinute(2)
     expect(first).toBeGreaterThan(24)
     expect(second).toBeGreaterThan(first)
+  })
+})
+
+describe('An arena fight has to hold both sides', () => {
+  it('keeps the player where the boss can still reach them', () => {
+    // The boss is clamped inside the arena and the player was clamped only to
+    // the world, which is 50 by 36. Walk far enough and the boss physically
+    // cannot follow: it stands at the arena edge and never attacks again.
+    // Knockback nudges the player out on every hit, which is why the fight died
+    // three quarters of the way in rather than at the start.
+    const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+    expect(source).toContain('private confineToArena(position: THREE.Vector3)')
+    // Three writers: movement, prey knockback and boss knockback. Movement
+    // alone was not enough - knockback writes the position directly and would
+    // have kept walking the player out one hit at a time.
+    expect((source.match(/this\.confineToArena\(/g) ?? []).length).toBe(3)
+  })
+
+  it('bounds the player inside what the boss can close on', () => {
+    // The boss can only reach `playerDistance - arenaRadius`, so a bound past
+    // arenaRadius + preferredRange strands it however long the fight runs.
+    const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+    const bound = Number(source.match(/const GLOAMWOOD_ARENA_PLAYER_RADIUS = ([\d.]+)/)?.[1])
+    const arena = Number(source.match(/const GLOAMWOOD_BOSS_ARENA_RADIUS = ([\d.]+)/)?.[1])
+    const clearRadius = Number(source.match(/const GLOAMWOOD_BOSS_ARENA_CLEAR_RADIUS = ([\d.]+)/)?.[1])
+    expect(bound).toBeLessThanOrEqual(arena + GLOAMWOOD_BOSS.preferredRange)
+    // And inside the radius props are cleared from, so the wall never puts the
+    // player inside scenery.
+    expect(bound).toBeLessThanOrEqual(clearRadius)
   })
 })
