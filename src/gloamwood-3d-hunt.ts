@@ -16,6 +16,7 @@ import { gloamwoodMutationIcon } from './gloamwood-mutation-icons'
 import {
   GLOAMWOOD_MUTATION_POOL,
   accumulateGloamwoodMutationEffects,
+  recordGloamwoodMutationMilestone,
   createGloamwoodMutationState,
   gloamwoodMutationOffersEarned,
   openGloamwoodMutationOffer,
@@ -1721,7 +1722,11 @@ class Gloamwood3DHunt {
       this.updateDebug()
       return
     }
-    if (this.evolutionState.phase === 'choosing') {
+    // A mutation panel stops the world for the same reason the evolution panel
+    // does: two of the five milestones land inside the guardian and boss fights,
+    // and reading three rules and three costs while something is still swinging
+    // at you is not a choice.
+    if (this.evolutionState.phase === 'choosing' || this.mutationState.offering) {
       this.updateCamera(delta)
       this.renderer.render(this.scene, this.camera)
       this.updateHud()
@@ -2231,11 +2236,20 @@ class Gloamwood3DHunt {
         continue
       }
       if (event.type === 'wave-cleared') {
+        // Guardian waves are not hunt waves; the guardian pays out on its own
+        // milestone below, or it would grant two.
+        if (this.runPhase === 'hunt' && event.wave < GLOAMWOOD_NEST.waveCount) {
+          this.mutationState = recordGloamwoodMutationMilestone(this.mutationState, `wave-${event.wave}-cleared`)
+        }
         this.lockedPreyId = null
         this.combatMessage = event.wave >= GLOAMWOOD_NEST.waveCount ? t('hud.msg.lastWave') : t('hud.msg.waveClear', { wave: event.wave })
         continue
       }
       if (event.type === 'nest-cleared') {
+        this.mutationState = recordGloamwoodMutationMilestone(
+          this.mutationState,
+          this.runPhase === 'guardian' ? 'guardian-defeated' : 'nest-cleared',
+        )
         this.lockedPreyId = null
         if (this.runPhase === 'guardian') {
           this.combatMessage = t('hud.msg.guardianBroken', { name: t('creature.guardian') })
@@ -2313,6 +2327,7 @@ class Gloamwood3DHunt {
     )
     for (const event of frame.events) {
       if (event.type === 'phase-changed') {
+        this.mutationState = recordGloamwoodMutationMilestone(this.mutationState, 'boss-phase-2')
         this.playSound('boss-phase')
         this.combatMessage = t('hud.msg.bossPhase2', { name: t('creature.boss') })
         this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.74)
@@ -2982,9 +2997,12 @@ class Gloamwood3DHunt {
 
   private updateMutationOffers() {
     if (this.mutationState.offering || this.paused) return
-    if (this.runPhase !== 'hunt') return
+    // Offers now arrive on run milestones, and two of those land inside the
+    // guardian and boss fights, so this can no longer refuse to run outside the
+    // hunt. It still refuses to stack on the evolution choice or a finished run.
     if (this.evolutionState.phase === 'choosing') return
-    const earned = gloamwoodMutationOffersEarned(this.nestState.biomass) + this.bonusOffersEarned
+    if (this.runPhase === 'victory' || this.runPhase === 'defeat') return
+    const earned = gloamwoodMutationOffersEarned(this.mutationState) + this.bonusOffersEarned
     if (earned <= this.mutationOffersTaken) return
     this.mutationState = openGloamwoodMutationOffer(this.mutationState, this.nestState.genes)
     if (!this.mutationState.offering) {

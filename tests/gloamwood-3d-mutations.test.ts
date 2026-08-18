@@ -2,9 +2,8 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import {
-  GLOAMWOOD_MUTATION_COST_GROWTH,
-  GLOAMWOOD_MUTATION_FIRST_COST,
-  gloamwoodMutationThreshold,
+  GLOAMWOOD_MUTATION_MILESTONES,
+  recordGloamwoodMutationMilestone,
   GLOAMWOOD_MUTATION_POOL,
   accumulateGloamwoodMutationEffects,
   createGloamwoodMutationState,
@@ -58,36 +57,37 @@ describe('Mutation pool', () => {
 })
 
 describe('Mutation pacing', () => {
-  it('charges more for each mutation than the one before it', () => {
-    // Playtest: five offers inside a two-and-a-half minute run came far too
-    // often, and mutating should get harder as a run goes on rather than
-    // staying a flat tax.
-    expect(GLOAMWOOD_MUTATION_COST_GROWTH).toBeGreaterThan(1)
-    const costs = [1, 2, 3, 4, 5].map((n) => gloamwoodMutationThreshold(n) - gloamwoodMutationThreshold(n - 1))
-    for (let index = 1; index < costs.length; index += 1) {
-      expect(costs[index], `cost ${index + 1}`).toBeGreaterThan(costs[index - 1])
-    }
-    expect(costs[0]).toBeCloseTo(GLOAMWOOD_MUTATION_FIRST_COST)
+  it('unlocks on run milestones rather than on farmable biomass', () => {
+    // Biomass is bounded on a fixed encounter but unbounded on an open map, so
+    // gating on it means whoever grinds longest gets strongest without limit -
+    // the opposite of the escalating difficulty the playtest asked for.
+    let state = createGloamwoodMutationState('run')
+    expect(gloamwoodMutationOffersEarned(state)).toBe(0)
+    state = recordGloamwoodMutationMilestone(state, 'wave-1-cleared')
+    expect(gloamwoodMutationOffersEarned(state)).toBe(1)
+    state = recordGloamwoodMutationMilestone(state, 'nest-cleared')
+    expect(gloamwoodMutationOffersEarned(state)).toBe(2)
   })
 
-  it('earns offers only once their cumulative cost is paid', () => {
-    expect(gloamwoodMutationOffersEarned(0)).toBe(0)
-    expect(gloamwoodMutationOffersEarned(13)).toBe(0)
-    expect(gloamwoodMutationOffersEarned(14)).toBe(1)
-    expect(gloamwoodMutationOffersEarned(32)).toBe(1)
-    expect(gloamwoodMutationOffersEarned(33)).toBe(2)
-    // A run yields 76 biomass from prey: 16 + 22 + 38 across the three waves.
-    // Three, where the flat cost gave five.
-    expect(gloamwoodMutationOffersEarned(76)).toBe(3)
+  it('never pays the same milestone twice', () => {
+    let state = recordGloamwoodMutationMilestone(createGloamwoodMutationState('run'), 'wave-1-cleared')
+    const again = recordGloamwoodMutationMilestone(state, 'wave-1-cleared')
+    expect(again).toBe(state)
+    expect(gloamwoodMutationOffersEarned(again)).toBe(1)
   })
 
-  it('never runs backwards as biomass grows', () => {
-    let previous = 0
-    for (let biomass = 0; biomass <= 400; biomass += 3) {
-      const earned = gloamwoodMutationOffersEarned(biomass)
-      expect(earned).toBeGreaterThanOrEqual(previous)
-      previous = earned
-    }
+  it('has exactly one milestone per intended mutation, none of them repeatable', () => {
+    // Five milestones, five mutations, roughly one per three minutes once the
+    // run is long enough. Each happens once and each is further in than the
+    // last, which is where "harder to mutate as you go" comes from.
+    expect(GLOAMWOOD_MUTATION_MILESTONES).toHaveLength(5)
+    expect(new Set(GLOAMWOOD_MUTATION_MILESTONES).size).toBe(5)
+  })
+
+  it('leaves Gluttony as the only farmable source, and it charges for itself', () => {
+    const gluttony = GLOAMWOOD_MUTATION_POOL.find((entry) => entry.id === 'neutral-gluttony')
+    expect(gluttony?.effects.bonusOfferEveryKills).toBeGreaterThan(0)
+    expect(gluttony?.effects.maximumHealthCostPerMutation).toBeGreaterThan(0)
   })
 })
 
@@ -207,10 +207,27 @@ describe('Runtime wiring', () => {
     expect(uses).toHaveLength(2)
   })
 
-  it('withholds an offer while another choice is already on screen', () => {
-    // Two panels stacked on each other means the player remembers neither.
-    expect(source).toMatch(/if \(this\.runPhase !== 'hunt'\) return/)
+  it('withholds an offer while another choice is on screen or the run is over', () => {
+    // Two panels stacked on each other means the player remembers neither. The
+    // offer can no longer refuse to run outside the hunt, because two of the
+    // five milestones land inside the guardian and boss fights.
     expect(source).toContain("if (this.evolutionState.phase === 'choosing') return")
+    expect(source).toMatch(/if \(this\.runPhase === 'victory' \|\| this\.runPhase === 'defeat'\) return/)
+    expect(source).not.toMatch(/if \(this\.runPhase !== 'hunt'\) return/)
+  })
+
+  it('stops the world while the panel is up, since milestones land mid-fight', () => {
+    // Reading three rules and three costs while something is still swinging at
+    // you is not a choice.
+    expect(source).toMatch(/this\.evolutionState\.phase === 'choosing' \|\| this\.mutationState\.offering/)
+  })
+
+  it('credits each milestone from the event that actually means it', () => {
+    expect(source).toContain("recordGloamwoodMutationMilestone(this.mutationState, `wave-${event.wave}-cleared`)")
+    // A guardian wave clearing is not a hunt wave; crediting both would pay twice.
+    expect(source).toMatch(/this\.runPhase === 'hunt' && event\.wave < GLOAMWOOD_NEST\.waveCount/)
+    expect(source).toContain("this.runPhase === 'guardian' ? 'guardian-defeated' : 'nest-cleared'")
+    expect(source).toContain("recordGloamwoodMutationMilestone(this.mutationState, 'boss-phase-2')")
   })
 
   it('seeds mutations from the same seed as the form evolution', () => {

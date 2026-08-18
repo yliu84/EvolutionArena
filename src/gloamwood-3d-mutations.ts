@@ -65,27 +65,39 @@ export interface GloamwoodMutationState {
   offerIndex: number
   /** Ids already taken this run; they never appear again. */
   taken: string[]
+  /** Milestones already credited, so none can pay twice. */
+  reached: string[]
   candidates: GloamwoodMutationOffer[]
   offering: boolean
 }
 
-/** Biomass the first mutation costs. */
-export const GLOAMWOOD_MUTATION_FIRST_COST = 14
-
 /**
- * How much more each mutation costs than the one before it.
+ * Milestones that each grant one mutation, once per run.
  *
- * Playtest note, 2026-08-18: five offers inside a two-and-a-half minute run
- * arrived far too often, and mutating should get harder the further a run goes
- * rather than staying a flat tax. Costs now climb 35% per mutation, so the run
- * pays 14, 19, 26, 34, 47 biomass for its first five.
+ * Mutations used to unlock on total biomass. On a fixed encounter that is
+ * bounded, but the game is becoming an open map where biomass is whatever the
+ * player chooses to farm - so gating on it means whoever grinds longest gets
+ * strongest without limit, the exact opposite of the escalating difficulty the
+ * playtest asked for.
  *
- * The target the playtest actually asked for is roughly three minutes between
- * mutations. That is not reachable by pacing alone: at the current run length
- * three-minute spacing would mean under one mutation per run. The spacing and
- * the run length are the same problem, and the run has to grow first.
+ * A milestone cannot be farmed: each happens exactly once in a run and each is
+ * further in than the last. That is where "harder to mutate as you go" comes
+ * from - not a rising price, but the next mutation sitting somewhere more
+ * dangerous.
+ *
+ * These five are the demo map's milestones. On the open map they become region
+ * entries and region bosses; the shape is the same and only the source changes,
+ * which is why the runtime records opaque ids rather than knowing what a wave is.
  */
-export const GLOAMWOOD_MUTATION_COST_GROWTH = 1.35
+export const GLOAMWOOD_MUTATION_MILESTONES = [
+  'wave-1-cleared',
+  'wave-2-cleared',
+  'nest-cleared',
+  'guardian-defeated',
+  'boss-phase-2',
+] as const
+
+export type GloamwoodMutationMilestone = typeof GLOAMWOOD_MUTATION_MILESTONES[number]
 
 /**
  * The first batch. Each entry changes a rule the player can act on and charges
@@ -118,34 +130,35 @@ export function createGloamwoodMutationState(seed: number | string): GloamwoodMu
     seed: typeof seed === 'string' ? hashSeed(seed) : seed >>> 0,
     offerIndex: 0,
     taken: [],
+    reached: [],
     candidates: [],
     offering: false,
   }
 }
 
 /**
- * Total biomass needed to have been offered `count` mutations.
- *
- * The costs are a geometric series, so this is its closed form rather than a
- * loop: exact, and it answers for any count without walking there.
+ * Credit a milestone. Ignores one already credited, so an event that fires more
+ * than once - a wave clearing while the runtime re-enters the same phase, say -
+ * cannot pay twice.
  */
-export function gloamwoodMutationThreshold(count: number) {
-  if (count <= 0) return 0
-  const growth = GLOAMWOOD_MUTATION_COST_GROWTH
-  return GLOAMWOOD_MUTATION_FIRST_COST * (growth ** count - 1) / (growth - 1)
+export function recordGloamwoodMutationMilestone(
+  state: GloamwoodMutationState,
+  milestone: string,
+): GloamwoodMutationState {
+  if (state.reached.includes(milestone)) return state
+  return { ...state, reached: [...state.reached, milestone] }
 }
 
 /**
- * How many offers a run has earned by this much biomass.
+ * How many offers the run has earned.
  *
- * Bonus offers bought by Gluttony are added by the caller, which owns the kill
- * count; this stays a pure function of biomass so the pacing can be reasoned
- * about on its own.
+ * One per milestone reached. Bonus offers bought by Gluttony are added by the
+ * caller, which owns the kill count - the only farmable source of mutations in
+ * the game, and deliberately so: it is a mutation the player paid maximum health
+ * for, not a reward for grinding.
  */
-export function gloamwoodMutationOffersEarned(biomass: number) {
-  let earned = 0
-  while (biomass >= gloamwoodMutationThreshold(earned + 1)) earned += 1
-  return earned
+export function gloamwoodMutationOffersEarned(state: GloamwoodMutationState) {
+  return state.reached.length
 }
 
 /**
