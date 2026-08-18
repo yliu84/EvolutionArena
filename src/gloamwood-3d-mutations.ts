@@ -69,13 +69,23 @@ export interface GloamwoodMutationState {
   offering: boolean
 }
 
+/** Biomass the first mutation costs. */
+export const GLOAMWOOD_MUTATION_FIRST_COST = 14
+
 /**
- * Biomass between offers.
+ * How much more each mutation costs than the one before it.
  *
- * A full run yields 76 biomass from prey (16 + 22 + 38 across the three waves),
- * so 14 gives five offers spread over the run rather than a lump at the end.
+ * Playtest note, 2026-08-18: five offers inside a two-and-a-half minute run
+ * arrived far too often, and mutating should get harder the further a run goes
+ * rather than staying a flat tax. Costs now climb 35% per mutation, so the run
+ * pays 14, 19, 26, 34, 47 biomass for its first five.
+ *
+ * The target the playtest actually asked for is roughly three minutes between
+ * mutations. That is not reachable by pacing alone: at the current run length
+ * three-minute spacing would mean under one mutation per run. The spacing and
+ * the run length are the same problem, and the run has to grow first.
  */
-export const GLOAMWOOD_MUTATION_BIOMASS_STEP = 14
+export const GLOAMWOOD_MUTATION_COST_GROWTH = 1.35
 
 /**
  * The first batch. Each entry changes a rule the player can act on and charges
@@ -114,14 +124,28 @@ export function createGloamwoodMutationState(seed: number | string): GloamwoodMu
 }
 
 /**
+ * Total biomass needed to have been offered `count` mutations.
+ *
+ * The costs are a geometric series, so this is its closed form rather than a
+ * loop: exact, and it answers for any count without walking there.
+ */
+export function gloamwoodMutationThreshold(count: number) {
+  if (count <= 0) return 0
+  const growth = GLOAMWOOD_MUTATION_COST_GROWTH
+  return GLOAMWOOD_MUTATION_FIRST_COST * (growth ** count - 1) / (growth - 1)
+}
+
+/**
  * How many offers a run has earned by this much biomass.
  *
  * Bonus offers bought by Gluttony are added by the caller, which owns the kill
- * count; this function stays a pure function of biomass so the pacing can be
- * reasoned about on its own.
+ * count; this stays a pure function of biomass so the pacing can be reasoned
+ * about on its own.
  */
 export function gloamwoodMutationOffersEarned(biomass: number) {
-  return Math.max(0, Math.floor(biomass / GLOAMWOOD_MUTATION_BIOMASS_STEP))
+  let earned = 0
+  while (biomass >= gloamwoodMutationThreshold(earned + 1)) earned += 1
+  return earned
 }
 
 /**

@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import {
-  GLOAMWOOD_MUTATION_BIOMASS_STEP,
+  GLOAMWOOD_MUTATION_COST_GROWTH,
+  GLOAMWOOD_MUTATION_FIRST_COST,
+  gloamwoodMutationThreshold,
   GLOAMWOOD_MUTATION_POOL,
   accumulateGloamwoodMutationEffects,
   createGloamwoodMutationState,
@@ -56,14 +58,36 @@ describe('Mutation pool', () => {
 })
 
 describe('Mutation pacing', () => {
-  it('spreads offers across the run rather than lumping them at the end', () => {
-    // A full run yields 76 biomass from prey: 16 + 22 + 38 across three waves.
-    expect(GLOAMWOOD_MUTATION_BIOMASS_STEP).toBe(14)
+  it('charges more for each mutation than the one before it', () => {
+    // Playtest: five offers inside a two-and-a-half minute run came far too
+    // often, and mutating should get harder as a run goes on rather than
+    // staying a flat tax.
+    expect(GLOAMWOOD_MUTATION_COST_GROWTH).toBeGreaterThan(1)
+    const costs = [1, 2, 3, 4, 5].map((n) => gloamwoodMutationThreshold(n) - gloamwoodMutationThreshold(n - 1))
+    for (let index = 1; index < costs.length; index += 1) {
+      expect(costs[index], `cost ${index + 1}`).toBeGreaterThan(costs[index - 1])
+    }
+    expect(costs[0]).toBeCloseTo(GLOAMWOOD_MUTATION_FIRST_COST)
+  })
+
+  it('earns offers only once their cumulative cost is paid', () => {
     expect(gloamwoodMutationOffersEarned(0)).toBe(0)
     expect(gloamwoodMutationOffersEarned(13)).toBe(0)
-    expect(gloamwoodMutationOffersEarned(16)).toBe(1)
-    expect(gloamwoodMutationOffersEarned(38)).toBe(2)
-    expect(gloamwoodMutationOffersEarned(76)).toBe(5)
+    expect(gloamwoodMutationOffersEarned(14)).toBe(1)
+    expect(gloamwoodMutationOffersEarned(32)).toBe(1)
+    expect(gloamwoodMutationOffersEarned(33)).toBe(2)
+    // A run yields 76 biomass from prey: 16 + 22 + 38 across the three waves.
+    // Three, where the flat cost gave five.
+    expect(gloamwoodMutationOffersEarned(76)).toBe(3)
+  })
+
+  it('never runs backwards as biomass grows', () => {
+    let previous = 0
+    for (let biomass = 0; biomass <= 400; biomass += 3) {
+      const earned = gloamwoodMutationOffersEarned(biomass)
+      expect(earned).toBeGreaterThanOrEqual(previous)
+      previous = earned
+    }
   })
 })
 
