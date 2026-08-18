@@ -17,6 +17,16 @@ export interface GloamwoodModelledBossConfig {
   url: string
   /** World height the model is normalised to, as the player forms are. */
   worldHeight: number
+  /**
+   * Yaw correcting the model's authored facing onto the game's forward.
+   *
+   * The same correction the player forms carry, and it has to be applied here
+   * too: the runtime rotates a boss by `facingRadians`, where zero means +X,
+   * while a Blender model exported Y-up faces +Z. Without it the creature aims
+   * its blades ninety degrees away from whatever it is attacking, which is
+   * exactly how this shipped the first time.
+   */
+  modelYaw: number
   clips: {
     idle: string
     walk: string
@@ -37,6 +47,8 @@ export interface GloamwoodModelledBossConfig {
 export const GLOAMWOOD_BLADESHELL_BOSS: GloamwoodModelledBossConfig = {
   url: '/assets/quality-3d/models/bladeshell-runtime-v1.glb?v=valley-boss1-v1',
   worldHeight: 2.6,
+  // Authored facing is -Y in Blender, which a Y-up export turns into +Z.
+  modelYaw: Math.PI / 2,
   clips: {
     idle: 'Idle',
     walk: 'Walk',

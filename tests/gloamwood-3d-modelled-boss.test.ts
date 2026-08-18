@@ -83,6 +83,15 @@ describe('Runtime wiring', () => {
     expect(source).not.toMatch(/import\.meta\.env\.DEV && debugParams\.get\('evolutionGate'\)/)
   })
 
+  it('corrects the model\'s authored facing onto the game\'s forward', () => {
+    // The runtime rotates a boss by facingRadians, where zero is +X, while a
+    // Blender model exported Y-up faces +Z. Without the quarter turn the
+    // creature aims its blades ninety degrees away from its target - which is
+    // how it first shipped.
+    expect(GLOAMWOOD_BLADESHELL_BOSS.modelYaw).toBeCloseTo(Math.PI / 2, 6)
+    expect(source).toContain('gltf.scene.rotation.y = config.modelYaw')
+  })
+
   it('lets the clip own the motion instead of nudging the root as well', () => {
     expect(source).toContain('visual.body.position.x = visual.model ? 0 : strike * 0.65')
   })

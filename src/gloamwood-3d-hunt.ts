@@ -2443,6 +2443,9 @@ class Gloamwood3DHunt {
     gltf.scene.updateMatrixWorld(true)
     const grounded = new THREE.Box3().setFromObject(gltf.scene)
     gltf.scene.position.y -= grounded.min.y
+    // Same correction the player forms apply through modelYaw. The boss root is
+    // rotated by facingRadians, where zero is +X, and a Y-up export faces +Z.
+    gltf.scene.rotation.y = config.modelYaw
     visual.body.add(gltf.scene)
     visual.materials.length = 0
     gltf.scene.traverse((node) => {
