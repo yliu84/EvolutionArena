@@ -317,3 +317,45 @@ describe('Fighting distance is measured from the creature, not its family', () =
     expect(inspectGloamwoodPlayerPreyClearance({ x: 0, z: 0 }, playerRadius, state.prey)).toBeGreaterThanOrEqual(-0.00001)
   })
 })
+
+describe('The guardian fights back inside its arena', () => {
+  const ARENA = { x: 0, z: 0 }
+  const ARENA_RADIUS = 4.2
+
+  function fight(playerBodyRadius: number, seconds = 30) {
+    let state = awakenGloamwoodNestGuardian(createGloamwoodNestState())
+    state = { ...state, prey: [{ ...state.prey[0], x: ARENA.x, z: ARENA.z }] }
+    const player = { x: 3.6, z: 0, alive: true, bodyRadius: playerBodyRadius }
+    let attacks = 0
+    for (let frame = 0; frame < 60 * seconds; frame += 1) {
+      const step = stepGloamwoodNest(state, 1 / 60, player)
+      // The runtime clamps prey into the arena during this phase; without it the
+      // bug does not reproduce, which is why the clamp belongs in the test.
+      state = { ...step.state, prey: step.state.prey.map((prey) => clampGloamwoodPreyToArena(prey, ARENA, ARENA_RADIUS)) }
+      attacks += step.events.filter((event) => event.type === 'prey-attack').length
+    }
+    return attacks
+  }
+
+  it('attacks whatever the player body radius, so a wider ring cannot silence it', () => {
+    // Regression: attacking required arriving at a slot position as well as
+    // being at the right distance. Widening the guardian's action ring to match
+    // its real 1.82 body put that slot outside the 4.2 arena, so it walked at an
+    // unreachable point forever. Ten attacks became zero, and the player took no
+    // damage at all for the whole fight.
+    for (const playerBodyRadius of [1.28, 1.49, 1.5296, 1.7]) {
+      expect(fight(playerBodyRadius), `player radius ${playerBodyRadius}`).toBeGreaterThan(5)
+    }
+  })
+
+  it('still spreads a pack around the player rather than stacking it', () => {
+    // Dropping the slot requirement from the attack gate must not drop it from
+    // the approach: the slot is still what spaces a wave out.
+    let state = stepGloamwoodNest(createGloamwoodNestState(), 0.05, { x: GLOAMWOOD_NEST.centerX, z: GLOAMWOOD_NEST.centerZ, alive: true }).state
+    state = { ...state, prey: state.prey.map((prey, index) => ({ ...prey, x: 6 + index * 0.1, z: 0, slot: index })) }
+    for (let frame = 0; frame < 60 * 6; frame += 1) {
+      state = stepGloamwoodNest(state, 1 / 60, { x: 0, z: 0, alive: true, bodyRadius: 1.28 }).state
+    }
+    expect(inspectGloamwoodPreyPairClearance(state.prey)).toBeGreaterThan(-0.2)
+  })
+})

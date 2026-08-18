@@ -351,7 +351,17 @@ function stepPrey(
   }
 
   if (next.phase === 'chase') {
-    if (desiredDistance <= GLOAMWOOD_COMBAT_SPACING.slotArrivalTolerance && playerDistance <= stopDistance + 0.18) {
+    // Attacking is gated on being the right distance from the player, not on
+    // reaching a particular angle around them. The slot steers the approach so
+    // a pack spreads out; requiring arrival at it as well meant any creature
+    // whose slot it could not physically occupy never attacked at all.
+    //
+    // The guardian fight is exactly that case. Its arena clamps prey inside a
+    // 4.2 radius, and widening the guardian's action ring to match its real
+    // body put its slot outside that circle: it walked at an unreachable point
+    // forever and never threw a single attack. Measured over 30 seconds it went
+    // from ten attacks to zero the moment the ring passed what the arena allows.
+    if (playerDistance <= stopDistance + 0.18) {
       return { state: enterPhase(next, 'telegraph'), events }
     }
     if (desiredDistance > 0.001) {
