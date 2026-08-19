@@ -107,7 +107,14 @@ def resolve_unnamed_quadruped(armature):
     # and the hips, with one chain running forward to the front legs and another
     # back to the rear ones. Assuming a single spine with a head on the end of it
     # is what produced a "head" that was actually the hindquarters.
-    leg_bones = {name for chain in legs.values() for name in chain}
+    # A bone claimed by more than one leg is a body bone, not a leg bone. On a
+    # round creature all four legs hang off the same trunk vertebra, and letting
+    # each leg keep it left the mid-line chain with nothing in it but the root.
+    claims = {}
+    for key, chain in legs.items():
+        for name in chain:
+            claims.setdefault(name, set()).add(key)
+    leg_bones = {name for name, owners in claims.items() if len(owners) == 1}
     midline = spans[side] * 0.18
     by_name = {bone.name: bone for bone in bones}
 
@@ -121,17 +128,15 @@ def resolve_unnamed_quadruped(armature):
         return list(reversed(chain))
 
     def branch_of(*keys):
-        """Where a pair of legs joins the body."""
-        parents = set()
-        for key in keys:
-            first = by_name[legs[key][0]]
-            parents.add(first.parent.name if first.parent else root.name)
-        if len(parents) != 1:
-            # Each leg hangs off its own stub; take the common ancestor instead.
-            paths = [path_to(by_name[legs[key][0]]) for key in keys]
-            shared = [name for name in paths[0] if all(name in path for path in paths[1:])]
-            return shared[-1]
-        return parents.pop()
+        """Deepest bone both legs of a pair still share.
+
+        Taken from the paths rather than from a leg's parent: where the legs
+        branch off a common vertebra, the parent is one bone too high and the
+        mid-line chain comes back empty.
+        """
+        paths = [path_to(by_name[legs[key][0]]) for key in keys]
+        shared = [name for name in paths[0] if all(name in path for path in paths[1:])]
+        return shared[-1]
 
     spine = [name for name in path_to(by_name[branch_of("frontLeft", "frontRight")])
              if name not in leg_bones]
