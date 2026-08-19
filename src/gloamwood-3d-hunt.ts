@@ -141,6 +141,7 @@ import {
 } from './gloamwood-input-settings'
 import { assetUrl } from './asset-url'
 import { gloamwoodOccludesCameraView } from './gloamwood-camera-occlusion'
+import { createGloamwoodMap, type GloamwoodMapContract } from './gloamwood-map'
 import {
   GLOAMWOOD_MODELLED_PREY,
   gloamwoodPreyClipForPhase,
@@ -532,6 +533,17 @@ class Gloamwood3DHunt {
   private readonly nestRoot = new THREE.Group()
   private readonly preyVisuals = new Map<string, PreyVisual>()
   private preyModelError?: string
+  /**
+   * The ground this run is played on.
+   *
+   * Read through a contract rather than off a module function, so the same
+   * runtime can be handed a different map. Behaviour on the Gloamwood is
+   * unchanged - the contract wraps the functions that were already there.
+   */
+  private readonly map: GloamwoodMapContract = createGloamwoodMap(
+    terrainHeight,
+    { halfWidth: WORLD_HALF_WIDTH, halfDepth: WORLD_HALF_DEPTH },
+  )
   private readonly preyTemplates = new Map<GloamwoodPreyKind, { scene: THREE.Group; clips: THREE.AnimationClip[]; config: GloamwoodModelledPreyConfig }>()
   private readonly feedbackMeshes: Array<{ mesh: THREE.Mesh; age: number; duration: number }> = []
   private readonly dustParticles: DustParticle[] = []
@@ -909,7 +921,7 @@ class Gloamwood3DHunt {
       const z = (random() - 0.5) * 34
       const scale = 0.35 + random() * 1.25
       matrix.compose(
-        new THREE.Vector3(x, terrainHeight(x, z) + 0.014, z),
+        new THREE.Vector3(x, this.map.height(x, z) + 0.014, z),
         new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), random() * Math.PI),
         new THREE.Vector3(scale * (0.7 + random() * 0.8), 1, scale),
       )
@@ -939,7 +951,7 @@ class Gloamwood3DHunt {
       const width = 1.8 + Math.sin(t * Math.PI * 5) * 0.18
       const normal = new THREE.Vector3(-tangent.z, 0, tangent.x)
       for (const side of [-1, 1]) {
-        vertices.push(point.x + normal.x * width * side, terrainHeight(point.x, point.z) + 0.045, point.z + normal.z * width * side)
+        vertices.push(point.x + normal.x * width * side, this.map.height(point.x, point.z) + 0.045, point.z + normal.z * width * side)
       }
       if (index < segments) {
         const base = index * 2
@@ -977,7 +989,7 @@ class Gloamwood3DHunt {
       const x = point.x + normal.x * offset
       const z = point.z + normal.z * offset
       const scale = 0.45 + random() * 1.2
-      matrix.compose(new THREE.Vector3(x, terrainHeight(x, z) + 0.08, z), new THREE.Quaternion().random(), new THREE.Vector3(scale, scale * 0.55, scale))
+      matrix.compose(new THREE.Vector3(x, this.map.height(x, z) + 0.08, z), new THREE.Quaternion().random(), new THREE.Vector3(scale, scale * 0.55, scale))
       pebbles.setMatrixAt(index, matrix)
     }
     pebbles.castShadow = true
@@ -1068,7 +1080,7 @@ class Gloamwood3DHunt {
         const batch = new THREE.InstancedMesh(part.geometry, part.material, spots.length)
         for (const [index, spot] of spots.entries()) {
           placement.compose(
-            new THREE.Vector3(spot.x, terrainHeight(spot.x, spot.z) - 0.02, spot.z),
+            new THREE.Vector3(spot.x, this.map.height(spot.x, spot.z) - 0.02, spot.z),
             rotation.setFromAxisAngle(worldUp, spot.yaw),
             new THREE.Vector3(spot.size, spot.size, spot.size),
           )
@@ -1116,7 +1128,7 @@ class Gloamwood3DHunt {
     const footprint = treeFootprint(variant, treeSizeFactor(scale))
     const group = template.clone(true)
     group.scale.multiplyScalar(footprint.height)
-    group.position.set(x, terrainHeight(x, z), z)
+    group.position.set(x, this.map.height(x, z), z)
     group.rotation.y = (index * 2.399) % (Math.PI * 2)
     this.scene.add(group)
     // Track the crown as a 3D occluder. A ground-plane trunk test misses crowns
@@ -1140,7 +1152,7 @@ class Gloamwood3DHunt {
     const rock = template.clone(true)
     rock.scale.multiplyScalar(footprint.diameter)
     // Sink slightly so irregular bases read as bedded into the terrain.
-    rock.position.set(x, terrainHeight(x, z) - footprint.diameter * 0.05, z)
+    rock.position.set(x, this.map.height(x, z) - footprint.diameter * 0.05, z)
     rock.rotation.y = randomValue * Math.PI * 2
     this.scene.add(rock)
     this.obstacles.push({ id: `rock-${index}`, kind: 'rock', x, z, radius: footprint.radius })
@@ -1148,7 +1160,7 @@ class Gloamwood3DHunt {
   }
 
   private createShrine() {
-    const center = new THREE.Vector3(8, terrainHeight(8, -5), -5)
+    const center = new THREE.Vector3(8, this.map.height(8, -5), -5)
     const stone = new THREE.MeshStandardMaterial({ color: 0x6a7264, roughness: 0.9 })
     const moss = new THREE.MeshStandardMaterial({ color: 0x405b37, roughness: 1 })
     const base = new THREE.Mesh(new THREE.CylinderGeometry(5.4, 5.8, 0.62, 14), stone)
@@ -1252,7 +1264,7 @@ class Gloamwood3DHunt {
       const shaft = new THREE.Mesh(shaftGeometry, material)
       const x = tree.x + (random() - 0.5) * 3
       const z = tree.z + (random() - 0.5) * 3
-      shaft.position.set(x, terrainHeight(x, z) + 4.4, z)
+      shaft.position.set(x, this.map.height(x, z) + 4.4, z)
       // Lean along the key light (sun sits at -12, 22, 10 → beams fall +x, -z).
       shaft.rotation.set(0.1, random() * Math.PI, -0.26)
       shaft.renderOrder = 3
@@ -1318,7 +1330,7 @@ class Gloamwood3DHunt {
 
   private createNest() {
     this.nestRoot.name = 'CorruptedBroodNest'
-    this.nestRoot.position.set(GLOAMWOOD_NEST.centerX, terrainHeight(GLOAMWOOD_NEST.centerX, GLOAMWOOD_NEST.centerZ) + 0.94, GLOAMWOOD_NEST.centerZ)
+    this.nestRoot.position.set(GLOAMWOOD_NEST.centerX, this.map.height(GLOAMWOOD_NEST.centerX, GLOAMWOOD_NEST.centerZ) + 0.94, GLOAMWOOD_NEST.centerZ)
     const rootMaterial = new THREE.MeshStandardMaterial({ color: 0x4b2826, roughness: 0.94 })
     const coreMaterial = new THREE.MeshStandardMaterial({ color: 0x7f322d, roughness: 0.7, emissive: 0x2d0906, emissiveIntensity: 0.7 })
     const sporeMaterial = new THREE.MeshStandardMaterial({ color: 0xa6d65c, roughness: 0.58, emissive: 0x213e0f, emissiveIntensity: 0.8 })
@@ -1863,14 +1875,15 @@ class Gloamwood3DHunt {
     this.moving = hasMovementIntent && !this.turning
     if (this.moving) {
       const next = this.playerRoot.position.clone().addScaledVector(this.movement, PLAYER_SPEED * this.moveSpeedMultiplier * this.movementInputStrength * delta)
-      next.x = THREE.MathUtils.clamp(next.x, -WORLD_HALF_WIDTH, WORLD_HALF_WIDTH)
-      next.z = THREE.MathUtils.clamp(next.z, -WORLD_HALF_DEPTH, WORLD_HALF_DEPTH)
+      const held = this.map.confine(next.x, next.z)
+      next.x = held.x
+      next.z = held.z
       this.confineToArena(next)
       this.resolveObstacles(next)
       this.playerRoot.position.x = next.x
       this.playerRoot.position.z = next.z
     }
-    this.playerRoot.position.y = terrainHeight(this.playerRoot.position.x, this.playerRoot.position.z)
+    this.playerRoot.position.y = this.map.height(this.playerRoot.position.x, this.playerRoot.position.z)
     if (!this.playerCombat.alive) {
       this.setAction('Death')
       return
@@ -2018,7 +2031,7 @@ class Gloamwood3DHunt {
       if (arenaFight) {
         this.playerRoot.position.set(
           GLOAMWOOD_BOSS_ARENA.playerX,
-          terrainHeight(GLOAMWOOD_BOSS_ARENA.playerX, GLOAMWOOD_BOSS_ARENA.playerZ),
+          this.map.height(GLOAMWOOD_BOSS_ARENA.playerX, GLOAMWOOD_BOSS_ARENA.playerZ),
           GLOAMWOOD_BOSS_ARENA.playerZ,
         )
       } else {
@@ -2360,8 +2373,9 @@ class Gloamwood3DHunt {
         this.playerRoot.position.x += dx * inverse * knockbackDistance
         this.playerRoot.position.z += dz * inverse * knockbackDistance
         this.confineToArena(this.playerRoot.position)
-        this.playerRoot.position.x = THREE.MathUtils.clamp(this.playerRoot.position.x, -WORLD_HALF_WIDTH, WORLD_HALF_WIDTH)
-        this.playerRoot.position.z = THREE.MathUtils.clamp(this.playerRoot.position.z, -WORLD_HALF_DEPTH, WORLD_HALF_DEPTH)
+        const held = this.map.confine(this.playerRoot.position.x, this.playerRoot.position.z)
+        this.playerRoot.position.x = held.x
+        this.playerRoot.position.z = held.z
         this.resolveObstacles(this.playerRoot.position)
         // Knockback is a completed hit reaction, not a new move command. Reset
         // the click-to-move destination so the controller does not immediately
@@ -2444,7 +2458,7 @@ class Gloamwood3DHunt {
     const visual = this.bossVisual
     if (!visual) return
     visual.root.visible = this.runPhase === 'boss' || this.runPhase === 'victory'
-    visual.root.position.set(this.bossState.x, terrainHeight(this.bossState.x, this.bossState.z), this.bossState.z)
+    visual.root.position.set(this.bossState.x, this.map.height(this.bossState.x, this.bossState.z), this.bossState.z)
     visual.root.rotation.y = this.bossState.facingRadians
     visual.targetRing.visible = this.bossActive() && this.bossLocked
     const telegraphing = this.bossState.state === 'telegraph'
@@ -2678,7 +2692,7 @@ class Gloamwood3DHunt {
         depthWrite: false,
       })
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(leapBite ? 0.2 : 0.16, leapBite ? 1.12 : 1.82), material)
-      mesh.position.set(target.x, terrainHeight(target.x, target.z) + (target.kind === 'shell' ? 1.28 : 0.94), target.z)
+      mesh.position.set(target.x, this.map.height(target.x, target.z) + (target.kind === 'shell' ? 1.28 : 0.94), target.z)
       mesh.rotation.set(0, -this.camera.rotation.y, leapBite ? (index === 0 ? 0.28 : Math.PI + 0.28) : (index === 0 ? -0.55 : 0.48))
       mesh.scale.setScalar(recipe.scale)
       mesh.renderOrder = 10
@@ -2731,7 +2745,7 @@ class Gloamwood3DHunt {
     for (const prey of this.nestState.prey) {
       const visual = this.preyVisuals.get(prey.id) ?? this.createPreyVisual(prey)
       const spec = GLOAMWOOD_PREY[prey.kind]
-      visual.root.position.set(prey.x, terrainHeight(prey.x, prey.z), prey.z)
+      visual.root.position.set(prey.x, this.map.height(prey.x, prey.z), prey.z)
       visual.root.rotation.y = prey.facingRadians
       visual.root.visible = true
       visual.targetRing.visible = prey.phase !== 'dead' && this.lockedPreyId === prey.id
@@ -2779,7 +2793,7 @@ class Gloamwood3DHunt {
       particle.age = 0
       particle.duration = GLOAMWOOD_3D_LOCOMOTION_FEEL.dustDurationSeconds * (0.86 + (index % 3) * 0.09)
       particle.startScale = 0.26 + (index % 4) * 0.045
-      particle.sprite.position.set(x, terrainHeight(x, z) + 0.11 + (index % 2) * 0.04, z)
+      particle.sprite.position.set(x, this.map.height(x, z) + 0.11 + (index % 2) * 0.04, z)
       particle.sprite.scale.setScalar(particle.startScale)
       particle.sprite.visible = true
       particle.velocity.set(
@@ -3473,7 +3487,7 @@ class Gloamwood3DHunt {
     this.nestRoot.visible = false
     this.playerRoot.position.set(
       GLOAMWOOD_BOSS_ARENA.playerX,
-      terrainHeight(GLOAMWOOD_BOSS_ARENA.playerX, GLOAMWOOD_BOSS_ARENA.playerZ),
+      this.map.height(GLOAMWOOD_BOSS_ARENA.playerX, GLOAMWOOD_BOSS_ARENA.playerZ),
       GLOAMWOOD_BOSS_ARENA.playerZ,
     )
     this.resolveObstacles(this.playerRoot.position)
@@ -3496,7 +3510,7 @@ class Gloamwood3DHunt {
     this.nestRoot.visible = false
     this.playerRoot.position.set(
       GLOAMWOOD_BOSS_ARENA.playerX,
-      terrainHeight(GLOAMWOOD_BOSS_ARENA.playerX, GLOAMWOOD_BOSS_ARENA.playerZ),
+      this.map.height(GLOAMWOOD_BOSS_ARENA.playerX, GLOAMWOOD_BOSS_ARENA.playerZ),
       GLOAMWOOD_BOSS_ARENA.playerZ,
     )
     this.resolveObstacles(this.playerRoot.position)
@@ -3676,11 +3690,10 @@ class Gloamwood3DHunt {
       document.body.append(this.debugOutput)
       const api = {
         getState: () => this.getDebugState(),
-        setMoveTarget: (x: number, z: number) => this.target.set(
-          THREE.MathUtils.clamp(x, -WORLD_HALF_WIDTH, WORLD_HALF_WIDTH),
-          0,
-          THREE.MathUtils.clamp(z, -WORLD_HALF_DEPTH, WORLD_HALF_DEPTH),
-        ),
+        setMoveTarget: (x: number, z: number) => {
+          const held = this.map.confine(x, z)
+          this.target.set(held.x, 0, held.z)
+        },
         toggleTargetLock: () => this.toggleEnemyLock(),
         attack: () => this.requestPrimaryAttack(),
         chooseEvolution: (index: number) => this.chooseEvolution(index),
@@ -4388,7 +4401,7 @@ class Gloamwood3DHunt {
         landingEvents: this.leapBiteLandingEvents,
       },
       moving: this.moving,
-      grounded: Math.abs(this.playerRoot.position.y - terrainHeight(this.playerRoot.position.x, this.playerRoot.position.z)) < 0.001,
+      grounded: Math.abs(this.playerRoot.position.y - this.map.height(this.playerRoot.position.x, this.playerRoot.position.z)) < 0.001,
       locomotion: {
         runPoseWeight: RUN_POSE_WEIGHT,
         idleSupportWeight: IDLE_SUPPORT_WEIGHT,
