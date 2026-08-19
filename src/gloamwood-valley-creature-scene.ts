@@ -8,6 +8,7 @@ import {
   gloamwoodModelledPreyFor,
   gloamwoodPreyClipForPhase,
   gloamwoodPreyClipRate,
+  gloamwoodPreyWalkRate,
   type GloamwoodModelledPreyConfig,
 } from './gloamwood-modelled-prey'
 import {
@@ -37,6 +38,10 @@ interface CreatureVisual {
   action?: THREE.AnimationAction
   clipName?: string
   previousPhase?: GloamwoodValleyCreature['phase']
+  /** Last drawn position, so the walk rate can follow real ground speed. */
+  lastX: number
+  lastZ: number
+  walking?: boolean
 }
 
 export interface GloamwoodValleyCreatureScene {
@@ -98,6 +103,8 @@ export async function buildGloamwoodValleyCreatureScene(
       mixer: new THREE.AnimationMixer(body),
       clips: new Map(template.clips.map((clip) => [clip.name, clip])),
       config,
+      lastX: creature.x,
+      lastZ: creature.z,
     })
   }
 
@@ -122,6 +129,13 @@ export async function buildGloamwoodValleyCreatureScene(
         drawn += 1
         visual.root.position.set(creature.x, gloamwoodValleyCreatureHeight(creature), creature.z)
         visual.root.rotation.y = creature.facingRadians
+        // Measured, not assumed. A creature slowed by circling, by a knockback
+        // or by the crowd around it moves at neither its spec speed nor zero,
+        // and only the distance it actually covered knows which.
+        const travelled = Math.hypot(creature.x - visual.lastX, creature.z - visual.lastZ)
+        const groundSpeed = delta > 0 ? travelled / delta : 0
+        visual.lastX = creature.x
+        visual.lastZ = creature.z
 
         const spec = GLOAMWOOD_PREY[creature.kind]
         const selection = gloamwoodPreyClipForPhase(
@@ -139,10 +153,24 @@ export async function buildGloamwoodValleyCreatureScene(
           next.timeScale = selection.clip === visual.config.clips.attack
             ? gloamwoodPreyClipRate(clip.duration, spec.telegraphSeconds, spec.strikeSeconds)
             : 1
+          visual.walking = selection.clip === visual.config.clips.walk
           if (visual.action && visual.action !== next) visual.action.fadeOut(0.12)
           next.fadeIn(0.12).play()
           visual.action = next
           visual.clipName = selection.clip
+        }
+        // Re-applied every frame rather than only on a clip change: ground
+        // speed changes continuously, and a rate set once at the start of the
+        // cycle slides again the moment the creature slows down.
+        if (visual.walking && visual.action) {
+          const clip = visual.clips.get(visual.config.clips.walk)
+          if (clip) {
+            visual.action.timeScale = gloamwoodPreyWalkRate(
+              clip.duration,
+              visual.config.footprintRadius,
+              groundSpeed,
+            )
+          }
         }
         visual.previousPhase = creature.phase
         visual.mixer.update(delta)

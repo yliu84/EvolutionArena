@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { GLOAMWOOD_PREY, GLOAMWOOD_PREY_BODY_RADII } from '../src/gloamwood-3d-ecology'
+import { GLOAMWOOD_PREY, gloamwoodPreyBodyRadius } from '../src/gloamwood-3d-ecology'
+import { createGloamwoodValleyCreatures } from '../src/gloamwood-valley-creatures'
 import {
   GLOAMWOOD_FORD_FANG_PREY,
-  GLOAMWOOD_MODELLED_PREY,
   GLOAMWOOD_MODELLED_PREY_CONFIGS,
+  GLOAMWOOD_WALK_STRIDE_FACTOR,
+  gloamwoodModelledPreyFor,
+  gloamwoodPreyWalkRate,
   gloamwoodPreyClipForPhase,
   gloamwoodPreyClipRate,
 } from '../src/gloamwood-modelled-prey'
@@ -12,16 +15,28 @@ import {
 const config = GLOAMWOOD_FORD_FANG_PREY
 
 describe('Footprint', () => {
-  it('matches the collision radius of the family it is worn by', () => {
-    // Blocking that does not match the visible footprint is the Goal 2 lesson.
-    // The processing script scales each model to exactly this number, so a
-    // model swapped in with the wrong body would be caught here rather than in
-    // a fight where it reads as the creature being hard to hit.
-    for (const [kind, entry] of Object.entries(GLOAMWOOD_MODELLED_PREY)) {
-      expect(entry!.footprintRadius).toBeCloseTo(
-        GLOAMWOOD_PREY_BODY_RADII[kind as keyof typeof GLOAMWOOD_PREY_BODY_RADII],
-        5,
-      )
+  it('is what actually blocks the player', () => {
+    // The Goal 2 rule, unchanged: blocking must match the visible footprint.
+    // What changed is where the number comes from. It used to be the family's,
+    // which made every Fang-typed creature the same size - and a river
+    // crocodilian at a goat's radius read as a lizard on the path. A modelled
+    // animal now carries its own size and the family lends only its stats.
+    const creatures = createGloamwoodValleyCreatures(0x5a11e)
+    for (const creature of creatures) {
+      const body = gloamwoodModelledPreyFor(creature.kind, creature.role, creature.branch)
+      if (!body) continue
+      expect(gloamwoodPreyBodyRadius(creature)).toBeCloseTo(body.footprintRadius, 5)
+    }
+  })
+
+  it('keeps every modelled body inside the range the spacing table was built for', () => {
+    // Reach is derived from the radius - stop distance takes it, strike
+    // distance takes stop distance - so a size change cannot put an attack out
+    // of range. It can still make a creature too wide to fight in a choke,
+    // which is nine units of floor at its narrowest.
+    for (const entry of GLOAMWOOD_MODELLED_PREY_CONFIGS) {
+      expect(entry.footprintRadius).toBeGreaterThan(0.5)
+      expect(entry.footprintRadius).toBeLessThan(2)
     }
   })
 
@@ -101,6 +116,39 @@ describe('Clip rate', () => {
         expect(rate).toBeGreaterThanOrEqual(0.1)
         expect(rate).toBeLessThanOrEqual(4)
       }
+    }
+  })
+})
+
+describe('Walking without sliding', () => {
+  it('speeds the cycle up as the creature moves faster', () => {
+    // A walk clip at a fixed rate slides: the creature is carried by its
+    // movement and its legs swing at whatever they were authored for, and the
+    // two have nothing to do with each other.
+    const slow = gloamwoodPreyWalkRate(2, 1.55, 1)
+    const fast = gloamwoodPreyWalkRate(2, 1.55, 3.65)
+    expect(fast).toBeGreaterThan(slow)
+  })
+
+  it('plays a cycle in the time the creature takes to cover a stride', () => {
+    const clipSeconds = 2
+    const radius = 1.55
+    const speed = 3.65
+    const stride = GLOAMWOOD_WALK_STRIDE_FACTOR * 2 * radius
+    const rate = gloamwoodPreyWalkRate(clipSeconds, radius, speed)
+    expect((clipSeconds / rate) * speed).toBeCloseTo(stride, 5)
+  })
+
+  it('gives a bigger animal a slower cycle at the same speed', () => {
+    // Longer legs cover more ground per stride, so they swing less often.
+    expect(gloamwoodPreyWalkRate(2, 1.55, 3)).toBeLessThan(gloamwoodPreyWalkRate(2, 0.7, 3))
+  })
+
+  it('never freezes and never blurs', () => {
+    for (const speed of [0, 0.01, 40]) {
+      const rate = gloamwoodPreyWalkRate(2, 1.55, speed)
+      expect(rate).toBeGreaterThanOrEqual(0.35)
+      expect(rate).toBeLessThanOrEqual(4)
     }
   })
 })

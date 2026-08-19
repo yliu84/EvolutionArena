@@ -48,7 +48,12 @@ export interface GloamwoodModelledPreyConfig {
 export const GLOAMWOOD_FORD_FANG_PREY: GloamwoodModelledPreyConfig = {
   id: 'ford-fang',
   url: '/assets/quality-3d/models/ford-fang-runtime-v1.glb?v=valley-prey-fang-v1',
-  footprintRadius: 1.02,
+  // 1.02 was the Fang family's radius, and at that size a river crocodilian
+  // beside a 2.55-tall player read as a lizard on the path. These are modelled
+  // animals rather than code-built shapes: they carry their own size, and reach
+  // follows it because stop distance and strike distance are both derived from
+  // the body radius.
+  footprintRadius: 1.55,
   // Authored nose along +Z after a Y-up export.
   modelYaw: Math.PI / 2,
   clips: { idle: 'Idle', walk: 'Walk', attack: 'Bite', hit: 'Hit', death: 'Death' },
@@ -57,7 +62,8 @@ export const GLOAMWOOD_FORD_FANG_PREY: GloamwoodModelledPreyConfig = {
 export const GLOAMWOOD_TERRACE_GRAZER_PREY: GloamwoodModelledPreyConfig = {
   id: 'terrace-grazer',
   url: '/assets/quality-3d/models/terrace-grazer-runtime-v1.glb?v=valley-grazer-v1',
-  footprintRadius: 1.02,
+  // Chest height on the player rather than knee height.
+  footprintRadius: 1.5,
   modelYaw: Math.PI / 2,
   clips: { idle: 'Idle', walk: 'Walk', attack: 'Butt', hit: 'Hit', death: 'Death' },
 }
@@ -175,6 +181,36 @@ export function gloamwoodPreyClipForPhase(
  * strike keeps them in step without the authority ever consulting the
  * animation - which is what keeps presentation out of the damage path.
  */
+/**
+ * How fast to play a walk cycle so the feet keep up with the ground.
+ *
+ * A walk clip played at a fixed rate slides: the creature is carried by its
+ * movement speed and its legs swing at whatever rate they were authored for,
+ * and the two have nothing to do with each other. What stops it is deriving the
+ * rate from the distance actually covered.
+ *
+ * The stride a cycle covers is taken from the body rather than tuned per model.
+ * A quadruped's walk cycle carries it a little over its own body length, and
+ * the body length is already known - it is twice the footprint radius, which
+ * every config carries because collision needs it. So one formula fits every
+ * body, and a new creature needs no walk-speed number guessed for it.
+ *
+ * Clamped at both ends: below the floor a creature that has almost stopped
+ * would freeze mid-stride, and above the ceiling one knocked back at speed
+ * would blur its legs.
+ */
+export const GLOAMWOOD_WALK_STRIDE_FACTOR = 1.2
+
+export function gloamwoodPreyWalkRate(
+  clipSeconds: number,
+  footprintRadius: number,
+  metresPerSecond: number,
+) {
+  const strideDistance = GLOAMWOOD_WALK_STRIDE_FACTOR * 2 * Math.max(0.01, footprintRadius)
+  const authoredSpeed = strideDistance / Math.max(0.001, clipSeconds)
+  return Math.max(0.35, Math.min(4, Math.max(0, metresPerSecond) / authoredSpeed))
+}
+
 export function gloamwoodPreyClipRate(
   clipSeconds: number,
   telegraphSeconds: number,

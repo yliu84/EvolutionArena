@@ -145,6 +145,7 @@ import {
   GLOAMWOOD_MODELLED_PREY,
   gloamwoodPreyClipForPhase,
   gloamwoodPreyClipRate,
+  gloamwoodPreyWalkRate,
   type GloamwoodModelledPreyConfig,
 } from './gloamwood-modelled-prey'
 import {
@@ -329,6 +330,9 @@ interface PreyVisual {
     action?: THREE.AnimationAction
     clipName?: string
     previousPhase?: GloamwoodPreyPhase
+    /** Last frame's position, so the walk cycle can follow real ground speed. */
+    lastX?: number
+    lastZ?: number
   }
   telegraph: THREE.Mesh
   targetRing: THREE.Mesh
@@ -2560,6 +2564,13 @@ class Gloamwood3DHunt {
     const model = visual.model
     if (!model) return
     const spec = GLOAMWOOD_PREY[prey.kind]
+    // Kept on the model rather than read off the root. The root has already
+    // been moved to this frame's position by the time the clip is chosen, so
+    // measuring against it gives zero every frame and the walk never speeds up.
+    const travelled = Math.hypot(prey.x - (model.lastX ?? prey.x), prey.z - (model.lastZ ?? prey.z))
+    const groundSpeed = delta > 0 ? travelled / delta : 0
+    model.lastX = prey.x
+    model.lastZ = prey.z
     const moving = prey.phase === 'chase'
     const selection = gloamwoodPreyClipForPhase(prey.phase, model.config, model.previousPhase, moving)
     const clip = model.clips.get(selection.clip)
@@ -2577,6 +2588,15 @@ class Gloamwood3DHunt {
       next.fadeIn(0.12).play()
       model.action = next
       model.clipName = selection.clip
+    }
+    // A walk cycle at a fixed rate slides: the creature is carried by its
+    // movement and its legs swing at whatever they were authored for. Re-applied
+    // every frame because ground speed changes continuously.
+    if (model.clipName === model.config.clips.walk && model.action) {
+      const walk = model.clips.get(model.config.clips.walk)
+      if (walk) {
+        model.action.timeScale = gloamwoodPreyWalkRate(walk.duration, model.config.footprintRadius, groundSpeed)
+      }
     }
     model.previousPhase = prey.phase
     model.mixer.update(delta)

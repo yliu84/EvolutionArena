@@ -17,6 +17,7 @@ import {
   type GloamwoodValleySpawn,
   type GloamwoodValleySpawnTier,
 } from './gloamwood-valley-spawns'
+import { gloamwoodModelledPreyFor } from './gloamwood-modelled-prey'
 import { gloamwoodValleyConfine, gloamwoodValleyHeight } from './gloamwood-valley-terrain'
 
 /**
@@ -53,6 +54,10 @@ function fromSpawn(spawn: GloamwoodValleySpawn, index: number, runSeed: string):
   // Elites are tougher and carry an affix; everything else is its family.
   const elite = spawn.tier === 'elite' ? createGloamwoodElite(runSeed, spawn.id, gloamwoodEliteMaxHealth(spec.maxHealth)) : undefined
   const maxHealth = spawn.tier === 'elite' ? gloamwoodEliteMaxHealth(spec.maxHealth) : spec.maxHealth
+  // The body it wears decides how big it is, so what blocks the player is the
+  // creature they can see. Falls back to the family radius for anything with no
+  // model yet.
+  const body = gloamwoodModelledPreyFor(spawn.kind, spawn.role, spawn.branch)
   return {
     id: spawn.id,
     kind: spawn.kind,
@@ -69,6 +74,7 @@ function fromSpawn(spawn: GloamwoodValleySpawn, index: number, runSeed: string):
     z: spawn.z,
     homeX: spawn.x,
     homeZ: spawn.z,
+    bodyRadius: body?.footprintRadius,
     facingRadians: index * 2.399,
     attackResolved: false,
     slot: index % 6,

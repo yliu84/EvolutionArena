@@ -62,6 +62,8 @@ export interface GloamwoodNestPrey {
    * say never.
    */
   stunImmuneSeconds?: number
+  /** Overrides the family radius. Set on modelled creatures, which have a size. */
+  bodyRadius?: number
   /**
    * Set only on elites.
    *
@@ -168,7 +170,20 @@ export const GLOAMWOOD_PREY_BODY_RADII: Record<GloamwoodPreyKind, number> = {
   swarm: 0.64,
 }
 
-export function gloamwoodPreyBodyRadius(prey: Pick<GloamwoodNestPrey, 'id' | 'kind'>) {
+export function gloamwoodPreyBodyRadius(
+  prey: Pick<GloamwoodNestPrey, 'id' | 'kind'> & { bodyRadius?: number },
+) {
+  // A creature may carry its own size. The Gloamwood's prey are code-built
+  // shapes whose family radius is the only size they have; the valley's are
+  // modelled animals, and a goat is not the same size as a river crocodilian
+  // just because both are typed Fang.
+  //
+  // Safe to widen because reach is already derived from it: `stopDistance`
+  // takes the body radius and `attackDistance` takes the stop distance, so a
+  // larger creature stands further out *and* strikes further. This is the one
+  // place in the project where a size change does not silently put an attack
+  // out of range.
+  if (prey.bodyRadius !== undefined) return prey.bodyRadius
   return prey.id === GLOAMWOOD_NEST_GUARDIAN.id ? GLOAMWOOD_NEST_GUARDIAN.bodyRadius : GLOAMWOOD_PREY_BODY_RADII[prey.kind]
 }
 
