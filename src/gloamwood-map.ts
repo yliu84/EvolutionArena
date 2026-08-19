@@ -15,6 +15,14 @@
  * would be a second place to look when a fight misbehaves.
  */
 
+import {
+  createGloamwoodNestState,
+  stepGloamwoodNest,
+  type GloamwoodNestEvent,
+  type GloamwoodNestState,
+  type GloamwoodPlayerPresence,
+} from './gloamwood-3d-ecology'
+
 export type GloamwoodMapId = 'gloamwood' | 'valley'
 
 export interface GloamwoodMapBounds {
@@ -48,6 +56,29 @@ export interface GloamwoodMapContract {
   bounds: GloamwoodMapBounds
   /** Where the player starts a run. */
   spawn: { x: number; z: number }
+  /**
+   * The creatures the map begins with.
+   *
+   * The Gloamwood begins empty and its nest spawns waves when the player walks
+   * into it. The valley begins with everything already standing where it lives.
+   */
+  createCreatures(): GloamwoodNestState
+  /**
+   * One frame of creature behaviour.
+   *
+   * The container is shared on purpose. Genes, biomass and kills belong to the
+   * run rather than to the nest, and the valley needs all three; what actually
+   * differs between maps is who is on the field and how they are stepped, which
+   * is this one call. Sixty-three references to the state elsewhere in the
+   * runtime are untouched by that, and would have been rewritten by any
+   * abstraction that replaced the container instead.
+   */
+  stepCreatures(
+    state: GloamwoodNestState,
+    delta: number,
+    player: GloamwoodPlayerPresence,
+    struck: readonly string[],
+  ): { state: GloamwoodNestState; events: GloamwoodNestEvent[] }
 }
 
 /**
@@ -74,5 +105,7 @@ export function createGloamwoodMap(
     },
     bounds,
     spawn: { x: -6, z: 3 },
+    createCreatures: createGloamwoodNestState,
+    stepCreatures: (state, delta, player) => stepGloamwoodNest(state, delta, player),
   }
 }

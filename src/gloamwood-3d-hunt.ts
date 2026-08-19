@@ -65,14 +65,12 @@ import {
   GLOAMWOOD_PREY,
   awakenGloamwoodNestGuardian,
   clampGloamwoodPreyToArena,
-  createGloamwoodNestState,
   damageGloamwoodNestPrey,
   inspectGloamwoodPlayerPreyClearance,
   inspectGloamwoodPlayerPreyActionClearance,
   inspectGloamwoodPreyPairClearance,
   gloamwoodPreyBodyRadius,
   resolveGloamwoodPlayerPreyCollision,
-  stepGloamwoodNest,
   type GloamwoodNestPrey,
   type GloamwoodNestState,
   type GloamwoodPreyKind,
@@ -557,7 +555,7 @@ class Gloamwood3DHunt {
   private readonly feedbackMeshes: Array<{ mesh: THREE.Mesh; age: number; duration: number }> = []
   private readonly dustParticles: DustParticle[] = []
   private readonly footstepState = createGloamwoodFootstepState()
-  private nestState: GloamwoodNestState = createGloamwoodNestState()
+  private nestState: GloamwoodNestState = this.map.createCreatures()
   private playerCombat: GloamwoodPlayerCombatState = createGloamwoodPlayerCombatState()
   private attackState: FormalHuntBasicAttackState = createFormalHuntBasicAttackState()
   private combatProfile: GloamwoodCombatProfile = CORAL_GECKO_PRESENTATION.combat
@@ -2287,7 +2285,7 @@ class Gloamwood3DHunt {
       this.updateBoss(delta)
       return
     }
-    const frame = stepGloamwoodNest(this.nestState, delta, {
+    const frame = this.map.stepCreatures(this.nestState, delta, {
       x: this.playerRoot.position.x,
       z: this.playerRoot.position.z,
       alive: this.playerCombat.alive,
@@ -2297,7 +2295,7 @@ class Gloamwood3DHunt {
       // an aggressive creature from a passive one.
       slowAuraRadius: this.mutationEffects.slowAuraRadius,
       slowAuraFactor: this.mutationEffects.slowAuraFactor,
-    })
+    }, [])
     // stepGloamwoodNest already holds prey at their action ring, and it does so
     // knowing where each one stood a frame ago - which is how it tells a prey
     // that closed the gap from a player who walked in. Re-running the same
