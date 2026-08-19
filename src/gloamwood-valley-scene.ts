@@ -14,6 +14,15 @@ import {
   loadGloamwoodKitTemplate,
 } from './gloamwood-kit-loader'
 import {
+  GLOAMWOOD_OCCLUDER_MIN_HEIGHT,
+  gloamwoodOccluderFade,
+  gloamwoodOccludesCameraView,
+  gloamwoodSightlineClearance,
+  gloamwoodRockOccluder,
+  gloamwoodTreeOccluder,
+  type GloamwoodOccluder,
+} from './gloamwood-camera-occlusion'
+import {
   gloamwoodValleyAtmosphereAt,
   gloamwoodValleyTintAt,
   gloamwoodValleyTreeVariantId,
@@ -78,6 +87,15 @@ export interface GloamwoodValleySceneStats {
   props: number
   triangles: number
   batches: number
+  /** Props tall enough to come between the camera and the player. */
+  occluders: number
+}
+
+interface ValleyOccluder extends GloamwoodOccluder {
+  fade: number
+  applied: number
+  /** Every instance slot this prop occupies, one per mesh part. */
+  slots: Array<{ attribute: THREE.InstancedBufferAttribute; index: number }>
 }
 
 export interface GloamwoodValleyScene {
@@ -87,6 +105,26 @@ export interface GloamwoodValleyScene {
   stats: GloamwoodValleySceneStats
   /** Cells drawn from the camera's position, and the fog that goes with it. */
   update(camera: { x: number; z: number; s: number }, elapsed: number, fog: THREE.FogExp2, drawAll?: boolean): void
+  /** Fades whatever stands between the lens and the player. */
+  clearSightline(from: THREE.Vector3, to: THREE.Vector3, delta: number): void
+  /**
+   * What the sightline pass is currently doing.
+   *
+   * Exists to be checked rather than eyeballed. A fade is invisible in a still
+   * frame and this project has twice accepted a screenshot as proof of wiring
+   * that was not connected, so the count is readable directly.
+   */
+  sightlineState(): {
+    occluders: number
+    considered: number
+    cleared: number
+    /**
+     * Closest approach to the sightline among the props considered, as a
+     * multiple of their own radius. Below 1 is a hit. Reported because "nothing
+     * was in the way" and "the test never ran" both come out as zero cleared.
+     */
+    nearest: number
+  }
   dispose(): void
 }
 
@@ -120,13 +158,15 @@ export async function buildGloamwoodValleyScene(options: {
     }),
   ])
 
+  let lastConsidered = 0
+  let lastNearest = Infinity
   const props = scatterGloamwoodValley(options.seed, options.propBudget ?? 6200)
   const cells = groupGloamwoodValleyProps(props).map((cell) => {
     const group = new THREE.Group()
     group.name = `ValleyCell-${cell.cell.column}:${cell.cell.row}`
-    const batches = buildChunk(cell.props, templates, group)
+    const built = buildChunk(cell.props, templates, group)
     root.add(group)
-    return { key: cell.cell, group, batches }
+    return { key: cell.cell, group, batches: built.batches, occluders: built.occluders }
   })
 
   const sun = new THREE.DirectionalLight(0xffeec4, 2.1)
@@ -152,6 +192,7 @@ export async function buildGloamwoodValleyScene(options: {
     props: props.length,
     triangles: countTriangles(root),
     batches: cells.reduce((total, cell) => total + cell.batches, 0),
+    occluders: cells.reduce((total, cell) => total + cell.occluders.length, 0),
   }
 
   const fogColor = new THREE.Color()
@@ -174,6 +215,49 @@ export async function buildGloamwoodValleyScene(options: {
       sun.color.lerp(sunColor.setHex(atmosphere.sunColor), 0.04)
       sun.intensity += (atmosphere.sunIntensity - sun.intensity) * 0.04
       ambient.intensity = 0.55 + atmosphere.sunIntensity * 0.3
+    },
+    sightlineState() {
+      let occluders = 0
+      let cleared = 0
+      for (const cell of cells) {
+        occluders += cell.occluders.length
+        for (const occluder of cell.occluders) if (occluder.fade < 0.92) cleared += 1
+      }
+      return { occluders, considered: lastConsidered, cleared, nearest: lastNearest }
+    },
+    clearSightline(from, to, delta) {
+      lastConsidered = 0
+      lastNearest = Infinity
+      // Only the cells the sightline crosses are considered. The segment is
+      // sixteen units long and a cell is a hundred and twenty, so this is two
+      // or three cells however large the valley grows - the cost is set by the
+      // camera, not by the map.
+      for (const cell of cells) {
+        if (!cell.group.visible) continue
+        if (!gloamwoodValleyCellDrawn(cell.key, from.x, from.z)) continue
+        lastConsidered += cell.occluders.length
+        let touched = false
+        for (const occluder of cell.occluders) {
+          const blocking = gloamwoodOccludesCameraView(occluder, from, to)
+          lastNearest = Math.min(lastNearest, gloamwoodSightlineClearance(occluder, from, to))
+          occluder.fade = gloamwoodOccluderFade(occluder.fade, blocking, delta)
+          // Written only when it actually moved: uploading an instance buffer
+          // every frame for props that are all solid would cost more than the
+          // test that decided they were.
+          if (Math.abs(occluder.fade - occluder.applied) < 0.004) continue
+          occluder.applied = occluder.fade
+          touched = true
+          for (const slot of occluder.slots) {
+            slot.attribute.setX(slot.index, occluder.fade)
+          }
+        }
+        if (!touched) continue
+        for (const child of cell.group.children) {
+          if (!(child instanceof THREE.InstancedMesh)) continue
+          const attribute = child.geometry.getAttribute('instanceFade')
+          if (attribute) attribute.needsUpdate = true
+        }
+      }
     },
     dispose() {
       for (const item of disposables) item.dispose()
@@ -453,7 +537,13 @@ function buildRiver(disposables: Array<{ dispose(): void }>) {
   return { mesh, time }
 }
 
-/** Builds one cell's instanced batches. Returns how many batches it made. */
+/**
+ * Builds one cell's instanced batches, and the occluders inside them.
+ *
+ * Every instance also carries a fade, because an InstancedMesh has no
+ * per-object `visible` to switch: getting one prop out of the camera's way
+ * means writing a number into a buffer the shader reads.
+ */
 function buildChunk(
   props: readonly GloamwoodValleyProp[],
   templates: Map<string, THREE.Group>,
@@ -469,6 +559,7 @@ function buildChunk(
   }
 
   let batches = 0
+  const occluders = new Map<GloamwoodValleyProp, ValleyOccluder>()
   const placement = new THREE.Matrix4()
   const instanceMatrix = new THREE.Matrix4()
   const rotation = new THREE.Quaternion()
@@ -488,13 +579,18 @@ function buildChunk(
       }
     })
     for (const part of parts) {
-      const batch = new THREE.InstancedMesh(part.geometry, part.material, bucket.length)
+      const batch = new THREE.InstancedMesh(part.geometry, applyInstanceFade(part.material), bucket.length)
+      const fades = new THREE.InstancedBufferAttribute(new Float32Array(bucket.length).fill(1), 1)
+      fades.setUsage(THREE.DynamicDrawUsage)
+      batch.geometry = batch.geometry.clone()
+      batch.geometry.setAttribute('instanceFade', fades)
       for (const [index, prop] of bucket.entries()) {
         const size = worldSizeOf(prop)
+        const ground = gloamwoodValleyHeight(prop.x, prop.z)
         // Rocks bed into the ground; a cliff sitting exactly on the surface
         // reads as a pebble the size of a house rather than as bedrock.
         const sink = prop.kind === 'tree' ? 0 : prop.kind === 'undergrowth' ? 0.02 : size * 0.09
-        origin.set(prop.x, gloamwoodValleyHeight(prop.x, prop.z) - sink, prop.z)
+        origin.set(prop.x, ground - sink, prop.z)
         placement.compose(origin, rotation.setFromAxisAngle(up, prop.rotation), scale.setScalar(size))
         instanceMatrix.multiplyMatrices(placement, part.local)
         batch.setMatrixAt(index, instanceMatrix)
@@ -508,6 +604,20 @@ function buildChunk(
         // the props being re-bucketed into different batches.
         const jitter = 0.82 + hashUnit(prop.x * 7.31 + prop.z * 3.17) * 0.36
         batch.setColorAt(index, color.multiplyScalar(jitter * 1.5))
+
+        // Anything shorter than the player's eye cannot come between them and
+        // the camera. That excludes all the grass, which is most of the valley
+        // and most of the reason the per-frame pass stays cheap.
+        if (size >= GLOAMWOOD_OCCLUDER_MIN_HEIGHT && prop.kind !== 'undergrowth') {
+          const existing = occluders.get(prop)
+          if (existing) existing.slots.push({ attribute: fades, index })
+          else {
+            const shape = prop.kind === 'tree'
+              ? gloamwoodTreeOccluder(prop.x, ground, prop.z, size)
+              : gloamwoodRockOccluder(prop.x, ground, prop.z, size)
+            occluders.set(prop, { ...shape, fade: 1, applied: 1, slots: [{ attribute: fades, index }] })
+          }
+        }
       }
       // Grass-scale props skip the shadow pass; there are thousands of them.
       batch.castShadow = bucket[0].kind !== 'undergrowth'
@@ -517,7 +627,44 @@ function buildChunk(
       batches += 1
     }
   }
-  return batches
+  return { batches, occluders: [...occluders.values()] }
+}
+
+/**
+ * Makes a kit material read a per-instance fade.
+ *
+ * Dithered rather than blended. These materials are alpha-tested foliage and
+ * rock, and turning them transparent would put thousands of instances into the
+ * sorted pass and have them draw through each other. A screen-space threshold
+ * discards a share of the fragments instead: no sorting, no depth trouble, and
+ * at this distance it reads as a fade.
+ */
+function applyInstanceFade(material: THREE.Material) {
+  const faded = material.clone()
+  const previous = faded.onBeforeCompile
+  faded.onBeforeCompile = (shader, renderer) => {
+    previous?.call(faded, shader, renderer)
+    shader.vertexShader = `attribute float instanceFade;\nvarying float vInstanceFade;\n${shader.vertexShader}`
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vInstanceFade = instanceFade;')
+    shader.fragmentShader = `varying float vInstanceFade;\n${shader.fragmentShader}`
+      .replace(
+        '#include <alphatest_fragment>',
+        `{
+          // Bayer 4x4, not a row-major count. A threshold that simply increases
+          // along each row leaves the kept fragments in diagonal runs, and a
+          // cleared cliff reads as venetian blinds rather than as a fade.
+          vec2 half4 = floor(gl_FragCoord.xy * 0.5);
+          vec2 full4 = floor(gl_FragCoord.xy);
+          float threshold = fract(half4.x * 0.5 + half4.y * half4.y * 0.75) * 0.25
+            + fract(full4.x * 0.5 + full4.y * full4.y * 0.75);
+          if (vInstanceFade < threshold) discard;
+        }
+        #include <alphatest_fragment>`,
+      )
+  }
+  const key = faded.customProgramCacheKey
+  faded.customProgramCacheKey = () => `${key ? key.call(faded) : faded.uuid}:instance-fade`
+  return faded
 }
 
 const WHITE = new THREE.Color(0xffffff)

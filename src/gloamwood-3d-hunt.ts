@@ -138,6 +138,7 @@ import {
   type GloamwoodInputBindings,
 } from './gloamwood-input-settings'
 import { assetUrl } from './asset-url'
+import { gloamwoodOccludesCameraView } from './gloamwood-camera-occlusion'
 import {
   GLOAMWOOD_ROCK_GRADE,
   GLOAMWOOD_TREE_GRADE,
@@ -2706,16 +2707,15 @@ class Gloamwood3DHunt {
   }
 
   private updateTreeOcclusion() {
-    const fromX = this.playerRoot.position.x
-    const fromY = this.playerRoot.position.y + CAMERA_LOOK_HEIGHT
-    const fromZ = this.playerRoot.position.z
-    const toX = this.camera.position.x
-    const toY = this.camera.position.y
-    const toZ = this.camera.position.z
+    // The geometry is shared with the valley; only the response differs. Forty
+    // trees can be switched outright, and thousands of instanced props cannot.
+    const from = {
+      x: this.playerRoot.position.x,
+      y: this.playerRoot.position.y + CAMERA_LOOK_HEIGHT,
+      z: this.playerRoot.position.z,
+    }
     for (const tree of this.trees) {
-      const blocksView = distanceToSegment3D(tree.x, tree.y, tree.z, fromX, fromY, fromZ, toX, toY, toZ) < tree.radius
-        && squaredDistance(tree.x, tree.z, fromX, fromZ) < squaredDistance(toX, toZ, fromX, fromZ)
-      tree.group.visible = !blocksView
+      tree.group.visible = !gloamwoodOccludesCameraView(tree, from, this.camera.position)
     }
   }
 
@@ -4442,11 +4442,6 @@ function normalizeAngle(angle: number) {
   return Math.atan2(Math.sin(angle), Math.cos(angle))
 }
 
-function squaredDistance(ax: number, az: number, bx: number, bz: number) {
-  const dx = ax - bx
-  const dz = az - bz
-  return dx * dx + dz * dz
-}
 
 function distanceToSegment(px: number, pz: number, ax: number, az: number, bx: number, bz: number) {
   const abX = bx - ax
@@ -4456,23 +4451,3 @@ function distanceToSegment(px: number, pz: number, ax: number, az: number, bx: n
   return Math.hypot(px - (ax + abX * t), pz - (az + abZ * t))
 }
 
-function distanceToSegment3D(
-  px: number,
-  py: number,
-  pz: number,
-  ax: number,
-  ay: number,
-  az: number,
-  bx: number,
-  by: number,
-  bz: number,
-) {
-  const abX = bx - ax
-  const abY = by - ay
-  const abZ = bz - az
-  const lengthSquared = abX * abX + abY * abY + abZ * abZ
-  const t = lengthSquared > 0
-    ? THREE.MathUtils.clamp(((px - ax) * abX + (py - ay) * abY + (pz - az) * abZ) / lengthSquared, 0, 1)
-    : 0
-  return Math.hypot(px - (ax + abX * t), py - (ay + abY * t), pz - (az + abZ * t))
-}

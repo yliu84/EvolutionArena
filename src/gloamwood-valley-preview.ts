@@ -122,6 +122,7 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
   const right = new THREE.Vector2(-forward.y, forward.x)
   const step = new THREE.Vector2()
   const desiredCamera = new THREE.Vector3()
+  const sightFrom = new THREE.Vector3()
 
   let running = true
   let last = performance.now()
@@ -160,6 +161,13 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
 
     const corridor = gloamwoodValleyCorridorAt(position.x, position.y)
     valley.update({ x: position.x, z: position.y, s: corridor.s }, elapsed, fog, overhead)
+    // Only from the walking camera. Overhead, nothing is between the lens and
+    // the player worth clearing, and fading the whole map from above would
+    // dissolve the thing the overhead view exists to show.
+    if (!overhead) {
+      sightFrom.set(position.x, ground + 1.2, position.y)
+      valley.clearSightline(sightFrom, camera.position, delta)
+    }
     scene.background = fog.color
     valley.sun.position.set(position.x - 90, ground + 120, position.y + 60)
     valley.sun.target.position.set(position.x, ground, position.y)
@@ -218,6 +226,19 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
   document.body.dataset.valleyBatches = String(valley.stats.batches)
   document.body.dataset.valleyRegions = String(GLOAMWOOD_VALLEY.regions.map((region) => gloamwoodValleyDressingFor(region.id).coverage).join(','))
   document.body.dataset.valleyLength = String(Math.round(GLOAMWOOD_VALLEY_LENGTH))
+  document.body.dataset.valleyOccluders = String(valley.stats.occluders)
+  if (import.meta.env.DEV) {
+    // Lets the sightline pass be stepped deterministically from the console.
+    // The review pane renders but does not animate, so a screenshot cannot show
+    // whether a fade is wired up - and twice now a screenshot has been accepted
+    // as proof of wiring that was not connected.
+    ;(window as unknown as Record<string, unknown>).__valleySightline = (seconds = 1) => {
+      const ground = gloamwoodValleyHeight(position.x, position.y)
+      sightFrom.set(position.x, ground + 1.2, position.y)
+      valley.clearSightline(sightFrom, camera.position, seconds)
+      return valley.sightlineState()
+    }
+  }
 
   return () => {
     running = false
