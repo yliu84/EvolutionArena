@@ -60,6 +60,17 @@ export interface GloamwoodMapContract {
   /** Where the player starts a run. */
   spawn: { x: number; z: number }
   /**
+   * Whether this map runs the nest encounter.
+   *
+   * The Gloamwood's whole structure is one nest: waves, then a guardian, then
+   * an evolution choice, then a boss. The valley has none of that yet - it has
+   * sixty-three creatures standing where they live - and describing it as a
+   * nest that happened to be cleared already made the runtime believe the
+   * encounter was over before the player moved. It opened the evolution gate at
+   * spawn, refused to lock anything, and froze them in place.
+   */
+  hasNest: boolean
+  /**
    * The creatures the map begins with.
    *
    * The Gloamwood begins empty and its nest spawns waves when the player walks
@@ -101,6 +112,53 @@ export interface GloamwoodMapContract {
 }
 
 /**
+ * Where a mover should actually end up this frame.
+ *
+ * Never places anyone illegally, which is the whole point. Confining after the
+ * fact looks equivalent and is not: a confine that pushes a little way inside
+ * the limit - as the valley's does, so a recomputed width near a choke cannot
+ * leave the point outside again - throws the player back six percent every
+ * frame they hold a key against the wall, and they bounce there forever. It was
+ * measured at 0.31 units a frame, which is exactly one frame of movement.
+ *
+ * So the step is tested before it is taken. If the whole step is legal it is
+ * taken. If it is not, the part of it running along the wall is tried, so a
+ * player following a curving valley slides instead of sticking. If that fails
+ * too they simply stay where they were, which is what a wall should do.
+ */
+export function gloamwoodMapStep(
+  map: Pick<GloamwoodMapContract, 'confine'>,
+  from: { x: number; z: number },
+  to: { x: number; z: number },
+  tolerance = 0.001,
+) {
+  const legal = (point: { x: number; z: number }) => {
+    const held = map.confine(point.x, point.z)
+    return Math.hypot(held.x - point.x, held.z - point.z) <= tolerance
+  }
+  if (legal(to)) return { x: to.x, z: to.z, blocked: false }
+
+  // The correction the confine wants to make points inward, so it stands in for
+  // a surface normal without any map having to describe its walls.
+  const held = map.confine(to.x, to.z)
+  const inwardX = held.x - to.x
+  const inwardZ = held.z - to.z
+  const length = Math.hypot(inwardX, inwardZ)
+  if (length > tolerance) {
+    const normalX = inwardX / length
+    const normalZ = inwardZ / length
+    const stepX = to.x - from.x
+    const stepZ = to.z - from.z
+    const into = stepX * normalX + stepZ * normalZ
+    const slide = { x: from.x + stepX - into * normalX, z: from.z + stepZ - into * normalZ }
+    if (legal(slide)) return { ...slide, blocked: true }
+  }
+  // Standing still beats being shoved. If where they already were is somehow
+  // illegal - knockback, a spawn on bad ground - the confine still rescues it.
+  return legal(from) ? { x: from.x, z: from.z, blocked: true } : { ...map.confine(from.x, from.z), blocked: true }
+}
+
+/**
  * The Gloamwood, described by the functions it already had.
  *
  * Behaviour-identical on purpose: this map is an accepted build, and the point
@@ -124,6 +182,7 @@ export function createGloamwoodMap(
     },
     bounds,
     spawn: { x: -6, z: 3 },
+    hasNest: true,
     createCreatures: createGloamwoodNestState,
     stepCreatures: (state, delta, player) => stepGloamwoodNest(state, delta, player),
     bodyFor: (prey) => GLOAMWOOD_MODELLED_PREY[prey.kind],

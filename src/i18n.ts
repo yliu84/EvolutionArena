@@ -303,6 +303,9 @@ const STRINGS = {
 
   'hud.titleVictory': { en: 'Gloamwood · hunt complete', zh: '幽影林地 · 猎杀完成' },
   'hud.titleCleared': { en: 'Gloamwood · nest cleared', zh: '幽影林地 · 窝点已净化' },
+  'hud.titleField': { en: 'Gloamwood Valley', zh: '幽影河谷' },
+  'hud.msg.takeTheRoad': { en: 'Follow the road upstream', zh: '沿河谷主路向上游走' },
+  'hud.fieldRemaining': { en: '{count} alive · {kills} killed', zh: '存活 {count} · 击杀 {kills}' },
 
   'hud.waveSuffix': { en: ' · wave {wave}/{total}', zh: ' · 第 {wave}/{total} 波' },
   'hud.clearedKills': { en: 'Cleared · {kills} kills', zh: '清理完成 · {kills} 击杀' },

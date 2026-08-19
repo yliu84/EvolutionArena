@@ -139,7 +139,7 @@ import {
 } from './gloamwood-input-settings'
 import { assetUrl } from './asset-url'
 import { gloamwoodOccludesCameraView } from './gloamwood-camera-occlusion'
-import { createGloamwoodMap, type GloamwoodMapContract } from './gloamwood-map'
+import { createGloamwoodMap, gloamwoodMapStep, type GloamwoodMapContract } from './gloamwood-map'
 import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
 import { createGloamwoodValleyMap } from './gloamwood-valley-map'
 import { gloamwoodValleyCorridorAt } from './gloamwood-valley-terrain'
@@ -665,7 +665,11 @@ class Gloamwood3DHunt {
   private playerFlashRemaining = 0
   private knockbackRecoverySeconds = 0
   private lastKnockbackDistance = 0
-  private combatMessage = t('hud.msg.approachNest')
+  // The opening line depends on what the map opens with. On the Gloamwood that
+  // is a nest to walk into; in the valley it is a road with things living
+  // beside it, and telling the player to approach a nest that does not exist is
+  // the first thing they read.
+  private combatMessage = this.map.hasNest ? t('hud.msg.approachNest') : t('hud.msg.takeTheRoad')
   private hud?: HTMLElement
   private onboardingHud?: HTMLElement
   private settingsPanel?: HTMLElement
@@ -761,7 +765,7 @@ class Gloamwood3DHunt {
     await this.map.buildScenery()
     this.createContactShadows()
     this.createDustPool()
-    this.createNest()
+    if (this.map.hasNest) this.createNest()
     this.createBossVisual()
     // The Bladeshell was authored for the valley's first chokepoint, and the
     // valley does not exist yet. Putting a river crustacean in the Gloamwood by
@@ -1898,9 +1902,13 @@ class Gloamwood3DHunt {
     this.moving = hasMovementIntent && !this.turning
     if (this.moving) {
       const next = this.playerRoot.position.clone().addScaledVector(this.movement, PLAYER_SPEED * this.moveSpeedMultiplier * this.movementInputStrength * delta)
-      const held = this.map.confine(next.x, next.z)
-      next.x = held.x
-      next.z = held.z
+      // Tested before it is taken, not corrected afterwards. A confine that
+      // pushes a little way inside the limit throws the player back every frame
+      // they hold a key against the wall, and they bounce there instead of
+      // stopping.
+      const stepped = gloamwoodMapStep(this.map, { x: this.playerRoot.position.x, z: this.playerRoot.position.z }, { x: next.x, z: next.z })
+      next.x = stepped.x
+      next.z = stepped.z
       this.confineToArena(next)
       this.resolveObstacles(next)
       this.playerRoot.position.x = next.x
@@ -1992,7 +2000,7 @@ class Gloamwood3DHunt {
   private requestPrimaryAttack() {
     if (this.evolutionState.phase === 'choosing') return
     if (!this.playerCombat.alive) return
-    if (this.nestState.phase === 'dormant') {
+    if (this.map.hasNest && this.nestState.phase === 'dormant') {
       this.combatMessage = t('hud.msg.nearNest')
       return
     }
@@ -2000,7 +2008,7 @@ class Gloamwood3DHunt {
     if (this.bossActive()) {
       this.bossLocked = true
       this.lockedPreyId = null
-    } else if (this.nestState.phase === 'cleared') {
+    } else if (this.map.hasNest && this.nestState.phase === 'cleared') {
       this.combatMessage = this.evolutionState.phase === 'selected' ? t('hud.msg.bossWaking') : t('hud.msg.chooseEvolution')
       return
     }
@@ -4363,13 +4371,18 @@ class Gloamwood3DHunt {
         ? t('hud.titleGuardian', { name: t('creature.guardian') })
       : this.runPhase === 'victory'
         ? t('hud.titleVictory')
-        : this.nestState.phase === 'cleared' ? t('hud.titleCleared') : t('hud.titleNest', { suffix: this.nestState.wave ? t('hud.waveSuffix', { wave: this.nestState.wave, total: GLOAMWOOD_NEST.waveCount }) : '' }))
+        // A map with no nest has no wave to name. Reading the nest's phase
+        // anyway is how the valley opened with "nest cleared" written across a
+        // map that has never had one.
+        : !this.map.hasNest ? t('hud.titleField')
+          : this.nestState.phase === 'cleared' ? t('hud.titleCleared') : t('hud.titleNest', { suffix: this.nestState.wave ? t('hud.waveSuffix', { wave: this.nestState.wave, total: GLOAMWOOD_NEST.waveCount }) : '' }))
     setText('[data-g3d-player-health]', `${this.playerCombat.health} / ${this.playerCombat.maxHealth}`)
     setText('[data-g3d-lives]', String(Math.max(0, this.livesRemaining)))
     this.updateMutationList()
     setText('[data-g3d-remaining]', this.runPhase === 'boss'
       ? `${this.bossPatternName(this.bossState.pattern)} · ${this.bossState.state === 'telegraph' ? t('enemy.telegraph') : this.bossState.state === 'attack' ? t('enemy.strike') : t('enemy.watch')}`
-      : this.nestState.phase === 'dormant' ? t('hud.undisturbed') : this.nestState.phase === 'intermission' ? t('hud.incoming') : this.nestState.phase === 'cleared' ? t('hud.clearedKills', { kills: this.nestState.kills }) : t('hud.waveRemaining', { count: this.livePrey().length }))
+      : !this.map.hasNest ? t('hud.fieldRemaining', { count: this.livePrey().length, kills: this.nestState.kills })
+        : this.nestState.phase === 'dormant' ? t('hud.undisturbed') : this.nestState.phase === 'intermission' ? t('hud.incoming') : this.nestState.phase === 'cleared' ? t('hud.clearedKills', { kills: this.nestState.kills }) : t('hud.waveRemaining', { count: this.livePrey().length }))
     setText('[data-g3d-biomass]', `${this.nestState.biomass}`)
     setText('[data-g3d-fang]', `${this.nestState.genes.fang}`)
     setText('[data-g3d-shell]', `${this.nestState.genes.shell}`)

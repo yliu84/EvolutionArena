@@ -74,6 +74,7 @@ export function createGloamwoodValleyMap(
     confine: gloamwoodValleyConfine,
     bounds: valleyBounds(),
     spawn,
+    hasNest: false,
     createCreatures(): GloamwoodNestState {
       return {
         // Cleared, not dormant. The nest's wave machinery is the Gloamwood's
