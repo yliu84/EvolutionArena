@@ -1549,3 +1549,50 @@ body.is-gloamwood-3d * {
   color: #90a894;
   font-size: 11px;
 }
+
+/* The pause between dying and coming back. Stops the world on purpose: a life
+   spent behind a line of HUD text is a life the player never noticed losing. */
+.gloamwood-death-prompt {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 40;
+  background: color-mix(in srgb, #06100c 72%, transparent);
+  backdrop-filter: blur(3px);
+}
+.gloamwood-death-prompt[hidden] { display: none; }
+.gloamwood-death-prompt > div {
+  min-width: min(24rem, 86vw);
+  padding: 1.6rem 1.8rem;
+  border: 1px solid #2c4536;
+  border-radius: 10px;
+  background: #0d1a14;
+  text-align: center;
+  color: #e6efe4;
+}
+.gloamwood-death-prompt h2 { margin: 0 0 0.5rem; font-size: 1.35rem; }
+.gloamwood-death-prompt p { margin: 0 0 0.35rem; color: #f0c46a; font-weight: 600; }
+.gloamwood-death-prompt small { color: #8aa392; }
+.gloamwood-death-prompt menu {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  margin: 1.2rem 0 0;
+  padding: 0;
+}
+.gloamwood-death-prompt button {
+  flex: 1 1 0;
+  padding: 0.55rem 1rem;
+  border-radius: 7px;
+  border: 1px solid #3c5c48;
+  background: #16281e;
+  color: #e6efe4;
+  font: inherit;
+  cursor: pointer;
+}
+.gloamwood-death-prompt button[data-g3d-revive] {
+  border-color: #6f9a55;
+  background: #23401f;
+}
+.gloamwood-death-prompt button:hover { filter: brightness(1.18); }

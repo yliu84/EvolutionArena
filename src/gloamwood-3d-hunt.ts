@@ -144,7 +144,7 @@ import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
 import { createGloamwoodValleyMap } from './gloamwood-valley-map'
 import type { GloamwoodValleyCreature } from './gloamwood-valley-creatures'
 import { gloamwoodValleyCorpseGone } from './gloamwood-valley-respawn'
-import { gloamwoodValleyCorridorAt } from './gloamwood-valley-terrain'
+import { gloamwoodValleyCorridorAt, gloamwoodValleyRegionAt } from './gloamwood-valley-terrain'
 import {
   gloamwoodPreyClipForPhase,
   gloamwoodPreyClipRate,
@@ -595,6 +595,8 @@ class Gloamwood3DHunt {
    * every passive creature in the valley taking hits without ever looking up.
    */
   private readonly struckThisFrame: string[] = []
+  private snapCameraNextFrame = false
+  private deathOverlay?: HTMLElement
   private valleyGroundHeight: ((x: number, z: number) => number) | null = null
   private valley: { update(camera: { x: number; z: number }, elapsed: number, delta: number): void } | null = null
   // Keyed by body rather than by family. One family can wear several bodies -
@@ -885,6 +887,7 @@ class Gloamwood3DHunt {
     this.renderer.domElement.remove()
     this.debugOutput?.remove()
     this.onboardingHud?.remove()
+    this.deathOverlay?.remove()
     this.settingsPanel?.remove()
     this.orientationGate?.remove()
     this.homeScreenTip?.remove()
@@ -2993,6 +2996,7 @@ class Gloamwood3DHunt {
     this.playerRoot.position.set(reset.playerAt.x, this.map.height(reset.playerAt.x, reset.playerAt.z), reset.playerAt.z)
     this.target.copy(this.playerRoot.position)
     this.lockedPreyId = null
+    this.snapCameraNextFrame = true
   }
 
   /** The Gloamwood's ring around its nest. */
@@ -3053,7 +3057,16 @@ class Gloamwood3DHunt {
 
   private updateCamera(delta: number) {
     this.desiredCamera.copy(this.playerRoot.position).add(this.cameraOffset)
-    this.camera.position.lerp(this.desiredCamera, 1 - Math.exp(-CAMERA_DAMPING * delta))
+    if (this.snapCameraNextFrame) {
+      // Cut, do not travel. Respawning moves the player to the entrance of a
+      // region, which can be hundreds of units away, and a damped follow sweeps
+      // the whole map to get there - the player watches the valley slide past
+      // for several seconds before they can act.
+      this.camera.position.copy(this.desiredCamera)
+      this.snapCameraNextFrame = false
+    } else {
+      this.camera.position.lerp(this.desiredCamera, 1 - Math.exp(-CAMERA_DAMPING * delta))
+    }
     if (this.cameraTrauma > 0 && this.feedbackSettings.shake && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const phase = performance.now() * 0.047
       this.camera.position.x += Math.sin(phase) * this.cameraTrauma * 0.2
@@ -3705,7 +3718,67 @@ class Gloamwood3DHunt {
       return true
     }
     this.combatMessage = t('hud.msg.livesLeft', { count: this.livesRemaining })
+    // Asked for rather than assumed. Dying used to put the player back on their
+    // feet somewhere else with a line of HUD text, which is easy to miss in the
+    // middle of a fight - so a life could be spent without the player ever
+    // registering that one had been.
+    this.showDeathPrompt()
     return false
+  }
+
+  /**
+   * The pause between dying and coming back.
+   *
+   * It stops the world, which is the point: the player has just lost something
+   * and the game should wait for them to say they are ready rather than drop
+   * them back into the same fight mid-swing.
+   */
+  private showDeathPrompt() {
+    this.paused = true
+    this.keys.clear()
+    this.primaryHeld = false
+    if (!this.deathOverlay) {
+      const overlay = document.createElement('section')
+      overlay.className = 'gloamwood-death-prompt'
+      overlay.setAttribute('role', 'dialog')
+      overlay.setAttribute('aria-modal', 'true')
+      this.deathOverlay = overlay
+      this.container.append(overlay)
+    }
+    const region = this.map.hasNest ? '' : t('death.where', { region: this.currentRegionName() })
+    this.deathOverlay.innerHTML = [
+      '<div>',
+      `<h2>${escapeGloamwoodHtml(t('death.title'))}</h2>`,
+      `<p>${escapeGloamwoodHtml(t('death.livesLeft', { count: this.livesRemaining }))}</p>`,
+      region ? `<small>${escapeGloamwoodHtml(region)}</small>` : '',
+      '<menu>',
+      `<button type="button" data-g3d-revive>${escapeGloamwoodHtml(t('death.revive'))}</button>`,
+      `<button type="button" data-g3d-restart>${escapeGloamwoodHtml(t('death.restart'))}</button>`,
+      '</menu>',
+      '</div>',
+    ].join('')
+    this.deathOverlay.hidden = false
+    this.deathOverlay.querySelector<HTMLButtonElement>('[data-g3d-revive]')?.addEventListener('click', () => {
+      this.dismissDeathPrompt()
+    }, { once: true })
+    this.deathOverlay.querySelector<HTMLButtonElement>('[data-g3d-restart]')?.addEventListener('click', () => {
+      window.location.reload()
+    }, { once: true })
+    this.deathOverlay.querySelector<HTMLButtonElement>('[data-g3d-revive]')?.focus()
+  }
+
+  private dismissDeathPrompt() {
+    if (this.deathOverlay) this.deathOverlay.hidden = true
+    this.paused = false
+    this.snapCameraNextFrame = true
+    this.renderer.domElement.focus()
+  }
+
+  /** Name of the region the player is standing in, for the death prompt. */
+  private currentRegionName() {
+    const corridor = gloamwoodValleyCorridorAt(this.playerRoot.position.x, this.playerRoot.position.z)
+    const region = gloamwoodValleyRegionAt(corridor.s)
+    return region ? t(`valley.region.${region.id}`) : t('valley.region.shallows')
   }
 
   private completeRunDefeat(reason: string) {
@@ -3857,6 +3930,13 @@ class Gloamwood3DHunt {
           this.target.set(held.x, 0, held.z)
         },
         toggleTargetLock: () => this.toggleEnemyLock(),
+        // Spends a life on demand. The death prompt and the respawn cut are
+        // both things that only happen when the player dies, and waiting to be
+        // killed is a poor way to check them.
+        killPlayer: () => {
+          this.playerCombat = { ...this.playerCombat, health: 0, alive: false }
+          if (!this.spendLifeOrEndRun('debug')) this.resetLivePreyToNest()
+        },
         attack: () => this.requestPrimaryAttack(),
         chooseEvolution: (index: number) => this.chooseEvolution(index),
         refreshEvolution: () => this.refreshEvolution(),
@@ -4024,6 +4104,7 @@ class Gloamwood3DHunt {
     const settingsWereOpen = this.settingsPanel ? !this.settingsPanel.hidden : false
     this.hud?.remove()
     this.onboardingHud?.remove()
+    this.deathOverlay?.remove()
     this.settingsPanel?.remove()
     this.orientationGate?.remove()
     this.homeScreenTip?.remove()
@@ -4732,6 +4813,13 @@ class Gloamwood3DHunt {
     }
   }
 
+}
+
+/** Escapes text going into a template string, so a translation cannot inject markup. */
+function escapeGloamwoodHtml(value: string) {
+  const holder = document.createElement('span')
+  holder.textContent = value
+  return holder.innerHTML
 }
 
 function terrainHeight(x: number, z: number) {
