@@ -390,7 +390,15 @@ function preyMoveSpeed(spec: GloamwoodPreySpec, playerDistance: number, player: 
   return radius > 0 && playerDistance <= radius ? spec.moveSpeed * factor : spec.moveSpeed
 }
 
-function stepPrey(
+/**
+ * One creature, one frame.
+ *
+ * Exported because the valley drives free-roaming creatures with it. Its nest
+ * runs waves in a fixed arena and the valley scatters packs across 1590 units
+ * of route, but what a creature does once it has noticed the player is the same
+ * question in both, and answering it twice is how the two would drift apart.
+ */
+export function stepPrey(
   state: GloamwoodNestPrey,
   delta: number,
   player: GloamwoodPlayerPresence,
