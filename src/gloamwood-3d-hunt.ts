@@ -556,11 +556,17 @@ class Gloamwood3DHunt {
       Number(new URLSearchParams(window.location.search).get('mapSeed') ?? 0) || 0x5a11e,
       async () => { await this.buildValleyScenery() },
       (camera, elapsed, delta) => this.valley?.update(camera, elapsed, delta),
+      () => this.valleyGroundHeight,
     )
     : createGloamwoodMap(
       terrainHeight,
       { halfWidth: WORLD_HALF_WIDTH, halfDepth: WORLD_HALF_DEPTH },
       async () => {
+        // Lighting belongs to the map for the same reason the scenery does.
+        // Run unconditionally it stacked on top of the valley's own rig -
+        // hemisphere 3.2 and directional 7.35 against the 1.15 and 2.1 that map
+        // was lit for - which is most of why it read as flat and fake.
+        this.createLighting()
         this.createTerrain()
         this.createPath()
         await this.loadEnvironmentModels()
@@ -579,6 +585,7 @@ class Gloamwood3DHunt {
     this.map.cameraOffset.y,
     this.map.cameraOffset.z,
   )
+  private valleyGroundHeight: ((x: number, z: number) => number) | null = null
   private valley: { update(camera: { x: number; z: number }, elapsed: number, delta: number): void } | null = null
   // Keyed by body rather than by family. One family can wear several bodies -
   // a hunter and a grazer, a pack member and the elite promoted from it - and
@@ -780,7 +787,6 @@ class Gloamwood3DHunt {
   }
 
   async start() {
-    this.createLighting()
     // The scenery is the map's, and the only part of one that cannot be shared.
     // Everything after this line is the same on any ground.
     await this.map.buildScenery()
@@ -2585,6 +2591,9 @@ class Gloamwood3DHunt {
       anisotropy: Math.min(8, this.renderer.capabilities.getMaxAnisotropy()),
     })
     this.scene.add(valley.root)
+    // Everything that stands on the valley now reads the surface that is drawn
+    // rather than the function it was generated from.
+    this.valleyGroundHeight = valley.heightAt
     const fog = this.scene.fog instanceof THREE.FogExp2 ? this.scene.fog : new THREE.FogExp2(0x1b3329, 0.02)
     this.scene.fog = fog
     this.valley = {

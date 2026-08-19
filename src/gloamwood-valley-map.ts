@@ -51,6 +51,14 @@ export function createGloamwoodValleyMap(
   seed: number,
   buildScenery: () => Promise<void>,
   update: GloamwoodMapContract['update'],
+  /**
+   * Reads the ground as the mesh draws it, once the mesh exists.
+   *
+   * Until then the analytic terrain answers, which is what places the creatures
+   * before anything is built. The two differ by up to three units between grid
+   * vertices, so everything that has to *stand* on the ground asks this.
+   */
+  drawnHeight?: () => ((x: number, z: number) => number) | null,
 ): GloamwoodMapContract {
   const spawnPoint = gloamwoodValleyPointAt(
     GLOAMWOOD_VALLEY.spawnS,
@@ -71,7 +79,7 @@ export function createGloamwoodValleyMap(
         s: creature.spawnS ?? 0,
       })
     },
-    height: gloamwoodValleyHeight,
+    height: (x, z) => drawnHeight?.()?.(x, z) ?? gloamwoodValleyHeight(x, z),
     confine: gloamwoodValleyConfine,
     bounds: valleyBounds(),
     spawn,

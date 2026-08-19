@@ -100,6 +100,8 @@ interface ValleyOccluder extends GloamwoodOccluder {
 
 export interface GloamwoodValleyScene {
   root: THREE.Group
+  /** Ground height as drawn, for anything that has to stand on it. */
+  heightAt: GloamwoodValleyGroundSampler
   sun: THREE.DirectionalLight
   ambient: THREE.HemisphereLight
   stats: GloamwoodValleySceneStats
@@ -139,7 +141,7 @@ export async function buildGloamwoodValleyScene(options: {
   const disposables: Array<{ dispose(): void }> = []
 
   const ground = buildGround(options.anisotropy, disposables)
-  root.add(ground)
+  root.add(ground.mesh)
 
   const water = buildRiver(disposables)
   root.add(water.mesh)
@@ -202,6 +204,7 @@ export async function buildGloamwoodValleyScene(options: {
     root,
     sun,
     ambient,
+    heightAt: ground.heightAt,
     stats,
     update(camera, elapsed, fog, drawAll = false) {
       foliageTime.value = elapsed
@@ -277,6 +280,22 @@ export async function buildGloamwoodValleyScene(options: {
  * weights are already a pure function of position, so they go into a vertex
  * attribute and the fragment shader mixes the three maps by them.
  */
+/**
+ * Height of the ground as it is actually drawn.
+ *
+ * The terrain function is continuous and the mesh is a grid of triangles, and
+ * between vertices those are not the same surface. Standing the player at the
+ * continuous height put them 2.78 units under the mesh at a choke and 3.44
+ * above it elsewhere - on a creature two units tall.
+ *
+ * So this reads the grid the mesh was built from, using the same triangulation,
+ * and the player stands on the drawn surface by construction rather than near
+ * it by luck.
+ */
+export interface GloamwoodValleyGroundSampler {
+  (x: number, z: number): number
+}
+
 function buildGround(anisotropy: number, disposables: Array<{ dispose(): void }>) {
   const bounds = corridorBounds()
   const columns = Math.ceil((bounds.maxX - bounds.minX) / GROUND_STEP) + 1
@@ -385,7 +404,28 @@ function buildGround(anisotropy: number, disposables: Array<{ dispose(): void }>
   const mesh = new THREE.Mesh(geometry, material)
   mesh.receiveShadow = true
   mesh.name = 'ValleyGround'
-  return mesh
+
+  // The same triangulation the indices above describe: the diagonal of each
+  // cell runs from (column, row + 1) to (column + 1, row), so a point is in the
+  // first triangle when its two local fractions sum to one or less.
+  const heightAt: GloamwoodValleyGroundSampler = (x, z) => {
+    const column = Math.floor((x - bounds.minX) / GROUND_STEP)
+    const row = Math.floor((z - bounds.minZ) / GROUND_STEP)
+    if (column < 0 || row < 0 || column >= columns - 1 || row >= rows - 1) {
+      return gloamwoodValleyHeight(x, z)
+    }
+    const tx = (x - bounds.minX) / GROUND_STEP - column
+    const tz = (z - bounds.minZ) / GROUND_STEP - row
+    const at = (c: number, r: number) => positions[(c * rows + r) * 3 + 1]
+    const a = at(column, row)
+    const b = at(column, row + 1)
+    const c = at(column + 1, row)
+    if (tx + tz <= 1) return a * (1 - tx - tz) + b * tz + c * tx
+    const d = at(column + 1, row + 1)
+    return d * (tx + tz - 1) + b * (1 - tx) + c * (1 - tz)
+  }
+
+  return { mesh, heightAt }
 }
 
 /** Footprint the ground has to cover: the route and its branches, plus walls. */
