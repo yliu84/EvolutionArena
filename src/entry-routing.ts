@@ -35,13 +35,14 @@ export function isGloamwood3DEntry(search = window.location.search) {
 }
 
 /**
- * The valley walkthrough.
+ * Which map a run is played on.
  *
- * Its own entry rather than a flag inside the hunt: the valley has no
- * encounters on it yet, and a half-built map reachable from the game's front
- * door is exactly how a tester ends up recording a session against the wrong
- * build. It is a review tool until the encounters move onto it.
+ * The valley began as its own entry, on the grounds that a half-built map
+ * reachable from the front door is how a tester records a session against the
+ * wrong build. It has encounters now, so it is a map rather than a review tool
+ * - and keeping it separate had started to grow a second player, a second
+ * combat loop and a second HUD beside the ones the hunt already has.
  */
-export function isGloamwoodValleyEntry(search = window.location.search) {
-  return new URLSearchParams(search).get('map') === 'valley'
+export function gloamwoodMapFromEntry(search = window.location.search) {
+  return new URLSearchParams(search).get('map') === 'valley' ? 'valley' : 'gloamwood'
 }

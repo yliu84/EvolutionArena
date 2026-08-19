@@ -1,6 +1,6 @@
 import './style.css'
 import { applyDocumentLocale, t } from './i18n'
-import { isGloamwood3DEntry, isGloamwoodValleyEntry } from './entry-routing'
+import { isGloamwood3DEntry } from './entry-routing'
 
 function createGameLoadingState() {
   const container = document.querySelector<HTMLElement>('#game-container')
@@ -49,19 +49,7 @@ function escapeHtml(value: string) {
 
 let cleanup: (() => void) | undefined
 
-if (isGloamwoodValleyEntry()) {
-  applyDocumentLocale()
-  document.documentElement.classList.add('is-gloamwood-3d')
-  document.body.classList.add('is-maplab', 'is-v4-live', 'is-gloamwood-3d')
-  const loading = createGameLoadingState()
-  import('./gloamwood-valley-preview')
-    .then(({ launchGloamwoodValleyPreview }) => launchGloamwoodValleyPreview())
-    .then((dispose) => {
-      cleanup = dispose
-      loading.remove()
-    })
-    .catch((error) => showGameLoadFailure(loading, error))
-} else if (isGloamwood3DEntry()) {
+if (isGloamwood3DEntry()) {
   const loadStartedAt = performance.now()
   // The root element carries the class too: iOS Safari resolves page-level
   // zoom gestures against <html>, which no body-scoped rule can reach.

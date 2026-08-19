@@ -15,10 +15,13 @@
  * would be a second place to look when a fight misbehaves.
  */
 
+import type { GloamwoodModelledPreyConfig } from './gloamwood-modelled-prey'
+import { GLOAMWOOD_MODELLED_PREY } from './gloamwood-modelled-prey'
 import {
   createGloamwoodNestState,
   stepGloamwoodNest,
   type GloamwoodNestEvent,
+  type GloamwoodNestPrey,
   type GloamwoodNestState,
   type GloamwoodPlayerPresence,
 } from './gloamwood-3d-ecology'
@@ -79,6 +82,22 @@ export interface GloamwoodMapContract {
     player: GloamwoodPlayerPresence,
     struck: readonly string[],
   ): { state: GloamwoodNestState; events: GloamwoodNestEvent[] }
+  /**
+   * Per-frame scenery work, if the map has any.
+   *
+   * The Gloamwood's scenery is static once built. The valley's culls by cell
+   * and moves its fog with the player, because it is 1590 units long and one
+   * fog density cannot describe both a green river mouth and a cold headwater.
+   */
+  update?(camera: { x: number; z: number }, elapsed: number, delta: number): void
+  /**
+   * Which modelled body a creature wears, if any.
+   *
+   * On the Gloamwood a family is all there is to know. In the valley the tier
+   * comes first - reading family alone put three region bosses on the road as
+   * ordinary beetles - and then the ground the creature stands on.
+   */
+  bodyFor(prey: GloamwoodNestPrey): GloamwoodModelledPreyConfig | undefined
 }
 
 /**
@@ -107,5 +126,6 @@ export function createGloamwoodMap(
     spawn: { x: -6, z: 3 },
     createCreatures: createGloamwoodNestState,
     stepCreatures: (state, delta, player) => stepGloamwoodNest(state, delta, player),
+    bodyFor: (prey) => GLOAMWOOD_MODELLED_PREY[prey.kind],
   }
 }

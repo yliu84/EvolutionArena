@@ -140,8 +140,10 @@ import {
 import { assetUrl } from './asset-url'
 import { gloamwoodOccludesCameraView } from './gloamwood-camera-occlusion'
 import { createGloamwoodMap, type GloamwoodMapContract } from './gloamwood-map'
+import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
+import { createGloamwoodValleyMap } from './gloamwood-valley-map'
+import { gloamwoodValleyCorridorAt } from './gloamwood-valley-terrain'
 import {
-  GLOAMWOOD_MODELLED_PREY,
   gloamwoodPreyClipForPhase,
   gloamwoodPreyClipRate,
   gloamwoodPreyWalkRate,
@@ -538,20 +540,38 @@ class Gloamwood3DHunt {
    * runtime can be handed a different map. Behaviour on the Gloamwood is
    * unchanged - the contract wraps the functions that were already there.
    */
-  private readonly map: GloamwoodMapContract = createGloamwoodMap(
-    terrainHeight,
-    { halfWidth: WORLD_HALF_WIDTH, halfDepth: WORLD_HALF_DEPTH },
-    async () => {
-      this.createTerrain()
-      this.createPath()
-      await this.loadEnvironmentModels()
-      this.createForest()
-      this.createUndergrowth()
-      this.createShrine()
-      this.createAtmosphere()
-    },
-  )
-  private readonly preyTemplates = new Map<GloamwoodPreyKind, { scene: THREE.Group; clips: THREE.AnimationClip[]; config: GloamwoodModelledPreyConfig }>()
+  /**
+   * The ground this run is played on.
+   *
+   * Chosen from the URL, because a map is a property of the run rather than of
+   * the build. Everything downstream reads it through the contract, so the
+   * player, the combat, the mutations, the HUD and the session log are the same
+   * on either one.
+   */
+  private readonly map: GloamwoodMapContract = new URLSearchParams(window.location.search).get('map') === 'valley'
+    ? createGloamwoodValleyMap(
+      Number(new URLSearchParams(window.location.search).get('mapSeed') ?? 0) || 0x5a11e,
+      async () => { await this.buildValleyScenery() },
+      (camera, elapsed, delta) => this.valley?.update(camera, elapsed, delta),
+    )
+    : createGloamwoodMap(
+      terrainHeight,
+      { halfWidth: WORLD_HALF_WIDTH, halfDepth: WORLD_HALF_DEPTH },
+      async () => {
+        this.createTerrain()
+        this.createPath()
+        await this.loadEnvironmentModels()
+        this.createForest()
+        this.createUndergrowth()
+        this.createShrine()
+        this.createAtmosphere()
+      },
+    )
+  private valley: { update(camera: { x: number; z: number }, elapsed: number, delta: number): void } | null = null
+  // Keyed by body rather than by family. One family can wear several bodies -
+  // a hunter and a grazer, a pack member and the elite promoted from it - and
+  // keying by family silently loaded whichever came last.
+  private readonly preyTemplates = new Map<string, { scene: THREE.Group; clips: THREE.AnimationClip[]; config: GloamwoodModelledPreyConfig }>()
   private readonly feedbackMeshes: Array<{ mesh: THREE.Mesh; age: number; duration: number }> = []
   private readonly dustParticles: DustParticle[] = []
   private readonly footstepState = createGloamwoodFootstepState()
@@ -772,9 +792,9 @@ class Gloamwood3DHunt {
     const spawnAtNestForDebug = import.meta.env.DEV
       && new URLSearchParams(window.location.search).get('spawnNest') === '1'
     this.playerRoot.position.set(
-      spawnAtNestForDebug ? 0 : -6,
+      spawnAtNestForDebug ? 0 : this.map.spawn.x,
       0,
-      spawnAtNestForDebug ? GLOAMWOOD_NEST.centerZ : 3,
+      spawnAtNestForDebug ? GLOAMWOOD_NEST.centerZ : this.map.spawn.z,
     )
     this.target.copy(this.playerRoot.position)
     this.camera.position.copy(this.playerRoot.position).add(CAMERA_OFFSET)
@@ -1514,7 +1534,7 @@ class Gloamwood3DHunt {
     root.add(telegraph)
     this.scene.add(root)
     const visual: PreyVisual = { root, body, materials, telegraph, targetRing, flashRemaining: 0, impactRemaining: 0, impactDuration: 0.22, impactStrength: 0 }
-    this.applyPreyModel(visual, prey.kind)
+    this.applyPreyModel(visual, prey)
     this.preyVisuals.set(prey.id, visual)
     return visual
   }
@@ -2512,9 +2532,47 @@ class Gloamwood3DHunt {
    * longer than it is tall, sized by height, would stand a third of the size
    * its collision says it is.
    */
+  /**
+   * Builds the valley's ground, water and scatter into the scene.
+   *
+   * The kit templates load first because the valley's scatter is made of them:
+   * the same seven plants and three rocks the Gloamwood uses, spread over 1590
+   * units instead of 58.
+   */
+  private async buildValleyScenery() {
+    const seed = Number(new URLSearchParams(window.location.search).get('mapSeed') ?? 0) || 0x5a11e
+    // The valley scene loads its own kit templates - the same seven plants and
+    // three rocks, through the same loader - so the Gloamwood's tree and rock
+    // stores stay empty on this map and `createTree` is never reached.
+    const valley = await buildGloamwoodValleyScene({
+      seed,
+      anisotropy: Math.min(8, this.renderer.capabilities.getMaxAnisotropy()),
+    })
+    this.scene.add(valley.root)
+    const fog = this.scene.fog instanceof THREE.FogExp2 ? this.scene.fog : new THREE.FogExp2(0x1b3329, 0.02)
+    this.scene.fog = fog
+    this.valley = {
+      update: (camera, elapsed) => {
+        const corridor = gloamwoodValleyCorridorAt(camera.x, camera.z)
+        valley.update({ x: camera.x, z: camera.z, s: corridor.s }, elapsed, fog)
+      },
+    }
+  }
+
   private async loadModelledPrey() {
-    await Promise.all(Object.entries(GLOAMWOOD_MODELLED_PREY).map(async ([kind, config]) => {
-      if (!config) return
+    // Only the bodies this map's creatures actually wear. A Gloamwood run does
+    // not pay for the valley's boss models, and a valley run that never enters
+    // a scree branch does not pay for the pebble.
+    const wanted = new Map<string, GloamwoodModelledPreyConfig>()
+    for (const prey of this.nestState.prey) {
+      const config = this.map.bodyFor(prey)
+      if (config) wanted.set(config.id, config)
+    }
+    for (const kind of Object.keys(GLOAMWOOD_PREY) as GloamwoodPreyKind[]) {
+      const config = this.map.bodyFor({ id: `probe-${kind}`, kind } as GloamwoodNestPrey)
+      if (config) wanted.set(config.id, config)
+    }
+    await Promise.all([...wanted.values()].map(async (config) => {
       const gltf = await this.loader.loadAsync(assetUrl(config.url))
       if (this.disposed) return
       gltf.scene.updateMatrixWorld(true)
@@ -2532,12 +2590,12 @@ class Gloamwood3DHunt {
         node.castShadow = true
         node.receiveShadow = true
       })
-      this.preyTemplates.set(kind as GloamwoodPreyKind, { scene: gltf.scene, clips: gltf.animations, config })
+      this.preyTemplates.set(config.id, { scene: gltf.scene, clips: gltf.animations, config })
     }))
     // Anything already on screen keeps its primitives until it is replaced.
     for (const prey of this.nestState.prey) {
       const visual = this.preyVisuals.get(prey.id)
-      if (visual && !visual.model) this.applyPreyModel(visual, prey.kind)
+      if (visual && !visual.model) this.applyPreyModel(visual, prey)
     }
   }
 
@@ -2549,8 +2607,9 @@ class Gloamwood3DHunt {
    * family without a model and a family whose model has not finished loading
    * take exactly the same code, and there is no second assembly to keep in step.
    */
-  private applyPreyModel(visual: PreyVisual, kind: GloamwoodPreyKind) {
-    const template = this.preyTemplates.get(kind)
+  private applyPreyModel(visual: PreyVisual, prey: GloamwoodNestPrey) {
+    const config = this.map.bodyFor(prey)
+    const template = config ? this.preyTemplates.get(config.id) : undefined
     if (!template) return
     for (const child of [...visual.body.children]) {
       visual.body.remove(child)
@@ -2918,6 +2977,14 @@ class Gloamwood3DHunt {
     }
     this.camera.lookAt(this.playerRoot.position.x, this.playerRoot.position.y + CAMERA_LOOK_HEIGHT, this.playerRoot.position.z)
     this.updateTreeOcclusion()
+    // The map's own per-frame work: the valley culls by cell and moves its fog
+    // with the player. Driven from here because it follows the camera, and the
+    // camera has just been placed.
+    this.map.update?.(
+      { x: this.playerRoot.position.x, z: this.playerRoot.position.z },
+      performance.now() / 1000,
+      delta,
+    )
   }
 
   private updateTreeOcclusion() {

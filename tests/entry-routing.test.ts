@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isGloamwood3DEntry, isGloamwoodValleyEntry } from '../src/entry-routing'
+import { isGloamwood3DEntry, gloamwoodMapFromEntry } from '../src/entry-routing'
 
 describe('What a bare URL opens', () => {
   it('opens the live body, since that is what the playtest link is for', () => {
@@ -33,18 +33,24 @@ describe('What a bare URL opens', () => {
   })
 })
 
-describe('The valley walkthrough entry', () => {
+describe('Which map a run is played on', () => {
   it('answers only to its own query', () => {
-    expect(isGloamwoodValleyEntry('?map=valley')).toBe(true)
-    expect(isGloamwoodValleyEntry('?map=valley&mapSeed=7')).toBe(true)
-    expect(isGloamwoodValleyEntry('')).toBe(false)
-    expect(isGloamwoodValleyEntry('?map=gloamwood')).toBe(false)
+    expect(gloamwoodMapFromEntry('?map=valley')).toBe('valley')
+    expect(gloamwoodMapFromEntry('?map=valley&mapSeed=7')).toBe('valley')
+    expect(gloamwoodMapFromEntry('?map=gloamwood')).toBe('gloamwood')
   })
 
-  it('never takes the front door away from the game', () => {
-    // A half-built map reachable from a bare URL is how a tester ends up
-    // recording a session against the wrong build.
-    expect(isGloamwoodValleyEntry('')).toBe(false)
+  it('leaves the front door on the map the game shipped with', () => {
+    // A bare URL has to keep opening the accepted build. The valley is a map
+    // now rather than a review tool, but it is not the one a stranger handed
+    // the playtest link should land on without asking for it.
+    expect(gloamwoodMapFromEntry('')).toBe('gloamwood')
     expect(isGloamwood3DEntry('')).toBe(true)
+  })
+
+  it('keeps both maps inside the one entry, so they cannot drift apart', () => {
+    // The valley used to be its own entry, and it grew a second player, a
+    // second combat loop and a second HUD beside the ones the hunt has.
+    expect(isGloamwood3DEntry('?map=valley')).toBe(true)
   })
 })
