@@ -75,8 +75,16 @@ export const GLOAMWOOD_VALLEY = {
   chokeSpan: 34,
   /** Open ground, at the corners of the route and at the two gate arenas. */
   basins: [[230, 360], [505, 655], [730, 865], [1035, 1170], [1250, 1385], [1490, 1643]],
-  /** Where each region's boss stands: in the bowl past its gate. */
-  bossSlots: [570, 1090, 1560],
+  /**
+   * Where each region's boss stands: in the last bowl before its gate.
+   *
+   * One per region, which is what the composition asks for. Placing them in the
+   * bowl *past* each gate instead read as the same thing and was not: the first
+   * gate is the boundary between the shallows and the gorge, so past-the-gate
+   * put the shallows' boss in the gorge, left the shallows with none at all,
+   * and stacked two into the headwater.
+   */
+  bossSlots: [330, 800, 1560],
   regions: [
     { id: 'shallows', from: 0, to: 410, tier: 1 },
     { id: 'gorge', from: 470, to: 920, tier: 2 },

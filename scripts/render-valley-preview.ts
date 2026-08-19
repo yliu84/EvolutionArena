@@ -12,6 +12,7 @@ import { writeFileSync } from 'node:fs'
 
 import { GLOAMWOOD_VALLEY_BRANCHES } from '../src/gloamwood-valley-branches'
 import { scatterGloamwoodValley } from '../src/gloamwood-valley-dressing'
+import { planGloamwoodValleySpawns } from '../src/gloamwood-valley-spawns'
 import {
   GLOAMWOOD_VALLEY,
   GLOAMWOOD_VALLEY_LENGTH,
@@ -26,7 +27,6 @@ import {
   gloamwoodValleyWalkableHalfWidth,
 } from '../src/gloamwood-valley-terrain'
 import { gloamwoodValleyBranchHalfWidth } from '../src/gloamwood-valley-branches'
-import { planGloamwoodValleyEncounters } from '../src/gloamwood-valley-spawns'
 
 const SEED = 0x5a11e
 const WIDTH = 1500
@@ -84,7 +84,10 @@ const parts: string[] = []
 parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${WIDTH} ${HEIGHT}" width="${WIDTH}" height="${HEIGHT}" font-family="Helvetica,Arial">`)
 parts.push(`<rect width="${WIDTH}" height="${HEIGHT}" fill="#0a1410"/>`)
 parts.push(`<text x="${MARGIN}" y="38" fill="#e6efe4" font-size="22" font-weight="700">河谷 · 由真实地形函数生成的平面图</text>`)
-parts.push(`<text x="${MARGIN}" y="62" fill="#7d8f80" font-size="13">地形、路网与全部 87 只生物的位置都读自 src/gloamwood-valley-*.ts。等比例，无夸张。</text>`)
+// Counted, not stated. A hardcoded 87 survived a change that took the real
+// number to 63, which is the exact failure this whole script exists to prevent.
+const spawns = planGloamwoodValleySpawns(SEED)
+parts.push(`<text x="${MARGIN}" y="62" fill="#7d8f80" font-size="13">地形、路网与全部 ${spawns.length} 只生物的位置都读自 src/gloamwood-valley-*.ts。等比例，无夸张。</text>`)
 
 parts.push(`<polygon points="${routeBand(() => 0, gloamwoodValleyHalfWidth)}" fill="#16241c" stroke="#2b4436" stroke-width="1"/>`)
 for (let index = 0; index < GLOAMWOOD_VALLEY_BRANCHES.length; index += 1) {
@@ -110,9 +113,9 @@ const SPAWN_STYLE: Record<string, { fill: string; radius: number }> = {
   elite: { fill: '#c77dff', radius: 6.5 },
   boss: { fill: '#d0604a', radius: 9 },
 }
-for (const spawn of planGloamwoodValleyEncounters('valley-first-run')) {
-  const style = SPAWN_STYLE[spawn.kind]
-  const stroke = spawn.kind === 'nest' || spawn.kind === 'boss' || spawn.kind === 'elite'
+for (const spawn of spawns) {
+  const style = SPAWN_STYLE[spawn.tier]
+  const stroke = spawn.tier === 'nest' || spawn.tier === 'boss' || spawn.tier === 'elite'
     ? ` stroke="#0a1410" stroke-width="1.6"` : ''
   parts.push(`<circle cx="${sx(spawn.x).toFixed(1)}" cy="${sy(spawn.z).toFixed(1)}" r="${style.radius}" fill="${style.fill}"${stroke}/>`)
 }
@@ -158,7 +161,7 @@ const legend: Array<[string, string]> = [
   ['#c77dff', '精英'], ['#d0604a', '首领'],
 ]
 for (const [index, [color, label]] of legend.entries()) {
-  const x = MARGIN + index * 128
+  const x = MARGIN + index * 132
   parts.push(`<rect x="${x}" y="${HEIGHT - 38}" width="14" height="14" fill="${color}"/>`)
   parts.push(`<text x="${x + 22}" y="${HEIGHT - 26}" fill="#7d8f80" font-size="13">${label}</text>`)
 }
