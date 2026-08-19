@@ -9,6 +9,13 @@ import {
 } from './gloamwood-valley-creatures'
 import { buildGloamwoodValleyCreatureScene } from './gloamwood-valley-creature-scene'
 import {
+  GLOAMWOOD_VALLEY_PLAYER,
+  createGloamwoodValleyCombat,
+  spendGloamwoodValleyLife,
+  stepGloamwoodValleyCombat,
+  takeGloamwoodValleyHit,
+} from './gloamwood-valley-combat'
+import {
   createGloamwoodValleyProgression,
   gloamwoodValleyNextGate,
   holdGloamwoodValleyAtGate,
@@ -142,6 +149,22 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
   let creatures = withCreatures ? createGloamwoodValleyCreatures(seed) : []
   const creatureScene = withCreatures ? await buildGloamwoodValleyCreatureScene(creatures) : null
   if (creatureScene) scene.add(creatureScene.root)
+  let combat = createGloamwoodValleyCombat()
+  let attackPressed = false
+  let attackHeld = false
+  let runOver = false
+  const onAttackDown = (event: KeyboardEvent) => {
+    if (event.code !== 'Space' && event.key !== 'j') return
+    event.preventDefault()
+    if (!attackHeld) attackPressed = true
+    attackHeld = true
+  }
+  const onAttackUp = (event: KeyboardEvent) => {
+    if (event.code !== 'Space' && event.key !== 'j') return
+    attackHeld = false
+  }
+  window.addEventListener('keydown', onAttackDown)
+  window.addEventListener('keyup', onAttackUp)
   const progression = createGloamwoodValleyProgression()
   const holdAtClosedGate = (x: number, z: number) => gatesOpen
     ? gloamwoodValleyConfine(x, z)
@@ -157,6 +180,8 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
   let fpsWindow = 0
   let fps = 0
   let cameraSettled = false
+  let facing = 0
+  let corridorS: number = GLOAMWOOD_VALLEY.spawnS
 
   const drawFrame = (delta: number) => {
     elapsed += delta
@@ -171,6 +196,11 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
       step.normalize().multiplyScalar(speed * delta)
       const confined = holdAtClosedGate(position.x + step.x, position.y + step.y)
       position.set(confined.x, confined.z)
+      // Facing follows movement and is kept when the player stops, so a swing
+      // lands where they were last heading rather than at whatever angle a
+      // zero-length step happens to produce.
+      facing = Math.atan2(-step.y, step.x)
+      marker.rotation.y = facing
     }
 
     const ground = gloamwoodValleyHeight(position.x, position.y)
@@ -185,14 +215,52 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
     }
     camera.lookAt(position.x, ground + 1.2, position.y)
 
-    if (creatureScene) {
-      const frame = stepGloamwoodValleyCreatures(creatures, delta, {
-        x: position.x, z: position.y, alive: true, bodyRadius: 1.56,
+    if (creatureScene && !runOver) {
+      // The swing resolves first, so what it wakes is awake for the same frame
+      // it was struck in - a creature that noticed you next frame instead reads
+      // as the first hit not having registered.
+      const swing = stepGloamwoodValleyCombat(combat, creatures, {
+        now: performance.now(),
+        delta,
+        player: { x: position.x, z: position.y },
+        attackHeld,
+        attackPressed,
+        facingRadians: facing,
       })
+      combat = swing.state
+      // The combat layer owns facing while a swing is in flight, so the marker
+      // shows what the contact test actually used rather than where the last
+      // keypress pointed.
+      facing = combat.facingRadians
+      marker.rotation.y = facing
+      attackPressed = false
+
+      const frame = stepGloamwoodValleyCreatures(swing.creatures, delta, {
+        x: position.x, z: position.y, alive: true, bodyRadius: 1.56,
+      }, { struck: swing.struck })
       creatures = frame.creatures
+
+      for (const event of frame.events) {
+        if (event.type !== 'prey-attack') continue
+        const hit = takeGloamwoodValleyHit(combat, event.damage)
+        combat = hit.state
+        if (!hit.died) continue
+        const spent = spendGloamwoodValleyLife(combat, progression)
+        combat = spent.combat
+        progression.livesRemaining = spent.progression.livesRemaining
+        runOver = spent.runOver
+        if (!runOver) {
+          // Back to the road, clear of whatever killed them.
+          const road = gloamwoodValleyPointAt(corridorS, gloamwoodValleyRoadOffset(corridorS))
+          const respawn = gloamwoodValleyConfine(road.x, road.z)
+          position.set(respawn.x, respawn.z)
+          cameraSettled = false
+        }
+      }
       creatureScene.update(creatures, position.x, position.y, delta)
     }
     const corridor = gloamwoodValleyCorridorAt(position.x, position.y)
+    corridorS = corridor.s
     valley.update({ x: position.x, z: position.y, s: corridor.s }, elapsed, fog, overhead)
     // Only from the walking camera. Overhead, nothing is between the lens and
     // the player worth clearing, and fading the whole map from above would
@@ -229,7 +297,9 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
     readout.textContent = [
       `${place}　${Math.round(corridor.s)} / ${Math.round(GLOAMWOOD_VALLEY_LENGTH)}`,
       creatureScene
-        ? `${labels.creatures} ${creatureScene.drawn}/${creatures.length}　${labels.awake} ${gloamwoodValleyAwake(creatures).length}`
+        ? runOver
+          ? labels.runOver
+          : `${labels.health} ${Math.round(combat.health)}/${GLOAMWOOD_VALLEY_PLAYER.maxHealth}　${labels.lives} ${progression.livesRemaining}　${labels.awake} ${gloamwoodValleyAwake(creatures).length}`
         : '',
       gatesOpen
         ? labels.gatesOpen
@@ -254,11 +324,32 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
   ;(window as unknown as { gloamwoodValleyDebug?: unknown }).gloamwoodValleyDebug = { scene, camera, valley, position }
   const frame = () => {
     if (!running) return
-    requestAnimationFrame(frame)
+  requestAnimationFrame(frame)
     const now = performance.now()
     const delta = Math.min(0.05, (now - last) / 1000)
     last = now
     drawFrame(delta)
+  }
+  if (import.meta.env.DEV) {
+    // The review surface renders but never fires animation frames, so a still
+    // capture cannot tell a combat loop that is running from one wired to
+    // nothing. This drives it by hand and reports what came out.
+    ;(window as unknown as Record<string, unknown>).__valleyStep = (frames = 1, attack = false) => {
+      for (let index = 0; index < frames; index += 1) {
+        attackHeld = attack
+        if (attack && index === 0) attackPressed = true
+        frame()
+      }
+      attackHeld = false
+      return {
+        health: Math.round(combat.health),
+        lives: progression.livesRemaining,
+        locked: combat.lockedId,
+        awake: gloamwoodValleyAwake(creatures).length,
+        alive: creatures.filter((entry) => entry.phase !== 'dead').length,
+        runOver,
+      }
+    }
   }
   requestAnimationFrame(frame)
 
@@ -296,7 +387,7 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
 // Producer-facing text for a review tool, not player copy, so it stays here
 // rather than in the translation catalogue the game ships.
 const EN = {
-  help: 'WASD to walk · Shift to run · the road turns, so steer',
+  help: 'WASD to walk · Shift to run · Space to attack',
   choke: 'Choke',
   props: 'props',
   triangles: 'tris',
@@ -310,6 +401,9 @@ const EN = {
     'high-terrace': 'High Terrace',
     'stone-bowl': 'Stone Bowl',
   } as Record<string, string>,
+  health: 'health',
+  lives: 'lives',
+  runOver: 'Run over — reload to start again',
   creatures: 'creatures',
   awake: 'hunting',
   gateClosed: 'Gate shut · the region boss holds it',
@@ -318,7 +412,7 @@ const EN = {
 } as const
 
 const ZH = {
-  help: 'WASD 行走 · Shift 奔跑 · 路会拐弯，要自己转向',
+  help: 'WASD 行走 · Shift 奔跑 · 空格攻击',
   choke: '隘口',
   props: '道具',
   triangles: '三角',
@@ -332,6 +426,9 @@ const ZH = {
     'high-terrace': '高阶地',
     'stone-bowl': '石碗',
   } as Record<string, string>,
+  health: '生命',
+  lives: '剩余命',
+  runOver: '本局结束 — 刷新重来',
   creatures: '生物',
   awake: '已警觉',
   gateClosed: '隘口关闭 · 区域首领把守',

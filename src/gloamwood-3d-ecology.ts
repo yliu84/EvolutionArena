@@ -289,19 +289,41 @@ export function stepGloamwoodNest(
   return { state: next, events }
 }
 
-export function damageGloamwoodNestPrey(
-  state: GloamwoodNestState,
+/**
+ * The damage gate, over any list of creatures.
+ *
+ * Split out from the nest so the valley's free-roaming creatures go through the
+ * same arithmetic rather than a second copy of it. The nest wrapper below adds
+ * what only a nest has - a gene bank, a kill count, a biomass total - and this
+ * decides what a hit does, which is the part that must never exist twice.
+ */
+export interface GloamwoodPreyHitResult {
+  prey: GloamwoodNestPrey[]
+  effectiveDamage: number
+  blocked: boolean
+  weakness: boolean
+  interrupted: boolean
+  killed: boolean
+  absorbedByShield: number
+  splits: boolean
+  burst: GloamwoodEliteBurst | null
+  /** The creature's family, when the hit killed it. */
+  killedKind: GloamwoodPreyKind | null
+}
+
+export function damageGloamwoodPreyList(
+  prey: readonly GloamwoodNestPrey[],
   preyId: string,
   rawDamage: number,
   action: FormalHuntBasicAttackAction,
   attacker: { x: number; z: number },
   knockback: number,
-): GloamwoodPreyDamageResult {
-  const target = state.prey.find((prey) => prey.id === preyId)
+): GloamwoodPreyHitResult {
+  const target = prey.find((entry) => entry.id === preyId)
   if (!target || target.phase === 'dead') {
     return {
-      state, effectiveDamage: 0, blocked: false, weakness: false, interrupted: false,
-      killed: false, biomassGained: 0, geneGained: null, absorbedByShield: 0, splits: false, burst: null,
+      prey: [...prey], effectiveDamage: 0, blocked: false, weakness: false, interrupted: false,
+      killed: false, absorbedByShield: 0, splits: false, burst: null, killedKind: null,
     }
   }
   const spec = GLOAMWOOD_PREY[target.kind]
@@ -310,9 +332,6 @@ export function damageGloamwoodNestPrey(
   const shellFront = target.kind === 'shell' && frontalError <= Math.PI * 0.42
   const multiplier = shellFront ? 0.28 : target.kind === 'shell' ? 1.35 : target.kind === 'fang' && action === 'Claw' ? 1.2 : target.kind === 'swarm' && action === 'TailSwipe' ? 1.3 : 1
   const familyDamage = Math.max(1, Math.round(Math.max(0, rawDamage) * multiplier))
-  // The barrier is a step inside this gate, never a second one. Nothing in the
-  // elite layer decides how hard the player hits; it only decides how much of
-  // an already-resolved number reaches the creature.
   const shielded = gloamwoodEliteAbsorb(target.elite, familyDamage)
   const effectiveDamage = shielded.damage
   const health = Math.max(0, target.health - effectiveDamage)
@@ -320,43 +339,70 @@ export function damageGloamwoodNestPrey(
   const dx = target.x - attacker.x
   const dz = target.z - attacker.z
   const inverse = 1 / Math.max(0.001, Math.hypot(dx, dz))
-  // Interrupting matters, but it cannot be free every time or a creature whose
-  // wind-up is longer than the player's attack cadence never acts at all. One
-  // stun buys a guaranteed attempt: the window runs from the hit itself, so it
-  // has to cover the stun the creature is about to sit through as well as the
-  // telegraph and strike that follow. Covering only telegraph and strike left
-  // the window expiring a fraction before the swing landed, and at the Fang
-  // chain's cadence that produced a cut-short wind-up before nearly every
-  // attack - the interruption the player was still seeing.
   const splits = gloamwoodEliteSplits(target.elite, target.health, health, target.maxHealth)
   const interruptible = (target.stunImmuneSeconds ?? 0) <= 0
   const stunImmunity = spec.stunSeconds + spec.telegraphSeconds + spec.strikeSeconds
-  const nextPrey = state.prey.map((prey) => prey.id === preyId ? {
-    ...prey,
+  const nextPrey = prey.map((entry) => entry.id === preyId ? {
+    ...entry,
     health,
-    x: prey.x + dx * inverse * knockback * (target.kind === 'shell' ? 0.35 : 1),
-    z: prey.z + dz * inverse * knockback * (target.kind === 'shell' ? 0.35 : 1),
-    phase: killed ? 'dead' as const : interruptible ? 'stunned' as const : prey.phase,
-    phaseElapsed: killed || interruptible ? 0 : prey.phaseElapsed,
-    attackResolved: killed || interruptible ? false : prey.attackResolved,
-    stunImmuneSeconds: interruptible ? stunImmunity : prey.stunImmuneSeconds,
+    x: entry.x + dx * inverse * knockback * (target.kind === 'shell' ? 0.35 : 1),
+    z: entry.z + dz * inverse * knockback * (target.kind === 'shell' ? 0.35 : 1),
+    phase: killed ? 'dead' as const : interruptible ? 'stunned' as const : entry.phase,
+    phaseElapsed: killed || interruptible ? 0 : entry.phaseElapsed,
+    attackResolved: killed || interruptible ? false : entry.attackResolved,
+    stunImmuneSeconds: interruptible ? stunImmunity : entry.stunImmuneSeconds,
     elite: shielded.elite && splits ? { ...shielded.elite, broodTriggered: true } : shielded.elite,
-  } : prey)
-  const biomassGained = killed ? spec.biomass : 0
-  const genes = killed ? { ...state.genes, [spec.gene]: state.genes[spec.gene] + 1 } : state.genes
-  const recentHunts = killed ? [...state.recentHunts, spec.gene].slice(-6) : state.recentHunts
+  } : entry)
   return {
-    state: { ...state, prey: nextPrey, kills: state.kills + Number(killed), biomass: state.biomass + biomassGained, genes, recentHunts },
+    prey: nextPrey,
     effectiveDamage,
     blocked: shellFront,
     weakness: !shellFront && multiplier > 1,
     interrupted: !killed && interruptible,
     killed,
-    biomassGained,
-    geneGained: killed ? spec.gene : null,
     absorbedByShield: shielded.absorbed,
     splits,
     burst: killed ? gloamwoodEliteDeathBurst(target.elite, target.x, target.z) : null,
+    killedKind: killed ? target.kind : null,
+  }
+}
+
+export function damageGloamwoodNestPrey(
+  state: GloamwoodNestState,
+  preyId: string,
+  rawDamage: number,
+  action: FormalHuntBasicAttackAction,
+  attacker: { x: number; z: number },
+  knockback: number,
+): GloamwoodPreyDamageResult {
+  // Delegates. The arithmetic of what a hit does lives in one place; what a
+  // *nest* additionally tracks - genes, kills, biomass, the recent-hunt list -
+  // is added here, because only a nest has those.
+  const hit = damageGloamwoodPreyList(state.prey, preyId, rawDamage, action, attacker, knockback)
+  const killedKind = hit.killedKind
+  const spec = killedKind ? GLOAMWOOD_PREY[killedKind] : null
+  const biomassGained = spec ? spec.biomass : 0
+  const genes = spec ? { ...state.genes, [spec.gene]: state.genes[spec.gene] + 1 } : state.genes
+  const recentHunts = spec ? [...state.recentHunts, spec.gene].slice(-6) : state.recentHunts
+  return {
+    state: {
+      ...state,
+      prey: hit.prey,
+      kills: state.kills + Number(hit.killed),
+      biomass: state.biomass + biomassGained,
+      genes,
+      recentHunts,
+    },
+    effectiveDamage: hit.effectiveDamage,
+    blocked: hit.blocked,
+    weakness: hit.weakness,
+    interrupted: hit.interrupted,
+    killed: hit.killed,
+    biomassGained,
+    geneGained: spec ? spec.gene : null,
+    absorbedByShield: hit.absorbedByShield,
+    splits: hit.splits,
+    burst: hit.burst,
   }
 }
 
