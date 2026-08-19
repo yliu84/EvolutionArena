@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { QUALITY_3D_GLB_ASSETS } from '../src/quality-3d-glb-assets'
-import { GLOAMWOOD_BLADESHELL_BOSS } from '../src/gloamwood-3d-modelled-boss'
+import { GLOAMWOOD_MODELLED_BOSSES } from '../src/gloamwood-3d-modelled-boss'
 import { GLOAMWOOD_MODELLED_PREY_CONFIGS } from '../src/gloamwood-modelled-prey'
 
 const MODEL_DIRECTORY = new URL('../public/assets/quality-3d/models/', import.meta.url)
@@ -20,7 +20,7 @@ describe('The served payload holds runtime assets only', () => {
   // nothing fetches, and nothing the code names is missing from the build.
   const referenced = [
     ...QUALITY_3D_GLB_ASSETS.map((asset) => asset.url),
-    GLOAMWOOD_BLADESHELL_BOSS.url,
+    ...GLOAMWOOD_MODELLED_BOSSES.map((config) => config.url),
     ...GLOAMWOOD_MODELLED_PREY_CONFIGS.map((config) => config.url),
   ]
   const registryFiles = new Set(referenced.map((url) => url.split('?')[0].split('/').pop() as string))

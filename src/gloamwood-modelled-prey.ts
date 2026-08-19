@@ -54,6 +54,22 @@ export const GLOAMWOOD_FORD_FANG_PREY: GloamwoodModelledPreyConfig = {
   clips: { idle: 'Idle', walk: 'Walk', attack: 'Bite', hit: 'Hit', death: 'Death' },
 }
 
+export const GLOAMWOOD_TERRACE_GRAZER_PREY: GloamwoodModelledPreyConfig = {
+  id: 'terrace-grazer',
+  url: '/assets/quality-3d/models/terrace-grazer-runtime-v1.glb?v=valley-grazer-v1',
+  footprintRadius: 1.02,
+  modelYaw: Math.PI / 2,
+  clips: { idle: 'Idle', walk: 'Walk', attack: 'Butt', hit: 'Hit', death: 'Death' },
+}
+
+export const GLOAMWOOD_PEBBLE_DUMPLING_PREY: GloamwoodModelledPreyConfig = {
+  id: 'pebble-dumpling',
+  url: '/assets/quality-3d/models/pebble-dumpling-runtime-v1.glb?v=valley-pebble-v1',
+  footprintRadius: 1.42,
+  modelYaw: Math.PI / 2,
+  clips: { idle: 'Idle', walk: 'Walk', attack: 'Shove', hit: 'Hit', death: 'Death' },
+}
+
 export const GLOAMWOOD_SPOTTED_FORDBUG_PREY: GloamwoodModelledPreyConfig = {
   id: 'spotted-fordbug',
   url: '/assets/quality-3d/models/spotted-fordbug-runtime-v1.glb?v=valley-prey-bug-v1',
@@ -77,9 +93,42 @@ export const GLOAMWOOD_MODELLED_PREY: Partial<Record<GloamwoodPreyKind, Gloamwoo
   shell: GLOAMWOOD_SPOTTED_FORDBUG_PREY,
 }
 
+/**
+ * Which body a passive creature wears, by the ground it stands on.
+ *
+ * Role picks the body before family does, and terrain picks it after. A hunter
+ * and a grazer of the same family are not the same animal, and a grazer on
+ * scree is not the one on grass - which is the same principle that made three
+ * regions out of one kit: spread it unevenly.
+ *
+ * Keyed by the branch a creature was placed in, because that is what the spawn
+ * plan already knows. Anything on the main road takes the default.
+ */
+export const GLOAMWOOD_MODELLED_GRAZERS: Partial<Record<GloamwoodPreyKind, GloamwoodModelledPreyConfig>> = {
+  fang: GLOAMWOOD_TERRACE_GRAZER_PREY,
+  shell: GLOAMWOOD_SPOTTED_FORDBUG_PREY,
+}
+
+const SCREE_BRANCHES = new Set(['scree-shelf', 'stone-bowl', 'high-terrace'])
+
+export function gloamwoodModelledPreyFor(
+  kind: GloamwoodPreyKind,
+  role: 'passive' | 'aggressive',
+  branch: string | null = null,
+): GloamwoodModelledPreyConfig | undefined {
+  if (role === 'aggressive') return GLOAMWOOD_MODELLED_PREY[kind]
+  // The pebble belongs on rock, where it reads as one of the boulders the scree
+  // branches are dressed with until it moves. That is the whole of its value and
+  // it is worth nothing anywhere else.
+  if (branch && SCREE_BRANCHES.has(branch)) return GLOAMWOOD_PEBBLE_DUMPLING_PREY
+  return GLOAMWOOD_MODELLED_GRAZERS[kind] ?? GLOAMWOOD_MODELLED_PREY[kind]
+}
+
 export const GLOAMWOOD_MODELLED_PREY_CONFIGS: readonly GloamwoodModelledPreyConfig[] = [
   GLOAMWOOD_FORD_FANG_PREY,
   GLOAMWOOD_SPOTTED_FORDBUG_PREY,
+  GLOAMWOOD_TERRACE_GRAZER_PREY,
+  GLOAMWOOD_PEBBLE_DUMPLING_PREY,
 ]
 
 export interface GloamwoodPreyClipSelection {

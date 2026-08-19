@@ -3,6 +3,12 @@ import * as THREE from 'three'
 import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
 import { gloamwoodValleyDressingFor } from './gloamwood-valley-dressing'
 import {
+  createGloamwoodValleyCreatures,
+  gloamwoodValleyAwake,
+  stepGloamwoodValleyCreatures,
+} from './gloamwood-valley-creatures'
+import { buildGloamwoodValleyCreatureScene } from './gloamwood-valley-creature-scene'
+import {
   createGloamwoodValleyProgression,
   gloamwoodValleyNextGate,
   holdGloamwoodValleyAtGate,
@@ -130,6 +136,12 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
   // combat in this preview, so `?gates=open` walks the whole route - a reviewer
   // who cannot reach the headwater cannot review the headwater.
   const gatesOpen = params.get('gates') === 'open'
+  // The creatures. Off by default so the map itself can still be reviewed
+  // without 63 skinned bodies in the way.
+  const withCreatures = params.get('creatures') !== '0'
+  let creatures = withCreatures ? createGloamwoodValleyCreatures(seed) : []
+  const creatureScene = withCreatures ? await buildGloamwoodValleyCreatureScene(creatures) : null
+  if (creatureScene) scene.add(creatureScene.root)
   const progression = createGloamwoodValleyProgression()
   const holdAtClosedGate = (x: number, z: number) => gatesOpen
     ? gloamwoodValleyConfine(x, z)
@@ -173,6 +185,13 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
     }
     camera.lookAt(position.x, ground + 1.2, position.y)
 
+    if (creatureScene) {
+      const frame = stepGloamwoodValleyCreatures(creatures, delta, {
+        x: position.x, z: position.y, alive: true, bodyRadius: 1.56,
+      })
+      creatures = frame.creatures
+      creatureScene.update(creatures, position.x, position.y, delta)
+    }
     const corridor = gloamwoodValleyCorridorAt(position.x, position.y)
     valley.update({ x: position.x, z: position.y, s: corridor.s }, elapsed, fog, overhead)
     // Only from the walking camera. Overhead, nothing is between the lens and
@@ -209,6 +228,9 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
       : region ? labels.regions[region.id] : labels.choke
     readout.textContent = [
       `${place}　${Math.round(corridor.s)} / ${Math.round(GLOAMWOOD_VALLEY_LENGTH)}`,
+      creatureScene
+        ? `${labels.creatures} ${creatureScene.drawn}/${creatures.length}　${labels.awake} ${gloamwoodValleyAwake(creatures).length}`
+        : '',
       gatesOpen
         ? labels.gatesOpen
         : gloamwoodValleyNextGate(progression, corridor.s)
@@ -288,6 +310,8 @@ const EN = {
     'high-terrace': 'High Terrace',
     'stone-bowl': 'Stone Bowl',
   } as Record<string, string>,
+  creatures: 'creatures',
+  awake: 'hunting',
   gateClosed: 'Gate shut · the region boss holds it',
   gatesOpen: 'Gates forced open for review',
   gatesCleared: 'All gates open',
@@ -308,6 +332,8 @@ const ZH = {
     'high-terrace': '高阶地',
     'stone-bowl': '石碗',
   } as Record<string, string>,
+  creatures: '生物',
+  awake: '已警觉',
   gateClosed: '隘口关闭 · 区域首领把守',
   gatesOpen: '评审模式 · 隘口已强制打开',
   gatesCleared: '隘口已全部打开',

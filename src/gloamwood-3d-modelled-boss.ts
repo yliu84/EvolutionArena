@@ -62,6 +62,48 @@ export const GLOAMWOOD_BLADESHELL_BOSS: GloamwoodModelledBossConfig = {
   },
 }
 
+/** The valley's second gate. Two patterns, told apart by their wind-ups. */
+export const GLOAMWOOD_CLIFF_MAW_BOSS: GloamwoodModelledBossConfig = {
+  url: '/assets/quality-3d/models/cliff-maw-runtime-v1.glb?v=valley-boss2-v1',
+  worldHeight: 3.83,
+  modelYaw: Math.PI / 2,
+  clips: {
+    idle: 'Idle',
+    walk: 'Walk',
+    hit: 'Hit',
+    death: 'Death',
+    patterns: {
+      'root-slam': 'Slam',
+      'spore-ring': 'Sweep',
+      'thorn-charge': 'Sweep',
+    },
+  },
+}
+
+/** The end of the run. Three patterns, one of them phase-two only. */
+export const GLOAMWOOD_SOURCE_ROOT_BOSS: GloamwoodModelledBossConfig = {
+  url: '/assets/quality-3d/models/source-root-runtime-v1.glb?v=valley-boss3-v1',
+  worldHeight: 2.4,
+  modelYaw: Math.PI / 2,
+  clips: {
+    idle: 'Idle',
+    walk: 'Walk',
+    hit: 'Hit',
+    death: 'Death',
+    patterns: {
+      'root-slam': 'Slam',
+      'thorn-charge': 'Lunge',
+      'spore-ring': 'RingBurst',
+    },
+  },
+}
+
+export const GLOAMWOOD_MODELLED_BOSSES: readonly GloamwoodModelledBossConfig[] = [
+  GLOAMWOOD_BLADESHELL_BOSS,
+  GLOAMWOOD_CLIFF_MAW_BOSS,
+  GLOAMWOOD_SOURCE_ROOT_BOSS,
+]
+
 export interface GloamwoodBossClipSelection {
   clip: string
   /**

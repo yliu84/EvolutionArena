@@ -1,6 +1,6 @@
 import type { GloamwoodPreyKind } from './gloamwood-3d-ecology'
 import { GLOAMWOOD_AGGRO, type GloamwoodCreatureRole } from './gloamwood-creature-aggro'
-import { GLOAMWOOD_VALLEY_BRANCHES } from './gloamwood-valley-branches'
+import { GLOAMWOOD_VALLEY_BRANCHES, gloamwoodValleyBranchHalfWidth } from './gloamwood-valley-branches'
 import {
   GLOAMWOOD_VALLEY,
   GLOAMWOOD_VALLEY_LENGTH,
@@ -39,6 +39,17 @@ export interface GloamwoodValleyRegionSpawnPlan {
   region: GloamwoodValleyRegionId
   /** Passive creatures scattered off the road. */
   grazers: number
+  /**
+   * Which family the region's grazers are.
+   *
+   * Family picks the body, so this is what decides whether a bank carries the
+   * beetle or the horned grazer. Left as one family everywhere, three passive
+   * bodies were built and only one could ever be chosen - which looked like the
+   * others not loading rather than like a data gap.
+   */
+  grazerKinds: readonly GloamwoodPreyKind[]
+  /** Share of the region's grazers placed down its branches rather than on the road. */
+  grazersInBranches: number
   /** One entry per pack, listing exactly who is in it. */
   packs: readonly (readonly GloamwoodPreyKind[])[]
   /** Waves the region's one road nest runs. */
@@ -49,6 +60,9 @@ export const GLOAMWOOD_VALLEY_SPAWN_PLAN: readonly GloamwoodValleyRegionSpawnPla
   {
     region: 'shallows',
     grazers: 8,
+    // Green and grassy, so both of the soft bodies belong here.
+    grazerKinds: ['fang', 'shell'],
+    grazersInBranches: 0.375,
     packs: [
       // Teaching order. A Fang anchor with two Swarm behind it: kill the anchor
       // or be worn down, which is the first decision the game asks for.
@@ -64,6 +78,8 @@ export const GLOAMWOOD_VALLEY_SPAWN_PLAN: readonly GloamwoodValleyRegionSpawnPla
   {
     region: 'gorge',
     grazers: 6,
+    grazerKinds: ['shell', 'fang'],
+    grazersInBranches: 0.5,
     packs: [
       ['shell', 'fang', 'swarm', 'swarm'],
       ['fang', 'fang', 'swarm', 'swarm'],
@@ -74,6 +90,10 @@ export const GLOAMWOOD_VALLEY_SPAWN_PLAN: readonly GloamwoodValleyRegionSpawnPla
   {
     region: 'headwater',
     grazers: 4,
+    // Bare and high. The horned grazer belongs on the terraces; the scree
+    // branches take the pebble, which the body lookup decides from the branch.
+    grazerKinds: ['fang'],
+    grazersInBranches: 0.5,
     packs: [
       ['shell', 'shell', 'fang', 'fang'],
       ['fang', 'fang', 'fang', 'swarm'],
@@ -129,12 +149,23 @@ export function planGloamwoodValleySpawns(seed: number): GloamwoodValleySpawn[] 
     const slots: number[] = []
     const wanted = plan.packs.length + 1
     const step = (usable.to - usable.from) / wanted
+    // Route distance two anchors must keep. The test asserts the world-space
+    // version of this; encoding it here is what makes it true rather than
+    // hoped for.
+    const apart = GLOAMWOOD_PACK_SPACING
     for (let index = 0; index < wanted; index += 1) {
       let s = usable.from + step * (index + 0.5) + (random() - 0.5) * step * 0.4
       // Walk out of a blocked stretch rather than giving up on the slot: the
       // number of packs is a decision, and silently dropping one would change
       // the region's pressure without anything saying so.
-      for (let nudge = 0; nudge < 40 && !free(s); nudge += 1) s += 6
+      //
+      // Clear of the slots already taken, too. Nudging alone walks every
+      // blocked slot to the same first free position past the block, which put
+      // two gorge packs four tenths of a unit apart - close enough that one
+      // fight was six creatures and the region was a pack short.
+      const clear = (candidate: number) =>
+        free(candidate) && slots.every((taken) => Math.abs(taken - candidate) >= apart)
+      for (let nudge = 0; nudge < 80 && !clear(s); nudge += 1) s += 6
       slots.push(Math.min(usable.to, s))
     }
 
@@ -178,11 +209,28 @@ export function planGloamwoodValleySpawns(seed: number): GloamwoodValleySpawn[] 
       branch: null,
     })
 
+    const regionBranches = GLOAMWOOD_VALLEY_BRANCHES
+      .map((branch, branchIndex) => ({ branch, branchIndex }))
+      .filter(({ branch }) => branch.mouthS >= region.from && branch.mouthS <= region.to)
+
     for (let index = 0; index < plan.grazers; index += 1) {
-      // Off the road but not up the wall: grazers are scenery the player can
-      // choose to eat, and scenery behind a cliff is not a choice.
-      let placed: { x: number; z: number; s: number } | null = null
+      const kind = plan.grazerKinds[index % plan.grazerKinds.length]
+      // A share of them live down the branches. Without this the scree bodies
+      // never appear at all: grazers only ever stood on the road, and the body
+      // that reads as a boulder is worth nothing anywhere but among boulders.
+      const inBranch = regionBranches.length > 0 && index < Math.round(plan.grazers * plan.grazersInBranches)
+      let placed: { x: number; z: number; s: number; branch: string | null } | null = null
       for (let attempt = 0; attempt < 60 && !placed; attempt += 1) {
+        if (inBranch) {
+          const { branch, branchIndex } = regionBranches[index % regionBranches.length]
+          const t = 0.35 + random() * 0.6
+          const half = gloamwoodValleyBranchHalfWidth(branch, t)
+          const point = gloamwoodValleyBranchPointAt(branchIndex, t, (random() - 0.5) * half * 1.1)
+          if (!gloamwoodValleyWalkable(point.x, point.z)) continue
+          if (spawns.some((other) => Math.hypot(other.x - point.x, other.z - point.z) < 4)) continue
+          placed = { x: point.x, z: point.z, s: branch.mouthS, branch: branch.id }
+          continue
+        }
         const s = usable.from + random() * (usable.to - usable.from)
         const side = random() < 0.5 ? -1 : 1
         const road = gloamwoodValleyRoadOffset(s)
@@ -190,21 +238,18 @@ export function planGloamwoodValleySpawns(seed: number): GloamwoodValleySpawn[] 
         const point = gloamwoodValleyPointAt(s, lateral)
         if (!gloamwoodValleyWalkable(point.x, point.z)) continue
         if (spawns.some((other) => Math.hypot(other.x - point.x, other.z - point.z) < 4)) continue
-        placed = { x: point.x, z: point.z, s }
+        placed = { x: point.x, z: point.z, s, branch: null }
       }
       if (!placed) continue
       spawns.push({
         id: `${plan.region}-grazer-${index + 1}`,
-        // The beetle is the grazer. It is the one body in the kit that reads as
-        // harmless on sight, which is what makes leaving it alone a decision
-        // rather than a gamble.
-        kind: 'shell',
+        kind,
         role: 'passive',
         tier: 'grazer',
         x: placed.x, z: placed.z, s: placed.s,
         region: plan.region,
         group: `${plan.region}-grazers`,
-        branch: null,
+        branch: placed.branch,
       })
     }
   }
