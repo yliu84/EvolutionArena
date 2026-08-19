@@ -18,6 +18,7 @@ import {
   gloamwoodValleyCorridorLines,
   gloamwoodValleyHeight,
   gloamwoodValleyPointAt,
+  gloamwoodValleyProject,
   gloamwoodValleyRoadOffset,
 } from './gloamwood-valley-terrain'
 
@@ -93,6 +94,36 @@ export function createGloamwoodValleyMap(
         genes: { fang: 0, shell: 0, swarm: 0 },
         recentHunts: [],
       }
+    },
+    resetAfterDeath(state: GloamwoodNestState, diedAt: { x: number; z: number }) {
+      // Everything goes home and forgets the player. A creature the player
+      // walked past on their way in has no business standing on top of them
+      // when they come back.
+      const prey = state.prey.map((entry) => {
+        const creature = entry as GloamwoodValleyCreature
+        if (creature.phase === 'dead') return creature
+        return {
+          ...creature,
+          x: creature.homeX,
+          z: creature.homeZ,
+          wanderX: creature.homeX,
+          wanderZ: creature.homeZ,
+          phase: 'chase' as const,
+          phaseElapsed: 0,
+          attackResolved: false,
+          awake: false,
+          outOfReachSeconds: 0,
+        }
+      })
+      // Back to the entrance of the region they died in, not to the start of
+      // the run. The regions are the valley's checkpoints - that is what the
+      // life budget was designed around, and walking 1500 units back is a
+      // punishment nobody asked for.
+      const died = gloamwoodValleyProject(diedAt.x, diedAt.z)
+      const region = GLOAMWOOD_VALLEY.regions.find((entry) => died.s >= entry.from && died.s <= entry.to)
+      const entered = Math.max(GLOAMWOOD_VALLEY.spawnS, region?.from ?? GLOAMWOOD_VALLEY.spawnS)
+      const point = gloamwoodValleyPointAt(entered, gloamwoodValleyRoadOffset(entered))
+      return { state: { ...state, prey: prey as GloamwoodNestPrey[] }, playerAt: gloamwoodValleyConfine(point.x, point.z) }
     },
     stepCreatures(
       state: GloamwoodNestState,

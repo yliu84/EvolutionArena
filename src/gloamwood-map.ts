@@ -105,6 +105,19 @@ export interface GloamwoodMapContract {
     struck: readonly string[],
   ): { state: GloamwoodNestState; events: GloamwoodNestEvent[] }
   /**
+   * Where everything goes when the player dies and spends a life.
+   *
+   * The Gloamwood sends its wave back to the nest it came out of, which is the
+   * only place its creatures belong. The valley's live where they were placed,
+   * spread over 1590 units - sending them to a nest coordinate that means
+   * nothing on this map piled sixty creatures into one ring around the player's
+   * respawn.
+   */
+  resetAfterDeath(
+    state: GloamwoodNestState,
+    diedAt: { x: number; z: number },
+  ): { state: GloamwoodNestState; playerAt: { x: number; z: number } }
+  /**
    * Per-frame scenery work, if the map has any.
    *
    * The Gloamwood's scenery is static once built. The valley's culls by cell
@@ -180,6 +193,7 @@ export function createGloamwoodMap(
   height: (x: number, z: number) => number,
   bounds: GloamwoodMapBounds,
   buildScenery: () => Promise<void>,
+  resetAfterDeath: GloamwoodMapContract['resetAfterDeath'],
 ): GloamwoodMapContract {
   return {
     id: 'gloamwood',
@@ -195,6 +209,7 @@ export function createGloamwoodMap(
     spawn: { x: -6, z: 3 },
     cameraOffset: { x: 9.2, y: 11.8, z: 13.4 },
     hasNest: true,
+    resetAfterDeath,
     createCreatures: createGloamwoodNestState,
     stepCreatures: (state, delta, player) => stepGloamwoodNest(state, delta, player),
     bodyFor: (prey) => GLOAMWOOD_MODELLED_PREY[prey.kind],

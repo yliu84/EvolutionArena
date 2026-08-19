@@ -569,6 +569,10 @@ class Gloamwood3DHunt {
         this.createShrine()
         this.createAtmosphere()
       },
+      (state) => ({
+        state: this.nestRingReset(state),
+        playerAt: { x: GLOAMWOOD_BOSS_ARENA.playerX, z: GLOAMWOOD_BOSS_ARENA.playerZ },
+      }),
     )
   private readonly cameraOffset = new THREE.Vector3(
     this.map.cameraOffset.x,
@@ -2944,14 +2948,27 @@ class Gloamwood3DHunt {
     return t('wave.mixed')
   }
 
+  /** Sends whatever the map says, wherever the map says. */
   private resetLivePreyToNest() {
-    const living = this.nestState.prey.filter((prey) => prey.phase !== 'dead')
+    const reset = this.map.resetAfterDeath(this.nestState, {
+      x: this.playerRoot.position.x,
+      z: this.playerRoot.position.z,
+    })
+    this.nestState = reset.state
+    this.playerRoot.position.set(reset.playerAt.x, this.map.height(reset.playerAt.x, reset.playerAt.z), reset.playerAt.z)
+    this.target.copy(this.playerRoot.position)
+    this.lockedPreyId = null
+  }
+
+  /** The Gloamwood's ring around its nest. */
+  private nestRingReset(state: GloamwoodNestState): GloamwoodNestState {
+    const living = state.prey.filter((prey) => prey.phase !== 'dead')
     const count = Math.max(1, living.length)
-    this.nestState = {
-      ...this.nestState,
-      prey: this.nestState.prey.map((prey) => {
+    return {
+      ...state,
+      prey: state.prey.map((prey) => {
         if (prey.phase === 'dead') return prey
-        const angle = prey.slot / count * Math.PI * 2 + this.nestState.wave * 0.55
+        const angle = prey.slot / count * Math.PI * 2 + state.wave * 0.55
         const radius = prey.kind === 'swarm' ? 3.2 + prey.slot % 2 * 0.7 : 2.6 + prey.slot * 0.45
         return {
           ...prey,
