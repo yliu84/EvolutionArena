@@ -112,7 +112,11 @@ bpy.context.scene.camera = camera
 scene = bpy.context.scene
 scene.render.resolution_x = 900
 scene.render.resolution_y = 700
-radius = max(size) * 1.75
+# Framed off the bounding diagonal, not the longest axis. The longest axis is
+# right for a long low animal and wrong for a blocky one: a creature as wide as
+# it is tall fills the frame and comes back cropped, which reads as a broken
+# render rather than as a framing mistake.
+radius = size.length * 1.9
 for name, angle in [("three-quarter", 48), ("side", 90), ("front", 2)]:
     radians = math.radians(angle)
     camera.location = centre + Vector((math.sin(radians) * radius, -math.cos(radians) * radius, size.z * 0.5))
