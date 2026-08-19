@@ -1,9 +1,16 @@
 """Put the Coral Gecko's mesh back on its skeleton, then rebind it.
 
-STATUS: the realignment is right and proven; the rebinding is not finished, and
-this does not yet produce a shippable model. Its output still fails glTF
-validation on two degenerate normals, and the hind legs bind about a fortieth of
-what the front legs do. Do not run it as a fix.
+STATUS: the realignment is right and proven; the rebinding is not. Do not run
+this as a fix.
+
+Six weighting schemes were tried on the realigned mesh - the asset's own
+positional regions, Blender's heat and envelope binding, nearest-bone,
+nearest-limb-shared, and proximity in absolute and in bone-relative units. Each
+one binds most of the skeleton and starves two or three bones somewhere else:
+absolute proximity leaves the hind shins empty, bone-relative proximity fixes
+those and empties Body and Jaw, the authored regions bind the hind legs at a
+fortieth of the front ones. This is not a tuning problem with one more constant
+in it.
 
 What it establishes, and what the next attempt should start from:
 
@@ -130,89 +137,53 @@ armature.data.pose_position = "REST"
 bpy.context.view_layer.update()
 
 
-def paint_authored_weights():
-    """The scheme this creature was rigged with, re-applied to a centred mesh.
+def paint_by_proximity():
+    """Weight every vertex by how near it is to each bone.
 
-    Blender's automatic methods were tried first and are the wrong tool here.
-    Heat weighting refuses this mesh outright; envelopes bind everything but
-    smear it - the jaw came out leading seven thousand vertices, a quarter of the
-    body. The original scheme divides the animal into regions by position, which
-    is exactly what a low-poly quadruped wants, and its only fault was that it
-    assumed a centred mesh. It has one now.
+    No thresholds. The scheme this creature was rigged with divides the body by
+    absolute coordinates - `z < 0.43`, `-0.48 <= y <= 0.50` - and those were
+    calibrated against a different mesh: applied here, low head vertices fell
+    into the leg band while hind thighs fell out of it, which is why the front
+    legs bound a thousand vertices and the back ones forty.
 
-    Axes here are Blender's after a glTF import: x across, y along the body
-    (head negative), z up.
+    Distance to the bone needs no calibration. Each vertex takes the three
+    nearest bones, weighted by inverse square distance, which is what a skin
+    does anyway: bend at the joint, follow the nearest limb, blend where two
+    meet.
     """
     groups = {bone.name: (mesh.vertex_groups.get(bone.name) or mesh.vertex_groups.new(name=bone.name))
               for bone in armature.data.bones if bone.use_deform}
-
-    # The band's ceiling, taken from the thigh bones rather than written down.
-    #
-    # It used to be a flat 0.43 for the whole body, and the hind thigh bones
-    # start at exactly 0.43 - so the entire upper hind leg fell outside the band
-    # and into the body, and the back legs bound a fortieth of what the front
-    # ones did. Each row now reaches as high as its own thigh does.
-    def row_ceiling(prefix):
-        heads = [armature.data.bones[f"Leg{prefix}{side}"].head_local.z
-                 for side in ("L", "R") if f"Leg{prefix}{side}" in armature.data.bones]
-        return (max(heads) + 0.09) if heads else 0.43
-
-    front_ceiling = row_ceiling("F")
-    back_ceiling = row_ceiling("B")
-
-    def leg_ceiling(y):
-        return front_ceiling if y < 0 else back_ceiling
-
-    def share(weights):
-        total = sum(max(0.0, value) for value in weights.values())
-        if total <= 0:
-            return {}
-        return {name: max(0.0, value) / total for name, value in weights.items() if value > 0}
+    segments = [
+        (bone.name, bone.head_local.copy(), (bone.tail_local - bone.head_local).copy(), bone.length)
+        for bone in armature.data.bones if bone.use_deform
+    ]
 
     for vertex in mesh.data.vertices:
-        x, y, z = vertex.co
-        if y < -0.49 and z < 0.535:
-            blend = min(1.0, max(0.0, (-y - 0.45) / 0.26))
-            weights = {"Jaw": 0.72 + blend * 0.20, "Head": 0.28 - blend * 0.16}
-        elif y < -0.46:
-            blend = min(1.0, max(0.0, (-y - 0.38) / 0.20))
-            weights = {"Head": 0.72 + blend * 0.24, "Neck": 0.28 - blend * 0.20}
-        elif y < -0.22 and z > 0.30:
-            blend = min(1.0, max(0.0, (-y - 0.22) / 0.24))
-            weights = {"Neck": 0.55 + blend * 0.35, "Body": 0.45 - blend * 0.30}
-        elif z < leg_ceiling(y) and abs(x) > 0.13 and -0.48 <= y <= 0.50:
-            suffix = ("F" if y < 0 else "B") + ("L" if x > 0 else "R")
-            if z < 0.115:
-                weights = {f"Foot{suffix}": 0.82, f"Shin{suffix}": 0.16, "Body": 0.02}
-            elif z < 0.275:
-                blend = min(1.0, max(0.0, (0.275 - z) / 0.16))
-                weights = {f"Shin{suffix}": 0.62 + blend * 0.20, f"Leg{suffix}": 0.28, "Body": 0.10}
-            else:
-                weights = {f"Leg{suffix}": 0.76, "Body": 0.24}
-        elif y > 0.23:
-            along = min(0.999, max(0.0, (y - 0.23) / 0.78)) * 4
-            segment = min(3, int(along))
-            blend = along - segment
-            weights = {f"Tail_{segment}": 1.0 - blend}
-            if segment < 3:
-                weights[f"Tail_{segment + 1}"] = blend
-            else:
-                weights["Tail_3"] = 1.0
-            if y < 0.38:
-                weights["Body"] = (0.38 - y) / 0.15 * 0.35
-        else:
-            weights = {"Body": 0.88, "Neck": 0.12 if y < -0.12 else 0.0}
-        for name, value in share(weights).items():
-            if name in groups:
-                groups[name].add([vertex.index], value, "REPLACE")
+        ranked = []
+        for name, head, axis, length in segments:
+            along = max(0.0, min(1.0, (vertex.co - head).dot(axis) / (axis.length_squared or 1.0)))
+            distance = (vertex.co - (head + axis * along)).length
+            # Softened by the bone's own length, so a long spine does not
+            # out-pull a short toe simply by being closer everywhere. This is
+            # the closest any attempt got: only the two hind shins end up
+            # unbound. Dividing by length instead - claiming geometry on each
+            # bone's own scale - fixes those two and starves Body and Jaw, which
+            # is the trade every attempt here has run into.
+            ranked.append((distance + length * 0.12, name))
+        ranked.sort()
+        chosen = ranked[:3]
+        shares = {name: 1.0 / (distance * distance) for distance, name in chosen}
+        total = sum(shares.values()) or 1.0
+        for name, value in shares.items():
+            groups[name].add([vertex.index], value / total, "REPLACE")
 
 
 mesh.parent = armature
 mesh.matrix_parent_inverse = armature.matrix_world.inverted()
 modifier = mesh.modifiers.new(name="Armature", type="ARMATURE")
 modifier.object = armature
-paint_authored_weights()
-method = "authored-regions"
+paint_by_proximity()
+method = "proximity"
 
 armature.data.pose_position = "POSE"
 bpy.context.view_layer.update()
