@@ -450,6 +450,8 @@ interface DebugState {
   }
   boss: { active: boolean; state: string; pattern: string; phase: number; health: number; maxHealth: number; x: number; z: number; locked: boolean }
   /** Modelled prey bodies loaded, and per creature the clip it is actually on. */
+  frames: number
+  keysHeld: string[]
   preyModels: number
   preyModelError: string | null
   prey: Array<{
@@ -716,11 +718,20 @@ class Gloamwood3DHunt {
   private leapBiteLandingEvents = 0
   private animationFrame = 0
   private lastFrameAt = performance.now()
+  /**
+   * Frames run, and keys currently held.
+   *
+   * "Nothing responds" has two causes that look identical from outside - a loop
+   * that has stopped, and input that never arrives - and no screenshot can tell
+   * them apart. These two numbers can.
+   */
+  private frameCount = 0
   private treeCount = 0
   private rockCount = 0
   private shrinePieces = 0
   private collisionContacts = 0
   private debugOutput?: HTMLOutputElement
+  private debugLive?: HTMLElement
   private readonly container: HTMLElement
 
   constructor(container: HTMLElement) {
@@ -1794,6 +1805,7 @@ class Gloamwood3DHunt {
     if (forcedDelta === undefined) this.animationFrame = requestAnimationFrame(this.tick)
     const now = forcedDelta === undefined ? performance.now() : this.lastFrameAt + forcedDelta * 1000
     const frameMilliseconds = Math.max(0, now - this.lastFrameAt)
+    this.frameCount += 1
     this.performanceSampler.record(frameMilliseconds)
     const delta = Math.min(0.05, frameMilliseconds / 1000)
     this.lastFrameAt = now
@@ -3765,6 +3777,14 @@ class Gloamwood3DHunt {
       this.debugOutput = document.createElement('output')
       this.debugOutput.id = 'debug-state'
       this.debugOutput.hidden = true
+      // A visible one-line readout beside it. The hidden JSON needs a console
+      // to read, and the fastest way to tell a stopped loop from unheard input
+      // is to look at the screen while pressing a key.
+      const live = document.createElement('div')
+      live.id = 'debug-live'
+      live.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:9999;font:12px ui-monospace,monospace;color:#cfe;background:rgba(0,0,0,.62);padding:4px 8px;border-radius:4px;pointer-events:none'
+      document.body.append(live)
+      this.debugLive = live
       document.body.append(this.debugOutput)
       const api = {
         getState: () => this.getDebugState(),
@@ -4593,6 +4613,8 @@ class Gloamwood3DHunt {
       },
       // `facing` and `playerBearing` make the shell flank window observable on a
       // real device, where remote developer tools are not available.
+      frames: this.frameCount,
+      keysHeld: [...this.keys],
       preyModels: this.preyTemplates.size,
       preyModelError: this.preyModelError ?? null,
       prey: this.nestState.prey.map((prey) => ({
@@ -4629,6 +4651,9 @@ class Gloamwood3DHunt {
 
   private updateDebug() {
     if (this.debugOutput) this.debugOutput.textContent = JSON.stringify(this.getDebugState())
+    if (this.debugLive) {
+      this.debugLive.textContent = `frames ${this.frameCount}　keys [${[...this.keys].join(' ') || '-'}]　pos ${this.playerRoot.position.x.toFixed(1)},${this.playerRoot.position.z.toFixed(1)}`
+    }
   }
 
 }
