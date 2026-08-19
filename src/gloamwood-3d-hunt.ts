@@ -452,6 +452,7 @@ interface DebugState {
   /** Modelled prey bodies loaded, and per creature the clip it is actually on. */
   frames: number
   keysHeld: string[]
+  frozenBy: string | null
   preyModels: number
   preyModelError: string | null
   prey: Array<{
@@ -4615,6 +4616,13 @@ class Gloamwood3DHunt {
       // real device, where remote developer tools are not available.
       frames: this.frameCount,
       keysHeld: [...this.keys],
+      // The two flags that stop the world without showing anything on a map
+      // whose panels are not wired.
+      frozenBy: this.paused ? 'paused'
+        : this.evolutionState.phase === 'choosing' ? 'evolution'
+        : this.mutationState.offering ? 'mutation'
+        : this.runPhase === 'victory' || this.runPhase === 'defeat' ? this.runPhase
+        : null,
       preyModels: this.preyTemplates.size,
       preyModelError: this.preyModelError ?? null,
       prey: this.nestState.prey.map((prey) => ({
@@ -4652,7 +4660,12 @@ class Gloamwood3DHunt {
   private updateDebug() {
     if (this.debugOutput) this.debugOutput.textContent = JSON.stringify(this.getDebugState())
     if (this.debugLive) {
-      this.debugLive.textContent = `frames ${this.frameCount}　keys [${[...this.keys].join(' ') || '-'}]　pos ${this.playerRoot.position.x.toFixed(1)},${this.playerRoot.position.z.toFixed(1)}`
+      const frozen = this.paused ? 'paused'
+        : this.evolutionState.phase === 'choosing' ? 'evolution'
+        : this.mutationState.offering ? 'mutation'
+        : this.runPhase === 'victory' || this.runPhase === 'defeat' ? this.runPhase
+        : null
+      this.debugLive.textContent = `frames ${this.frameCount}　keys [${[...this.keys].join(' ') || '-'}]　pos ${this.playerRoot.position.x.toFixed(1)},${this.playerRoot.position.z.toFixed(1)}${frozen ? `　FROZEN: ${frozen}` : ''}`
     }
   }
 
