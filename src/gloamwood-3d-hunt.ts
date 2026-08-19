@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { clone as cloneSkinnedHierarchy } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import {
   formatGloamwoodPerformanceReadout,
   GloamwoodPerformanceSampler,
@@ -75,6 +76,7 @@ import {
   type GloamwoodNestPrey,
   type GloamwoodNestState,
   type GloamwoodPreyKind,
+  type GloamwoodPreyPhase,
 } from './gloamwood-3d-ecology'
 import { getQuality3DAttackFeedback } from './quality-3d-attack-feedback'
 import {
@@ -139,6 +141,12 @@ import {
 } from './gloamwood-input-settings'
 import { assetUrl } from './asset-url'
 import { gloamwoodOccludesCameraView } from './gloamwood-camera-occlusion'
+import {
+  GLOAMWOOD_MODELLED_PREY,
+  gloamwoodPreyClipForPhase,
+  gloamwoodPreyClipRate,
+  type GloamwoodModelledPreyConfig,
+} from './gloamwood-modelled-prey'
 import {
   GLOAMWOOD_ROCK_GRADE,
   GLOAMWOOD_TREE_GRADE,
@@ -313,6 +321,15 @@ interface PreyVisual {
   root: THREE.Group
   body: THREE.Group
   materials: THREE.MeshStandardMaterial[]
+  /** Set only when a modelled body replaced the primitive assembly. */
+  model?: {
+    config: GloamwoodModelledPreyConfig
+    mixer: THREE.AnimationMixer
+    clips: Map<string, THREE.AnimationClip>
+    action?: THREE.AnimationAction
+    clipName?: string
+    previousPhase?: GloamwoodPreyPhase
+  }
   telegraph: THREE.Mesh
   targetRing: THREE.Mesh
   flashRemaining: number
@@ -427,7 +444,19 @@ interface DebugState {
     viewport: { width: number; height: number; pixelRatio: number }
   }
   boss: { active: boolean; state: string; pattern: string; phase: number; health: number; maxHealth: number; x: number; z: number; locked: boolean }
-  prey: Array<{ id: string; kind: GloamwoodPreyKind; health: number; phase: string; x: number; z: number }>
+  /** Modelled prey bodies loaded, and per creature the clip it is actually on. */
+  preyModels: number
+  preyModelError: string | null
+  prey: Array<{
+    id: string
+    kind: GloamwoodPreyKind
+    health: number
+    phase: string
+    x: number
+    z: number
+    clip: string | null
+    clipTime: number
+  }>
   camera: { fov: number; pitch: number; distance: number }
   world: {
     geometry: 'real-3d'
@@ -458,6 +487,12 @@ export async function launchGloamwood3DHunt() {
   applyDocumentLocale()
   document.title = t('document.title')
   const experience = new Gloamwood3DHunt(container)
+  if (import.meta.env.DEV) {
+    // Lets a review surface with no animation frames drive the loop and read
+    // the state that results, rather than reading a snapshot frozen at startup.
+    ;(window as unknown as Record<string, unknown>).__gloamwoodStep =
+      (frames?: number, delta?: number) => experience.stepFramesForReview(frames, delta)
+  }
   try {
     await experience.start()
   } catch (error) {
@@ -492,6 +527,8 @@ class Gloamwood3DHunt {
   private readonly shadowMaterials: THREE.MeshBasicMaterial[] = []
   private readonly nestRoot = new THREE.Group()
   private readonly preyVisuals = new Map<string, PreyVisual>()
+  private preyModelError?: string
+  private readonly preyTemplates = new Map<GloamwoodPreyKind, { scene: THREE.Group; clips: THREE.AnimationClip[]; config: GloamwoodModelledPreyConfig }>()
   private readonly feedbackMeshes: Array<{ mesh: THREE.Mesh; age: number; duration: number }> = []
   private readonly dustParticles: DustParticle[] = []
   private readonly footstepState = createGloamwoodFootstepState()
@@ -693,6 +730,19 @@ class Gloamwood3DHunt {
     // to judge the model and the clip driver in engine.
     if (new URLSearchParams(window.location.search).get('bossModel') === 'bladeshell') {
       void this.loadModelledBoss(GLOAMWOOD_BLADESHELL_BOSS)
+    }
+    // Not gated on import.meta.env.DEV. A switch that only exists in dev is a
+    // switch that silently does nothing on the deployed site, which is where
+    // this actually gets reviewed - `bossGate` and `evolutionGate` both shipped
+    // that way and were dead on arrival.
+    if (new URLSearchParams(window.location.search).get('preyModels') === '1') {
+      // Reported rather than voided. A `void` on a failing load swallows the
+      // reason and leaves creatures wearing their primitives, which is
+      // indistinguishable from the feature being switched off.
+      this.loadModelledPrey().catch((error) => {
+        console.error('Modelled prey failed to load', error)
+        this.preyModelError = error instanceof Error ? error.message : String(error)
+      })
     }
     this.createHud()
     this.bindInput()
@@ -1444,7 +1494,8 @@ class Gloamwood3DHunt {
     telegraph.position.y = 0.04
     root.add(telegraph)
     this.scene.add(root)
-    const visual = { root, body, materials, telegraph, targetRing, flashRemaining: 0, impactRemaining: 0, impactDuration: 0.22, impactStrength: 0 }
+    const visual: PreyVisual = { root, body, materials, telegraph, targetRing, flashRemaining: 0, impactRemaining: 0, impactDuration: 0.22, impactStrength: 0 }
+    this.applyPreyModel(visual, prey.kind)
     this.preyVisuals.set(prey.id, visual)
     return visual
   }
@@ -1679,10 +1730,26 @@ class Gloamwood3DHunt {
     if (intersection) this.target.set(intersection.point.x, 0, intersection.point.z)
   }
 
-  private tick = () => {
+  /**
+   * Runs the frame loop by hand, for a review surface that has no animation frames.
+   *
+   * The pane these builds get looked at in renders, but never fires
+   * requestAnimationFrame - so the debug readout freezes on whatever the last
+   * real frame wrote, and anything driven by a mixer never advances. Reading
+   * that frozen snapshot as the current state has now cost this session two
+   * false diagnoses: a fade that was working and a model load that had already
+   * succeeded. Stepping the loop explicitly is the only honest way to inspect
+   * time-dependent state there.
+   */
+  stepFramesForReview(frames = 1, delta = 1 / 60) {
+    for (let index = 0; index < frames; index += 1) this.tick(delta)
+    return this.getDebugState()
+  }
+
+  private tick = (forcedDelta?: number) => {
     if (this.disposed) return
-    this.animationFrame = requestAnimationFrame(this.tick)
-    const now = performance.now()
+    if (forcedDelta === undefined) this.animationFrame = requestAnimationFrame(this.tick)
+    const now = forcedDelta === undefined ? performance.now() : this.lastFrameAt + forcedDelta * 1000
     const frameMilliseconds = Math.max(0, now - this.lastFrameAt)
     this.performanceSampler.record(frameMilliseconds)
     const delta = Math.min(0.05, frameMilliseconds / 1000)
@@ -2314,7 +2381,7 @@ class Gloamwood3DHunt {
         }
       }
     }
-    this.syncPreyVisuals()
+    this.syncPreyVisuals(delta)
   }
 
   private bossActive() {
@@ -2415,6 +2482,106 @@ class Gloamwood3DHunt {
    * The telegraph rings stay: they are the authority's own shapes and a model
    * cannot be allowed to imply a different reach than the one that resolves.
    */
+  /**
+   * Loads one body per family that has a model, once, to be cloned per creature.
+   *
+   * Scaled by footprint rather than by height, unlike the boss and the player
+   * forms. Prey are what the player collides with constantly, and the
+   * authoritative radius is a circle on the ground: a river animal three times
+   * longer than it is tall, sized by height, would stand a third of the size
+   * its collision says it is.
+   */
+  private async loadModelledPrey() {
+    await Promise.all(Object.entries(GLOAMWOOD_MODELLED_PREY).map(async ([kind, config]) => {
+      if (!config) return
+      const gltf = await this.loader.loadAsync(assetUrl(config.url))
+      if (this.disposed) return
+      gltf.scene.updateMatrixWorld(true)
+      const size = new THREE.Box3().setFromObject(gltf.scene).getSize(new THREE.Vector3())
+      // Re-derived here rather than trusted from the export. The processing
+      // script already scales to this, so the factor should be one - and if a
+      // model is ever re-exported at a different scale, the visible footprint
+      // still matches what blocks the player rather than silently drifting.
+      const halfExtent = Math.max(size.x, size.z) / 2
+      gltf.scene.scale.setScalar(config.footprintRadius / Math.max(0.001, halfExtent))
+      gltf.scene.updateMatrixWorld(true)
+      gltf.scene.position.y -= new THREE.Box3().setFromObject(gltf.scene).min.y
+      gltf.scene.rotation.y = config.modelYaw
+      gltf.scene.traverse((node) => {
+        node.castShadow = true
+        node.receiveShadow = true
+      })
+      this.preyTemplates.set(kind as GloamwoodPreyKind, { scene: gltf.scene, clips: gltf.animations, config })
+    }))
+    // Anything already on screen keeps its primitives until it is replaced.
+    for (const prey of this.nestState.prey) {
+      const visual = this.preyVisuals.get(prey.id)
+      if (visual && !visual.model) this.applyPreyModel(visual, prey.kind)
+    }
+  }
+
+  /**
+   * Swaps a creature's primitive body for its modelled one.
+   *
+   * The primitives are built first and thrown away, which is the same trade the
+   * modelled boss makes: the fallback stays the single construction path, so a
+   * family without a model and a family whose model has not finished loading
+   * take exactly the same code, and there is no second assembly to keep in step.
+   */
+  private applyPreyModel(visual: PreyVisual, kind: GloamwoodPreyKind) {
+    const template = this.preyTemplates.get(kind)
+    if (!template) return
+    for (const child of [...visual.body.children]) {
+      visual.body.remove(child)
+      child.traverse((node) => {
+        if (!(node instanceof THREE.Mesh)) return
+        node.geometry.dispose()
+        for (const material of Array.isArray(node.material) ? node.material : [node.material]) material.dispose()
+      })
+    }
+    const body = cloneSkinnedHierarchy(template.scene)
+    visual.body.add(body)
+    visual.materials.length = 0
+    body.traverse((node) => {
+      if (!(node instanceof THREE.Mesh)) return
+      for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
+        if (material instanceof THREE.MeshStandardMaterial) visual.materials.push(material)
+      }
+    })
+    visual.model = {
+      config: template.config,
+      mixer: new THREE.AnimationMixer(body),
+      clips: new Map(template.clips.map((clip) => [clip.name, clip])),
+    }
+  }
+
+  /** Drives one modelled creature's clip from its authoritative phase. */
+  private updatePreyClip(visual: PreyVisual, prey: GloamwoodNestPrey, delta: number) {
+    const model = visual.model
+    if (!model) return
+    const spec = GLOAMWOOD_PREY[prey.kind]
+    const moving = prey.phase === 'chase'
+    const selection = gloamwoodPreyClipForPhase(prey.phase, model.config, model.previousPhase, moving)
+    const clip = model.clips.get(selection.clip)
+    if (clip && (selection.clip !== model.clipName || selection.restart)) {
+      const next = model.mixer.clipAction(clip)
+      next.reset()
+      next.setLoop(selection.once ? THREE.LoopOnce : THREE.LoopRepeat, selection.once ? 1 : Infinity)
+      next.clampWhenFinished = selection.once
+      // The authority decides when the blow lands; the clip is stretched onto
+      // it. Nothing here ever reports back into the damage path.
+      next.timeScale = selection.clip === model.config.clips.attack
+        ? gloamwoodPreyClipRate(clip.duration, spec.telegraphSeconds, spec.strikeSeconds)
+        : 1
+      if (model.action && model.action !== next) model.action.fadeOut(0.12)
+      next.fadeIn(0.12).play()
+      model.action = next
+      model.clipName = selection.clip
+    }
+    model.previousPhase = prey.phase
+    model.mixer.update(delta)
+  }
+
   private async loadModelledBoss(config: GloamwoodModelledBossConfig) {
     const visual = this.bossVisual
     if (!visual) return
@@ -2528,7 +2695,7 @@ class Gloamwood3DHunt {
     }
   }
 
-  private syncPreyVisuals() {
+  private syncPreyVisuals(delta = 0) {
     const activeIds = new Set(this.nestState.prey.map((prey) => prey.id))
     for (const [id, visual] of this.preyVisuals) {
       if (activeIds.has(id)) continue
@@ -2552,6 +2719,16 @@ class Gloamwood3DHunt {
       const telegraphProgress = telegraphing ? Math.min(1, prey.phaseElapsed / spec.telegraphSeconds) : 0
       ;(visual.telegraph.material as THREE.MeshBasicMaterial).opacity = telegraphing ? 0.18 + telegraphProgress * 0.64 : 0
       visual.telegraph.scale.setScalar(telegraphing ? 1.12 - telegraphProgress * 0.12 : 1)
+      if (visual.model) {
+        // One writer for the body. The primitive gait, strike lunge and stun
+        // wobble below are the fallback's animation; running them as well would
+        // add a hand-written bounce on top of an authored clip.
+        this.updatePreyClip(visual, prey, delta)
+        visual.body.position.set(0, 0, 0)
+        visual.body.rotation.set(0, 0, 0)
+        visual.body.scale.setScalar(1)
+        continue
+      }
       const gaitSpeed = prey.kind === 'shell' ? 0.009 : prey.kind === 'swarm' ? 0.022 : 0.016
       const gait = prey.phase === 'chase' ? Math.sin(performance.now() * gaitSpeed + prey.slot) : 0
       const strike = prey.phase === 'strike' ? Math.sin(Math.min(1, prey.phaseElapsed / spec.strikeSeconds) * Math.PI) : 0
@@ -4286,6 +4463,8 @@ class Gloamwood3DHunt {
       },
       // `facing` and `playerBearing` make the shell flank window observable on a
       // real device, where remote developer tools are not available.
+      preyModels: this.preyTemplates.size,
+      preyModelError: this.preyModelError ?? null,
       prey: this.nestState.prey.map((prey) => ({
         id: prey.id,
         kind: prey.kind,
@@ -4294,6 +4473,13 @@ class Gloamwood3DHunt {
         x: round(prey.x),
         z: round(prey.z),
         facing: round(prey.facingRadians),
+        // Which authored clip this creature is on, and where in it. Reported
+        // because a model that loaded, mounted and then never advanced looks
+        // exactly like one that is idling, and a screenshot cannot tell the
+        // two apart - this project has twice taken one as proof of wiring that
+        // was not connected.
+        clip: this.preyVisuals.get(prey.id)?.model?.clipName ?? null,
+        clipTime: round(this.preyVisuals.get(prey.id)?.model?.action?.time ?? 0),
         playerBearing: round(Math.atan2(-(this.playerRoot.position.z - prey.z), this.playerRoot.position.x - prey.x)),
       })),
       camera: { fov: this.camera.fov, pitch: 36, distance: round(GLOAMWOOD_3D_CAMERA_DISTANCE) },

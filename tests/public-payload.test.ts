@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { QUALITY_3D_GLB_ASSETS } from '../src/quality-3d-glb-assets'
 import { GLOAMWOOD_BLADESHELL_BOSS } from '../src/gloamwood-3d-modelled-boss'
+import { GLOAMWOOD_MODELLED_PREY_CONFIGS } from '../src/gloamwood-modelled-prey'
 
 const MODEL_DIRECTORY = new URL('../public/assets/quality-3d/models/', import.meta.url)
 
@@ -13,12 +14,14 @@ const MODEL_DIRECTORY = new URL('../public/assets/quality-3d/models/', import.me
  * belong in art-source/, which is tracked and never built.
  */
 describe('The served payload holds runtime assets only', () => {
-  // Player forms and modelled bosses are separate registries with separate
-  // resolvers, so both count as "code that loads it". The guarantee this test
-  // exists for is unchanged: nothing reaches a player that nothing fetches.
+  // Player forms, modelled bosses and modelled prey are separate registries
+  // with separate resolvers, so all three count as "code that loads it". The
+  // guarantee this test exists for is unchanged: nothing reaches a player that
+  // nothing fetches, and nothing the code names is missing from the build.
   const referenced = [
     ...QUALITY_3D_GLB_ASSETS.map((asset) => asset.url),
     GLOAMWOOD_BLADESHELL_BOSS.url,
+    ...GLOAMWOOD_MODELLED_PREY_CONFIGS.map((config) => config.url),
   ]
   const registryFiles = new Set(referenced.map((url) => url.split('?')[0].split('/').pop() as string))
   const shippedFiles = new Set(readdirSync(MODEL_DIRECTORY).filter((name) => name.endsWith('.glb')))
@@ -32,6 +35,7 @@ describe('The served payload holds runtime assets only', () => {
     }
     expect(registryFiles.has('stone-pangolin-rigged-runtime-v2.glb')).toBe(true)
     expect(registryFiles.has('bladeshell-runtime-v1.glb')).toBe(true)
+    expect(registryFiles.has('ford-fang-runtime-v1.glb')).toBe(true)
   })
 
   it('ships nothing the runtime cannot resolve', () => {
