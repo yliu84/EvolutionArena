@@ -48,7 +48,9 @@ describe('Footprint', () => {
       expect(entry.footprintRadius).toBeGreaterThan(0.5)
       // The narrowest choke is nine units of floor. A body wider than a quarter
       // of it cannot be fought in the gate it guards.
-      expect(entry.footprintRadius).toBeLessThanOrEqual(2.4)
+      // The bowls a boss stands in give 22.8 units of floor either side of the
+      // route, so this is about what can be fought rather than what fits.
+      expect(entry.footprintRadius).toBeLessThanOrEqual(4)
     }
   })
 
@@ -208,11 +210,14 @@ describe('Telling the tiers apart', () => {
 })
 
 describe('Size says rank', () => {
-  it('grows with the region, so a later boss is never smaller', () => {
-    const radii = GLOAMWOOD_VALLEY_BOSS_BODIES.map((body) => body.footprintRadius)
-    for (let index = 1; index < radii.length; index += 1) {
-      expect(radii[index]).toBeGreaterThan(radii[index - 1])
-    }
+  it('does not rank bosses by footprint, because they are not the same shape', () => {
+    // The Tide Cleaver is a wide flat crab and the Cliff Maw is a cube. Ranking
+    // by one dimension would force one of them into a shape it is not, which is
+    // how the crab ended up scaled to 0.83 and reading as a beetle. What has to
+    // hold is that every boss outsizes every elite, not that they outsize each
+    // other in a straight line.
+    const spans = GLOAMWOOD_VALLEY_BOSS_BODIES.map((body) => body.footprintRadius)
+    expect(new Set(spans).size).toBe(spans.length)
   })
 
   it('puts every boss above every elite it could be confused with', () => {

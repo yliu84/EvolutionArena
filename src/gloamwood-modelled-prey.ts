@@ -152,10 +152,14 @@ export function gloamwoodModelledPreyFor(
 export const GLOAMWOOD_TIDE_CLEAVER_BODY: GloamwoodModelledPreyConfig = {
   id: 'tide-cleaver',
   url: '/assets/quality-3d/models/bladeshell-runtime-v1.glb?v=valley-boss1-body-v1',
-  // Sized above the elite ceiling rather than to its concept width. An elite
-  // Ford Fang is 1.98 across, and a first boss smaller than a promoted prey
-  // teaches the player that size means nothing.
-  footprintRadius: 2.05,
+  // Radii here are chosen backwards from a target height, because footprint
+  // alone shrinks a flat creature. The Tide Cleaver's own half-extent is 2.48
+  // and it is 4.95 wide by 1.70 tall, so asking for 2.05 scaled it to 0.83 and
+  // stood a 1.41-tall crab next to a two-metre player. It read as a beetle.
+  //
+  // 3.50 scales it 1.41 and brings it to 2.40 tall - just under the player,
+  // which is right for a low wide crab whose threat is its span, not its height.
+  footprintRadius: 3.5,
   modelYaw: Math.PI / 2,
   clips: { idle: 'Idle', walk: 'Walk', attack: 'BladeSweep', hit: 'Hit', death: 'Death' },
 }
@@ -163,7 +167,10 @@ export const GLOAMWOOD_TIDE_CLEAVER_BODY: GloamwoodModelledPreyConfig = {
 export const GLOAMWOOD_CLIFF_MAW_BODY: GloamwoodModelledPreyConfig = {
   id: 'cliff-maw',
   url: '/assets/quality-3d/models/cliff-maw-runtime-v1.glb?v=valley-boss2-body-v1',
-  footprintRadius: 2.2,
+  // Nearly cubic at 3.56 x 3.83 x 4.00, so it needs almost no scaling: 2.09
+  // brings it to 4.00 tall. A wall of stone, and the tallest thing in the
+  // valley - the gate it holds is the one the player has to get through.
+  footprintRadius: 2.09,
   modelYaw: Math.PI / 2,
   clips: { idle: 'Idle', walk: 'Walk', attack: 'Slam', hit: 'Hit', death: 'Death' },
 }
@@ -171,8 +178,10 @@ export const GLOAMWOOD_CLIFF_MAW_BODY: GloamwoodModelledPreyConfig = {
 export const GLOAMWOOD_SOURCE_ROOT_BODY: GloamwoodModelledPreyConfig = {
   id: 'source-root',
   url: '/assets/quality-3d/models/source-root-runtime-v1.glb?v=valley-boss3-body-v1',
-  // The widest thing in the valley, and the end of the run.
-  footprintRadius: 2.4,
+  // 2.93 scales it 1.33 to 3.20 tall and nearly six across. Lower than the
+  // gate boss and wider - a spreading mass rather than a wall, which is the
+  // threat shape its own contract asked for.
+  footprintRadius: 2.93,
   modelYaw: Math.PI / 2,
   clips: { idle: 'Idle', walk: 'Walk', attack: 'Slam', hit: 'Hit', death: 'Death' },
 }
