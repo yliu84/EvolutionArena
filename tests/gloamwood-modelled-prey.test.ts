@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { GLOAMWOOD_PREY, gloamwoodPreyBodyRadius } from '../src/gloamwood-3d-ecology'
+import {
+  GLOAMWOOD_COMBAT_SPACING,
+  GLOAMWOOD_PREY,
+  gloamwoodPreyBodyRadius,
+} from '../src/gloamwood-3d-ecology'
+import { GLOAMWOOD_VALLEY_PLAYER } from '../src/gloamwood-valley-combat'
+
+/** The player's combat body radius, from the valley preview's presence. */
+const PLAYER_COMBAT_RADIUS = 1.56
 import { createGloamwoodValleyCreatures } from '../src/gloamwood-valley-creatures'
 import { GLOAMWOOD_VALLEY } from '../src/gloamwood-valley-terrain'
 import {
@@ -228,6 +236,40 @@ describe('Size says rank', () => {
       .map((body) => body.footprintRadius * GLOAMWOOD_ELITE_BODY_SCALE))
     for (const boss of GLOAMWOOD_VALLEY_BOSS_BODIES) {
       expect(boss.footprintRadius).toBeGreaterThan(ceiling)
+    }
+  })
+})
+
+describe('Reachability', () => {
+  it('leaves every body hittable from the closest the player can stand to it', () => {
+    // The Thorn Sentinel lesson, generalised. Its ground slam had a 3.35 radius
+    // against a collision floor of 3.50, so two thirds of its phase-one attacks
+    // were guaranteed misses for the whole life of the encounter - and nobody
+    // found it until a playtest.
+    //
+    // The same trap runs the other way here: reach is measured to the target's
+    // surface, so growing a creature pushes the player further out. This is the
+    // check that says a body can never be enlarged past the player's arm.
+    for (const body of GLOAMWOOD_MODELLED_PREY_CONFIGS) {
+      const collisionFloor = PLAYER_COMBAT_RADIUS + body.footprintRadius
+      const surface = collisionFloor - body.footprintRadius
+      expect(surface, `${body.id} cannot be reached`).toBeLessThanOrEqual(GLOAMWOOD_VALLEY_PLAYER.attackRange)
+    }
+  })
+
+  it('leaves every creature able to reach the player back', () => {
+    // And the other direction, which is the failure that actually shipped: a
+    // creature whose strike is shorter than the distance it is held at simply
+    // never attacks, and reads as passive rather than as broken.
+    for (const creature of createGloamwoodValleyCreatures(0x5a11e)) {
+      const radius = gloamwoodPreyBodyRadius(creature)
+      const spec = GLOAMWOOD_PREY[creature.kind]
+      const stop = Math.max(
+        spec.stopRange,
+        PLAYER_COMBAT_RADIUS + radius + GLOAMWOOD_COMBAT_SPACING.actionSpace[creature.kind],
+      )
+      const strike = Math.max(spec.attackRange, stop + GLOAMWOOD_COMBAT_SPACING.strikeReach[creature.kind])
+      expect(strike, `${creature.id} stands further out than it can reach`).toBeGreaterThan(stop)
     }
   })
 })

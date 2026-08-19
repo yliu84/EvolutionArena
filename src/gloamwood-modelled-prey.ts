@@ -178,10 +178,16 @@ export const GLOAMWOOD_CLIFF_MAW_BODY: GloamwoodModelledPreyConfig = {
 export const GLOAMWOOD_SOURCE_ROOT_BODY: GloamwoodModelledPreyConfig = {
   id: 'source-root',
   url: '/assets/quality-3d/models/source-root-runtime-v1.glb?v=valley-boss3-body-v1',
-  // 2.93 scales it 1.33 to 3.20 tall and nearly six across. Lower than the
-  // gate boss and wider - a spreading mass rather than a wall, which is the
-  // threat shape its own contract asked for.
-  footprintRadius: 2.93,
+  // 3.90 scales it 1.77 to 4.25 tall and 7.79 across. The largest thing in the
+  // valley, which is what the end of a run should be.
+  //
+  // Scaling is uniform, so it cannot be widened without also being raised, and
+  // this takes it a quarter of a unit past the gate boss it was meant to stay
+  // under. The threat shapes still read apart, which is what that note was
+  // protecting: the Cliff Maw is 1.05 wide to tall and reads as a wall, this is
+  // 1.83 and reads as a spreading mass. Height was never the thing telling them
+  // apart - proportion was.
+  footprintRadius: 3.9,
   modelYaw: Math.PI / 2,
   clips: { idle: 'Idle', walk: 'Walk', attack: 'Slam', hit: 'Hit', death: 'Death' },
 }

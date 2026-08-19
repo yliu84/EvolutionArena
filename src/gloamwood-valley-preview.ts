@@ -338,9 +338,16 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
       for (let index = 0; index < frames; index += 1) {
         attackHeld = attack
         if (attack && index === 0) attackPressed = true
+        // Backdated so the frame sees a real timestep. Driving `frame()` in a
+        // tight loop leaves `last` a few microseconds behind, so every creature
+        // gets a delta of nearly zero and stands still - which reads exactly
+        // like a chase that is broken. This tool was reporting that for three
+        // separate checks before the diagnostic caught it.
+        last = performance.now() - 16.7
         frame()
       }
       attackHeld = false
+      const target = creatures.find((entry) => entry.id === combat.lockedId)
       return {
         health: Math.round(combat.health),
         lives: progression.livesRemaining,
@@ -348,6 +355,16 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
         awake: gloamwoodValleyAwake(creatures).length,
         alive: creatures.filter((entry) => entry.phase !== 'dead').length,
         runOver,
+        // What the locked creature is doing, because "nothing happened" has
+        // several very different causes and they are indistinguishable from a
+        // health bar that did not move.
+        target: target && {
+          phase: target.phase,
+          health: Math.round(target.health),
+          awake: target.awake,
+          distance: Number(Math.hypot(target.x - position.x, target.z - position.y).toFixed(2)),
+          surface: Number((Math.hypot(target.x - position.x, target.z - position.y) - (target.bodyRadius ?? 0)).toFixed(2)),
+        },
       }
     }
   }
