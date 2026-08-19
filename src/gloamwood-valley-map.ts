@@ -16,6 +16,7 @@ import {
   createGloamwoodValleyRespawnState,
   stepGloamwoodValleyRespawn,
 } from './gloamwood-valley-respawn'
+import { GLOAMWOOD_VALLEY_MILESTONES } from './gloamwood-valley-progression'
 import {
   GLOAMWOOD_VALLEY,
   gloamwoodValleyConfine,
@@ -107,6 +108,34 @@ export function createGloamwoodValleyMap(
         genes: { fang: 0, shell: 0, swarm: 0 },
         recentHunts: [],
       }
+    },
+    reachedMilestones(state: GloamwoodNestState, player: { x: number; z: number }, already: readonly string[]) {
+      const reached: string[] = []
+      const here = gloamwoodValleyProject(player.x, player.z)
+      const region = GLOAMWOOD_VALLEY.regions.find((entry) => here.s >= entry.from && here.s <= entry.to)
+      for (const milestone of GLOAMWOOD_VALLEY_MILESTONES) {
+        if (already.includes(milestone.id) || reached.includes(milestone.id)) continue
+        if (milestone.kind === 'region-entry') {
+          // Standing in the region is the event. There is no door to walk
+          // through, and a trigger volume on a route that folds is a thing to
+          // get stuck on.
+          if (region?.id === milestone.region) reached.push(milestone.id)
+          continue
+        }
+        if (milestone.kind === 'boss') {
+          const boss = state.prey.find((prey) => {
+            const creature = prey as GloamwoodValleyCreature
+            return creature.tier === 'boss' && Math.abs(creature.spawnS - milestone.s) < 60
+          })
+          if (boss && boss.phase === 'dead') reached.push(milestone.id)
+          continue
+        }
+        // Nests do not run on this map yet, so their milestones cannot be
+        // reached. Left in the list rather than deleted: the pacing was designed
+        // around seven, and a silently missing pair would read as the mutations
+        // simply drying up.
+      }
+      return reached
     },
     resetAfterDeath(state: GloamwoodNestState, diedAt: { x: number; z: number }) {
       // Everything goes home and forgets the player. A creature the player

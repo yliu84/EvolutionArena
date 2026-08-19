@@ -144,6 +144,7 @@ import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
 import { createGloamwoodValleyMap } from './gloamwood-valley-map'
 import type { GloamwoodValleyCreature } from './gloamwood-valley-creatures'
 import { gloamwoodValleyCorpseGone } from './gloamwood-valley-respawn'
+import { GLOAMWOOD_VALLEY_LIFE_CAP } from './gloamwood-valley-progression'
 import { gloamwoodValleyCorridorAt, gloamwoodValleyRegionAt } from './gloamwood-valley-terrain'
 import {
   gloamwoodPreyClipForPhase,
@@ -1882,6 +1883,7 @@ class Gloamwood3DHunt {
       this.mixer?.update(delta)
       this.applySecondaryMotion()
     }
+    this.updateValleyProgression()
     this.updateSessionLog()
     this.updateModelledBoss(delta)
     this.updateHealthDecay(delta)
@@ -3463,6 +3465,32 @@ class Gloamwood3DHunt {
    * Four a second is enough to catch a player drifting outside the arena or an
    * encounter going quiet, and cheap enough to leave on for a whole run.
    */
+  /**
+   * Records whatever boundaries the map says the run has crossed.
+   *
+   * The mutation layer takes opaque ids and counts them, so this is a change of
+   * source and not of system: the Gloamwood keeps firing its milestones from
+   * nest events and answers nothing here.
+   */
+  private updateValleyProgression() {
+    const reached = this.map.reachedMilestones(
+      this.nestState,
+      { x: this.playerRoot.position.x, z: this.playerRoot.position.z },
+      this.mutationState.reached,
+    )
+    for (const milestone of reached) {
+      this.mutationState = recordGloamwoodMutationMilestone(this.mutationState, milestone)
+      // Entering a region tops the life budget back up rather than adding to
+      // it. A region is a checkpoint: the player arrives at a new tier whole,
+      // and a careful run through the shallows does not bank lives to spend
+      // carelessly in the headwater.
+      if (milestone.endsWith('-entered')) {
+        this.livesRemaining = Math.max(this.livesRemaining, GLOAMWOOD_VALLEY_LIFE_CAP)
+      }
+      this.logSession({ kind: 'phase', phase: milestone })
+    }
+  }
+
   private updateSessionLog() {
     if (this.runPhase !== this.sessionRunPhase) {
       this.sessionRunPhase = this.runPhase

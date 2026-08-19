@@ -118,6 +118,22 @@ export interface GloamwoodMapContract {
     diedAt: { x: number; z: number },
   ): { state: GloamwoodNestState; playerAt: { x: number; z: number } }
   /**
+   * Milestones the run has newly reached.
+   *
+   * The Gloamwood's come from nest events - a wave cleared, a guardian killed -
+   * and it answers with nothing here, because those already fire. The valley has
+   * no such events: its boundaries are places on a route and creatures standing
+   * at them, so they have to be looked for.
+   *
+   * Ids are opaque to the mutation layer, which is what makes this a change of
+   * source rather than a change of system.
+   */
+  reachedMilestones(
+    state: GloamwoodNestState,
+    player: { x: number; z: number },
+    already: readonly string[],
+  ): string[]
+  /**
    * Per-frame scenery work, if the map has any.
    *
    * The Gloamwood's scenery is static once built. The valley's culls by cell
@@ -210,6 +226,7 @@ export function createGloamwoodMap(
     cameraOffset: { x: 9.2, y: 11.8, z: 13.4 },
     hasNest: true,
     resetAfterDeath,
+    reachedMilestones: () => [],
     createCreatures: createGloamwoodNestState,
     stepCreatures: (state, delta, player) => stepGloamwoodNest(state, delta, player),
     bodyFor: (prey) => GLOAMWOOD_MODELLED_PREY[prey.kind],
