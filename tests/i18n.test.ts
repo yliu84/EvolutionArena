@@ -134,8 +134,13 @@ describe('Auto-engage and target bar', () => {
     expect(source).toContain('this.autoEngageTargetId = this.currentLockIdentity()')
   })
 
-  it('bounds the approach so a stray press cannot cross the map', () => {
-    expect(source).toContain('GLOAMWOOD_NEST.activationRadius * 1.5')
+  it('bounds the approach by the lock rather than by a nest radius', () => {
+    // The rule this protects is that a stray press cannot walk the player
+    // across the map. It used to be pinned to the literal
+    // `GLOAMWOOD_NEST.activationRadius * 1.5` - 12.6 units, a number about a
+    // nest - which stranded any target locked further out than that.
+    expect(source).toContain('centreDistance > GLOAMWOOD_LOCK_RANGE')
+    expect(source).not.toContain('GLOAMWOOD_NEST.activationRadius * 1.5')
   })
 
   it('shows health above the locked target instead of in the HUD corner', () => {

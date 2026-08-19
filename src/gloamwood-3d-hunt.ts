@@ -585,6 +585,14 @@ class Gloamwood3DHunt {
     this.map.cameraOffset.y,
     this.map.cameraOffset.z,
   )
+  /**
+   * Creatures the player hit since the last creature step.
+   *
+   * The aggro layer wakes whatever is struck, and it can only do that if it is
+   * told. Wired as an empty array when the map contract went in, which left
+   * every passive creature in the valley taking hits without ever looking up.
+   */
+  private readonly struckThisFrame: string[] = []
   private valleyGroundHeight: ((x: number, z: number) => number) | null = null
   private valley: { update(camera: { x: number; z: number }, elapsed: number, delta: number): void } | null = null
   // Keyed by body rather than by family. One family can wear several bodies -
@@ -2009,8 +2017,14 @@ class Gloamwood3DHunt {
     const centreDistance = Math.hypot(dx, dz)
     // Reach is measured to the hurt surface, so the stop line follows the same rule.
     const surfaceDistance = centreDistance - target.radius
-    // A stray press must not walk the player across the map.
-    if (centreDistance > GLOAMWOOD_NEST.activationRadius * 1.5) return this.cancelAutoEngage()
+    // A stray press must not walk the player across the map - but the limit is
+    // the lock's reach, not the Gloamwood nest's activation radius, which is a
+    // number about a different thing entirely. At 12.6 the player could lock
+    // something at 22, press attack, and simply stand there.
+    //
+    // If it can be locked it can be walked to. That is the whole contract of a
+    // lock.
+    if (centreDistance > GLOAMWOOD_LOCK_RANGE) return this.cancelAutoEngage()
 
     const reach = this.primaryAttackReach()
     if (surfaceDistance > reach - 0.35) {
@@ -2190,6 +2204,7 @@ class Gloamwood3DHunt {
       knockback,
     )
     this.nestState = damage.state
+    this.struckThisFrame.push(target.id)
     this.playSound(damage.killed ? 'kill' : action === 'Pounce' || action === 'TailSwipe' ? 'hit-heavy' : 'hit-light')
     let displayedBiomass = damage.biomassGained
     if (damage.killed && this.biomassMultiplier !== 1) {
@@ -2357,7 +2372,8 @@ class Gloamwood3DHunt {
       // an aggressive creature from a passive one.
       slowAuraRadius: this.mutationEffects.slowAuraRadius,
       slowAuraFactor: this.mutationEffects.slowAuraFactor,
-    }, [])
+    }, this.struckThisFrame)
+    this.struckThisFrame.length = 0
     // stepGloamwoodNest already holds prey at their action ring, and it does so
     // knowing where each one stood a frame ago - which is how it tells a prey
     // that closed the gap from a player who walked in. Re-running the same
@@ -4782,22 +4798,42 @@ export function gloamwoodPlayerHitKnockbackDistance(
   )
 }
 
+/**
+ * How far the lock reaches.
+ *
+ * The camera frames about eighteen units either side of the player, so this is
+ * a little past what they can see - far enough to pick something out before it
+ * notices you at eleven, and not so far that the cycle walks off screen.
+ *
+ * Without a limit the cycle ran the whole map. On the Gloamwood that is one
+ * wave of six standing in front of you; in the valley it is sixty-three spread
+ * over 1590 units, so a second press of Tab jumped to something a hundred metres
+ * away and the lock read as lost for good.
+ */
+export const GLOAMWOOD_LOCK_RANGE = 22
+
 export function nextGloamwoodLockTarget(
   prey: readonly GloamwoodNestPrey[],
   currentId: string | null,
   player: { x: number; z: number },
+  range = GLOAMWOOD_LOCK_RANGE,
 ) {
-  const live = prey.filter((candidate) => candidate.phase !== 'dead')
+  // Sorted by distance, not by spawn slot. A slot order is arbitrary once
+  // creatures are scattered across a map, so the cycle jumped about; nearest
+  // first is the order the player already has in their head.
+  const live = prey
+    .filter((candidate) => candidate.phase !== 'dead')
+    .map((candidate) => ({ candidate, distance: Math.hypot(candidate.x - player.x, candidate.z - player.z) }))
+    .filter((entry) => entry.distance <= range)
+    .sort((left, right) => left.distance - right.distance || left.candidate.id.localeCompare(right.candidate.id))
+    .map((entry) => entry.candidate)
   if (live.length === 0) return null
-  if (!currentId || !live.some((candidate) => candidate.id === currentId)) {
-    return [...live].sort((left, right) => {
-      const distanceDelta = Math.hypot(left.x - player.x, left.z - player.z) - Math.hypot(right.x - player.x, right.z - player.z)
-      return Math.abs(distanceDelta) > 0.000001 ? distanceDelta : left.id.localeCompare(right.id)
-    })[0].id
-  }
-  const stable = [...live].sort((left, right) => left.slot - right.slot || left.id.localeCompare(right.id))
-  const index = stable.findIndex((candidate) => candidate.id === currentId)
-  return stable[(index + 1) % stable.length].id
+  const index = live.findIndex((candidate) => candidate.id === currentId)
+  // Nothing locked, or what was locked has died or walked out of range: take
+  // the nearest rather than giving up, which is what made a second press feel
+  // like it had thrown the target away.
+  if (index < 0) return live[0].id
+  return live[(index + 1) % live.length].id
 }
 
 export function assistGloamwoodAttackerLock(
