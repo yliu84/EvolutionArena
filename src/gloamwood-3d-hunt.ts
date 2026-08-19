@@ -543,6 +543,15 @@ class Gloamwood3DHunt {
   private readonly map: GloamwoodMapContract = createGloamwoodMap(
     terrainHeight,
     { halfWidth: WORLD_HALF_WIDTH, halfDepth: WORLD_HALF_DEPTH },
+    async () => {
+      this.createTerrain()
+      this.createPath()
+      await this.loadEnvironmentModels()
+      this.createForest()
+      this.createUndergrowth()
+      this.createShrine()
+      this.createAtmosphere()
+    },
   )
   private readonly preyTemplates = new Map<GloamwoodPreyKind, { scene: THREE.Group; clips: THREE.AnimationClip[]; config: GloamwoodModelledPreyConfig }>()
   private readonly feedbackMeshes: Array<{ mesh: THREE.Mesh; age: number; duration: number }> = []
@@ -729,13 +738,9 @@ class Gloamwood3DHunt {
 
   async start() {
     this.createLighting()
-    this.createTerrain()
-    this.createPath()
-    await this.loadEnvironmentModels()
-    this.createForest()
-    this.createUndergrowth()
-    this.createShrine()
-    this.createAtmosphere()
+    // The scenery is the map's, and the only part of one that cannot be shared.
+    // Everything after this line is the same on any ground.
+    await this.map.buildScenery()
     this.createContactShadows()
     this.createDustPool()
     this.createNest()

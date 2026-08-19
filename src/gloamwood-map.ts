@@ -25,6 +25,16 @@ export interface GloamwoodMapBounds {
 
 export interface GloamwoodMapContract {
   id: GloamwoodMapId
+  /**
+   * Builds the scenery into the scene.
+   *
+   * The one part of a map that genuinely cannot be shared: the Gloamwood's is
+   * ten private methods deep in the runtime and the valley's is an instanced
+   * scatter over 1590 units of route. Supplied as a callback rather than
+   * branched on `id` at the call site, so the difference is settled once when
+   * the map is made rather than every time the scene is touched.
+   */
+  buildScenery(): Promise<void>
   /** Ground height anywhere. The one function the whole runtime asks. */
   height(x: number, z: number): number
   /**
@@ -50,9 +60,11 @@ export interface GloamwoodMapContract {
 export function createGloamwoodMap(
   height: (x: number, z: number) => number,
   bounds: GloamwoodMapBounds,
+  buildScenery: () => Promise<void>,
 ): GloamwoodMapContract {
   return {
     id: 'gloamwood',
+    buildScenery,
     height,
     confine(x, z) {
       return {
