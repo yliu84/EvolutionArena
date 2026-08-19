@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import { GLOAMWOOD_PREY, gloamwoodPreyBodyRadius } from '../src/gloamwood-3d-ecology'
 import { createGloamwoodValleyCreatures } from '../src/gloamwood-valley-creatures'
+import { GLOAMWOOD_VALLEY } from '../src/gloamwood-valley-terrain'
 import {
   GLOAMWOOD_FORD_FANG_PREY,
+  GLOAMWOOD_ELITE_BODY_SCALE,
   GLOAMWOOD_MODELLED_PREY_CONFIGS,
+  GLOAMWOOD_VALLEY_BOSS_BODIES,
+  GLOAMWOOD_VALLEY_BOSS_SLOTS,
   GLOAMWOOD_WALK_STRIDE_FACTOR,
-  gloamwoodModelledPreyFor,
+  gloamwoodValleyBodyFor,
   gloamwoodPreyWalkRate,
   gloamwoodPreyClipForPhase,
   gloamwoodPreyClipRate,
@@ -23,7 +27,13 @@ describe('Footprint', () => {
     // animal now carries its own size and the family lends only its stats.
     const creatures = createGloamwoodValleyCreatures(0x5a11e)
     for (const creature of creatures) {
-      const body = gloamwoodModelledPreyFor(creature.kind, creature.role, creature.branch)
+      // The same lookup the runtime uses, tier included. Reading family alone
+      // is exactly the bug this replaced: it put three region bosses on the
+      // road as ordinary beetles.
+      const body = gloamwoodValleyBodyFor({
+        kind: creature.kind, role: creature.role, branch: creature.branch,
+        tier: creature.tier, s: creature.spawnS,
+      })
       if (!body) continue
       expect(gloamwoodPreyBodyRadius(creature)).toBeCloseTo(body.footprintRadius, 5)
     }
@@ -36,7 +46,9 @@ describe('Footprint', () => {
     // which is nine units of floor at its narrowest.
     for (const entry of GLOAMWOOD_MODELLED_PREY_CONFIGS) {
       expect(entry.footprintRadius).toBeGreaterThan(0.5)
-      expect(entry.footprintRadius).toBeLessThan(2)
+      // The narrowest choke is nine units of floor. A body wider than a quarter
+      // of it cannot be fought in the gate it guards.
+      expect(entry.footprintRadius).toBeLessThanOrEqual(2.4)
     }
   })
 
@@ -149,6 +161,68 @@ describe('Walking without sliding', () => {
       const rate = gloamwoodPreyWalkRate(2, 1.55, speed)
       expect(rate).toBeGreaterThanOrEqual(0.35)
       expect(rate).toBeLessThanOrEqual(4)
+    }
+  })
+})
+
+describe('Telling the tiers apart', () => {
+  const creatures = createGloamwoodValleyCreatures(0x5a11e)
+
+  it('gives each region boss its own body, not the beetle', () => {
+    // They spawned as `shell`, the lookup read family alone, and three region
+    // bosses stood on the road as ordinary ladybirds. Nobody could find them.
+    const bosses = creatures.filter((creature) => creature.tier === 'boss')
+    expect(bosses).toHaveLength(3)
+    const bodies = bosses.map((boss) => gloamwoodValleyBodyFor({
+      kind: boss.kind, role: boss.role, branch: boss.branch, tier: boss.tier, s: boss.spawnS,
+    })!.id)
+    expect(new Set(bodies).size).toBe(3)
+    expect(bodies).toEqual(GLOAMWOOD_VALLEY_BOSS_BODIES.map((body) => body.id))
+  })
+
+  it('makes a boss the biggest thing the player meets', () => {
+    for (const boss of creatures.filter((creature) => creature.tier === 'boss')) {
+      for (const other of creatures.filter((creature) => creature.tier !== 'boss')) {
+        expect(gloamwoodPreyBodyRadius(boss)).toBeGreaterThan(gloamwoodPreyBodyRadius(other))
+      }
+    }
+  })
+
+  it('makes an elite visibly bigger than the pack it stands in', () => {
+    // Until now the only way to learn you were fighting one was that it would
+    // not die.
+    for (const elite of creatures.filter((creature) => creature.tier === 'elite')) {
+      const ordinary = creatures.find(
+        (creature) => creature.tier === 'pack' && creature.kind === elite.kind && creature.role === elite.role,
+      )
+      if (!ordinary) continue
+      expect(gloamwoodPreyBodyRadius(elite)).toBeGreaterThan(gloamwoodPreyBodyRadius(ordinary) * 1.2)
+    }
+  })
+
+  it('keeps the boss slots it reads in step with the map', () => {
+    // The registry keeps its own copy so the payload test does not pull the
+    // whole valley in behind it. This is what stops the copy drifting.
+    expect([...GLOAMWOOD_VALLEY_BOSS_SLOTS]).toEqual([...GLOAMWOOD_VALLEY.bossSlots])
+  })
+})
+
+describe('Size says rank', () => {
+  it('grows with the region, so a later boss is never smaller', () => {
+    const radii = GLOAMWOOD_VALLEY_BOSS_BODIES.map((body) => body.footprintRadius)
+    for (let index = 1; index < radii.length; index += 1) {
+      expect(radii[index]).toBeGreaterThan(radii[index - 1])
+    }
+  })
+
+  it('puts every boss above every elite it could be confused with', () => {
+    // A first boss smaller than a promoted prey teaches the player that size
+    // means nothing, and then nothing else can be said with it.
+    const ceiling = Math.max(...GLOAMWOOD_MODELLED_PREY_CONFIGS
+      .filter((body) => !GLOAMWOOD_VALLEY_BOSS_BODIES.includes(body))
+      .map((body) => body.footprintRadius * GLOAMWOOD_ELITE_BODY_SCALE))
+    for (const boss of GLOAMWOOD_VALLEY_BOSS_BODIES) {
+      expect(boss.footprintRadius).toBeGreaterThan(ceiling)
     }
   })
 })

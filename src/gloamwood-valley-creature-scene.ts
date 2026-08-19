@@ -3,9 +3,10 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone as cloneSkinnedHierarchy } from 'three/examples/jsm/utils/SkeletonUtils.js'
 
 import { assetUrl } from './asset-url'
+import { ELITE_AFFIXES } from './elite-affixes'
 import { GLOAMWOOD_PREY } from './gloamwood-3d-ecology'
 import {
-  gloamwoodModelledPreyFor,
+  gloamwoodValleyBodyFor,
   gloamwoodPreyClipForPhase,
   gloamwoodPreyClipRate,
   gloamwoodPreyWalkRate,
@@ -56,6 +57,10 @@ export interface GloamwoodValleyCreatureScene {
 export async function buildGloamwoodValleyCreatureScene(
   creatures: readonly GloamwoodValleyCreature[],
 ): Promise<GloamwoodValleyCreatureScene> {
+  const bodyFor = (creature: GloamwoodValleyCreature) => gloamwoodValleyBodyFor({
+    kind: creature.kind, role: creature.role, branch: creature.branch, tier: creature.tier,
+    s: creature.spawnS,
+  })
   const loader = new GLTFLoader()
   const root = new THREE.Group()
   root.name = 'ValleyCreatures'
@@ -64,7 +69,7 @@ export async function buildGloamwoodValleyCreatureScene(
   // does not pay for the pebble.
   const wanted = new Map<string, GloamwoodModelledPreyConfig>()
   for (const creature of creatures) {
-    const config = gloamwoodModelledPreyFor(creature.kind, creature.role, creature.branch)
+    const config = bodyFor(creature)
     if (config) wanted.set(config.id, config)
   }
 
@@ -90,13 +95,31 @@ export async function buildGloamwoodValleyCreatureScene(
 
   const visuals = new Map<string, CreatureVisual>()
   for (const creature of creatures) {
-    const config = gloamwoodModelledPreyFor(creature.kind, creature.role, creature.branch)
+    const config = bodyFor(creature)
     const template = config ? templates.get(config.id) : undefined
     if (!config || !template) continue
     const holder = new THREE.Group()
     holder.name = `ValleyCreature-${creature.id}`
     const body = cloneSkinnedHierarchy(template.scene)
     holder.add(body)
+    // An elite reads as bigger already, but size alone is ambiguous next to a
+    // boss. The ring says which affix, in the colour the affix layer already
+    // carries - the player learns one mapping and it holds everywhere.
+    if (creature.tier === 'elite' && creature.elite) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(config.footprintRadius * 0.92, config.footprintRadius * 1.12, 36)
+          .rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({
+          color: ELITE_AFFIXES[creature.elite.affix].color,
+          transparent: true,
+          opacity: 0.55,
+          depthWrite: false,
+        }),
+      )
+      ring.position.y = 0.05
+      ring.renderOrder = 2
+      holder.add(ring)
+    }
     root.add(holder)
     visuals.set(creature.id, {
       root: holder,

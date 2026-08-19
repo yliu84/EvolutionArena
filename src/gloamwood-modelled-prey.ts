@@ -1,6 +1,15 @@
 import type { GloamwoodPreyKind, GloamwoodPreyPhase } from './gloamwood-3d-ecology'
 
 /**
+ * Where the region bosses stand, in route distance.
+ *
+ * Duplicated from the terrain module rather than imported: the body registry is
+ * read by the payload test, which must not pull the whole valley in behind it.
+ * Kept honest by a test that asserts the two agree.
+ */
+export const GLOAMWOOD_VALLEY_BOSS_SLOTS: readonly number[] = [330, 800, 1560]
+
+/**
  * Which authored clip a modelled prey creature should be playing.
  *
  * Prey in the 3D body have always been code-built primitives, so this is the
@@ -130,11 +139,95 @@ export function gloamwoodModelledPreyFor(
   return GLOAMWOOD_MODELLED_GRAZERS[kind] ?? GLOAMWOOD_MODELLED_PREY[kind]
 }
 
+/**
+ * The three region bosses, as bodies the creature runtime can wear.
+ *
+ * Boss configs elsewhere carry a pattern table, because a boss's three attacks
+ * are the fight. That authority is not wired into the valley yet, so here they
+ * are described the way every other creature is - one attack clip, chosen as
+ * whichever of the boss's patterns reads hardest - and they fight as heavy
+ * prey. It is honest about what it is: without this they wore the beetle's body
+ * at the beetle's size, which is why nobody could find them.
+ */
+export const GLOAMWOOD_TIDE_CLEAVER_BODY: GloamwoodModelledPreyConfig = {
+  id: 'tide-cleaver',
+  url: '/assets/quality-3d/models/bladeshell-runtime-v1.glb?v=valley-boss1-body-v1',
+  // Sized above the elite ceiling rather than to its concept width. An elite
+  // Ford Fang is 1.98 across, and a first boss smaller than a promoted prey
+  // teaches the player that size means nothing.
+  footprintRadius: 2.05,
+  modelYaw: Math.PI / 2,
+  clips: { idle: 'Idle', walk: 'Walk', attack: 'BladeSweep', hit: 'Hit', death: 'Death' },
+}
+
+export const GLOAMWOOD_CLIFF_MAW_BODY: GloamwoodModelledPreyConfig = {
+  id: 'cliff-maw',
+  url: '/assets/quality-3d/models/cliff-maw-runtime-v1.glb?v=valley-boss2-body-v1',
+  footprintRadius: 2.2,
+  modelYaw: Math.PI / 2,
+  clips: { idle: 'Idle', walk: 'Walk', attack: 'Slam', hit: 'Hit', death: 'Death' },
+}
+
+export const GLOAMWOOD_SOURCE_ROOT_BODY: GloamwoodModelledPreyConfig = {
+  id: 'source-root',
+  url: '/assets/quality-3d/models/source-root-runtime-v1.glb?v=valley-boss3-body-v1',
+  // The widest thing in the valley, and the end of the run.
+  footprintRadius: 2.4,
+  modelYaw: Math.PI / 2,
+  clips: { idle: 'Idle', walk: 'Walk', attack: 'Slam', hit: 'Hit', death: 'Death' },
+}
+
+/** In route order: the two gate bosses, then the end of the run. */
+export const GLOAMWOOD_VALLEY_BOSS_BODIES: readonly GloamwoodModelledPreyConfig[] = [
+  GLOAMWOOD_TIDE_CLEAVER_BODY,
+  GLOAMWOOD_CLIFF_MAW_BODY,
+  GLOAMWOOD_SOURCE_ROOT_BODY,
+]
+
+/**
+ * How much bigger an elite is than the creature it was promoted from.
+ *
+ * Elites carry an affix and more than twice the health, and until now wore the
+ * same body at the same size as the thing beside them - so the only way to find
+ * out you were fighting one was that it would not die. Size is the cheapest
+ * honest tell available: it needs no new art, it reads at any camera angle, and
+ * because reach is derived from the body radius the creature also stands and
+ * strikes further out, which is what an elite should feel like.
+ */
+export const GLOAMWOOD_ELITE_BODY_SCALE = 1.28
+
+export interface GloamwoodValleyBodyQuery {
+  kind: GloamwoodPreyKind
+  role: 'passive' | 'aggressive'
+  branch: string | null
+  tier: 'grazer' | 'pack' | 'nest' | 'elite' | 'boss'
+  /** Position along the route, used only to pick which boss this is. */
+  s?: number
+}
+
+/**
+ * The body a valley creature wears.
+ *
+ * Tier first, then role, then terrain. Reading family alone put three region
+ * bosses on the road as ordinary beetles and made every elite identical to the
+ * pack it was standing in.
+ */
+export function gloamwoodValleyBodyFor(query: GloamwoodValleyBodyQuery): GloamwoodModelledPreyConfig | undefined {
+  if (query.tier === 'boss') {
+    const index = GLOAMWOOD_VALLEY_BOSS_SLOTS.findIndex((slot) => Math.abs(slot - (query.s ?? 0)) < 60)
+    return GLOAMWOOD_VALLEY_BOSS_BODIES[index < 0 ? GLOAMWOOD_VALLEY_BOSS_BODIES.length - 1 : index]
+  }
+  const base = gloamwoodModelledPreyFor(query.kind, query.role, query.branch)
+  if (!base || query.tier !== 'elite') return base
+  return { ...base, id: `${base.id}-elite`, footprintRadius: base.footprintRadius * GLOAMWOOD_ELITE_BODY_SCALE }
+}
+
 export const GLOAMWOOD_MODELLED_PREY_CONFIGS: readonly GloamwoodModelledPreyConfig[] = [
   GLOAMWOOD_FORD_FANG_PREY,
   GLOAMWOOD_SPOTTED_FORDBUG_PREY,
   GLOAMWOOD_TERRACE_GRAZER_PREY,
   GLOAMWOOD_PEBBLE_DUMPLING_PREY,
+  ...GLOAMWOOD_VALLEY_BOSS_BODIES,
 ]
 
 export interface GloamwoodPreyClipSelection {

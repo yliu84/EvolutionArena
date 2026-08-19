@@ -17,7 +17,7 @@ import {
   type GloamwoodValleySpawn,
   type GloamwoodValleySpawnTier,
 } from './gloamwood-valley-spawns'
-import { gloamwoodModelledPreyFor } from './gloamwood-modelled-prey'
+import { gloamwoodValleyBodyFor } from './gloamwood-modelled-prey'
 import {
   gloamwoodValleyConfine,
   gloamwoodValleyCorridorAt,
@@ -45,6 +45,8 @@ export interface GloamwoodValleyCreature extends GloamwoodNestPrey, GloamwoodAgg
   group: string
   branch: string | null
   region: string
+  /** Where along the route it was placed. Decides which boss a boss is. */
+  spawnS: number
   /** Where it was placed. It grazes around here and comes back to it. */
   homeX: number
   homeZ: number
@@ -88,7 +90,9 @@ function fromSpawn(spawn: GloamwoodValleySpawn, index: number, runSeed: string):
   // The body it wears decides how big it is, so what blocks the player is the
   // creature they can see. Falls back to the family radius for anything with no
   // model yet.
-  const body = gloamwoodModelledPreyFor(spawn.kind, spawn.role, spawn.branch)
+  const body = gloamwoodValleyBodyFor({
+    kind: spawn.kind, role: spawn.role, branch: spawn.branch, tier: spawn.tier, s: spawn.s,
+  })
   return {
     id: spawn.id,
     kind: spawn.kind,
@@ -103,6 +107,7 @@ function fromSpawn(spawn: GloamwoodValleySpawn, index: number, runSeed: string):
     maxHealth,
     x: spawn.x,
     z: spawn.z,
+    spawnS: spawn.s,
     homeX: spawn.x,
     homeZ: spawn.z,
     wanderX: spawn.x,
