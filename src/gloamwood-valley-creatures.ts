@@ -56,6 +56,8 @@ export interface GloamwoodValleyCreature extends GloamwoodNestPrey, GloamwoodAgg
   wanderPauseSeconds: number
   /** Advanced every time a target is chosen, so a run replays identically. */
   wanderSeed: number
+  /** How long this one has been dead. Undefined while it is alive. */
+  corpseSeconds?: number
 }
 
 /**

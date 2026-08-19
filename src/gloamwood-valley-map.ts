@@ -13,6 +13,10 @@ import {
   type GloamwoodValleyCreature,
 } from './gloamwood-valley-creatures'
 import {
+  createGloamwoodValleyRespawnState,
+  stepGloamwoodValleyRespawn,
+} from './gloamwood-valley-respawn'
+import {
   GLOAMWOOD_VALLEY,
   gloamwoodValleyConfine,
   gloamwoodValleyCorridorLines,
@@ -65,6 +69,7 @@ export function createGloamwoodValleyMap(
     gloamwoodValleyRoadOffset(GLOAMWOOD_VALLEY.spawnS),
   )
   const spawn = gloamwoodValleyConfine(spawnPoint.x, spawnPoint.z)
+  let respawn = createGloamwoodValleyRespawnState()
   return {
     id: 'valley',
     buildScenery,
@@ -148,8 +153,12 @@ export function createGloamwoodValleyMap(
         player,
         { struck },
       )
+      // Corpses age out and cleared road packs come back, on their own clock
+      // and only well away from the player.
+      const cycled = stepGloamwoodValleyRespawn(respawn, frame.creatures, delta, player)
+      respawn = cycled.state
       return {
-        state: { ...state, prey: frame.creatures as GloamwoodNestPrey[] },
+        state: { ...state, prey: cycled.creatures as GloamwoodNestPrey[] },
         events: frame.events,
       }
     },

@@ -142,6 +142,8 @@ import { gloamwoodOccludesCameraView } from './gloamwood-camera-occlusion'
 import { createGloamwoodMap, gloamwoodMapStep, type GloamwoodMapContract } from './gloamwood-map'
 import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
 import { createGloamwoodValleyMap } from './gloamwood-valley-map'
+import type { GloamwoodValleyCreature } from './gloamwood-valley-creatures'
+import { gloamwoodValleyCorpseGone } from './gloamwood-valley-respawn'
 import { gloamwoodValleyCorridorAt } from './gloamwood-valley-terrain'
 import {
   gloamwoodPreyClipForPhase,
@@ -2853,7 +2855,14 @@ class Gloamwood3DHunt {
   }
 
   private syncPreyVisuals(delta = 0) {
-    const activeIds = new Set(this.nestState.prey.map((prey) => prey.id))
+    // A corpse that has lain long enough stops being drawn. It stays in the
+    // state - the respawn clock and the run's kill count both need it - it just
+    // leaves the scene, so a cleared stretch of road looks cleared.
+    const activeIds = new Set(
+      this.nestState.prey
+        .filter((prey) => !gloamwoodValleyCorpseGone(prey as GloamwoodValleyCreature))
+        .map((prey) => prey.id),
+    )
     for (const [id, visual] of this.preyVisuals) {
       if (activeIds.has(id)) continue
       this.scene.remove(visual.root)
@@ -2866,6 +2875,7 @@ class Gloamwood3DHunt {
       this.preyVisuals.delete(id)
     }
     for (const prey of this.nestState.prey) {
+      if (!activeIds.has(prey.id)) continue
       const visual = this.preyVisuals.get(prey.id) ?? this.createPreyVisual(prey)
       const spec = GLOAMWOOD_PREY[prey.kind]
       visual.root.position.set(prey.x, this.map.height(prey.x, prey.z), prey.z)
