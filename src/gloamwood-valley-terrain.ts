@@ -109,6 +109,9 @@ const SPINE_MEASURE = measurePolyline(SPINE)
 /** Total distance along the route. */
 export const GLOAMWOOD_VALLEY_LENGTH = SPINE_MEASURE.total
 
+/** How far from each end of the route the player is kept. */
+const ROUTE_END_MARGIN = 0.5
+
 /** World position at a distance along the route, offset to one side of it. */
 export function gloamwoodValleyPointAt(s: number, lateral = 0) {
   const point = pointOnPolyline(SPINE, SPINE_MEASURE.lengths, s)
@@ -537,6 +540,17 @@ export function gloamwoodValleyWalkable(x: number, z: number) {
 export function gloamwoodValleyConfine(x: number, z: number) {
   let px = x
   let pz = z
+  // Pull the ends in first. `gloamwoodValleyWalkable` calls the route running
+  // out a wall, so a position at exactly s=0 is standable by every other
+  // measure and rejected by that one - two functions disagreeing about the same
+  // boundary, which is the defect this project keeps shipping.
+  const entry = gloamwoodValleyProject(px, pz)
+  const clampedS = Math.min(GLOAMWOOD_VALLEY_LENGTH - ROUTE_END_MARGIN, Math.max(ROUTE_END_MARGIN, entry.s))
+  if (clampedS !== entry.s) {
+    const pulled = gloamwoodValleyPointAt(clampedS, entry.lateral)
+    px = pulled.x
+    pz = pulled.z
+  }
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const corridor = gloamwoodValleyCorridorAt(px, pz)
     let moved = false

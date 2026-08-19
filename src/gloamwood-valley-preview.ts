@@ -3,6 +3,11 @@ import * as THREE from 'three'
 import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
 import { gloamwoodValleyDressingFor } from './gloamwood-valley-dressing'
 import {
+  createGloamwoodValleyProgression,
+  gloamwoodValleyNextGate,
+  holdGloamwoodValleyAtGate,
+} from './gloamwood-valley-progression'
+import {
   GLOAMWOOD_VALLEY,
   GLOAMWOOD_VALLEY_LENGTH,
   gloamwoodValleyConfine,
@@ -121,6 +126,15 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
   const forward = new THREE.Vector2(-CAMERA_OFFSET.x, -CAMERA_OFFSET.z).normalize()
   const right = new THREE.Vector2(-forward.y, forward.x)
   const step = new THREE.Vector2()
+  // Gates are held shut by the region boss standing before them. There is no
+  // combat in this preview, so `?gates=open` walks the whole route - a reviewer
+  // who cannot reach the headwater cannot review the headwater.
+  const gatesOpen = params.get('gates') === 'open'
+  const progression = createGloamwoodValleyProgression()
+  const holdAtClosedGate = (x: number, z: number) => gatesOpen
+    ? gloamwoodValleyConfine(x, z)
+    : holdGloamwoodValleyAtGate(progression, x, z)
+
   const desiredCamera = new THREE.Vector3()
   const sightFrom = new THREE.Vector3()
 
@@ -143,7 +157,7 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
     if (step.lengthSq() > 0) {
       const speed = PLAYER_SPEED * (held.has('ShiftLeft') || held.has('ShiftRight') ? SPRINT : 1)
       step.normalize().multiplyScalar(speed * delta)
-      const confined = gloamwoodValleyConfine(position.x + step.x, position.y + step.y)
+      const confined = holdAtClosedGate(position.x + step.x, position.y + step.y)
       position.set(confined.x, confined.z)
     }
 
@@ -195,6 +209,11 @@ export async function launchGloamwoodValleyPreview(): Promise<() => void> {
       : region ? labels.regions[region.id] : labels.choke
     readout.textContent = [
       `${place}　${Math.round(corridor.s)} / ${Math.round(GLOAMWOOD_VALLEY_LENGTH)}`,
+      gatesOpen
+        ? labels.gatesOpen
+        : gloamwoodValleyNextGate(progression, corridor.s)
+          ? labels.gateClosed
+          : labels.gatesCleared,
       `${labels.props} ${valley.stats.props}　${labels.triangles} ${(valley.stats.triangles / 1000).toFixed(0)}k　${labels.batches} ${valley.stats.batches}`,
       `${fps} fps`,
     ].join('\n')
@@ -269,6 +288,9 @@ const EN = {
     'high-terrace': 'High Terrace',
     'stone-bowl': 'Stone Bowl',
   } as Record<string, string>,
+  gateClosed: 'Gate shut · the region boss holds it',
+  gatesOpen: 'Gates forced open for review',
+  gatesCleared: 'All gates open',
 } as const
 
 const ZH = {
@@ -286,4 +308,7 @@ const ZH = {
     'high-terrace': '高阶地',
     'stone-bowl': '石碗',
   } as Record<string, string>,
+  gateClosed: '隘口关闭 · 区域首领把守',
+  gatesOpen: '评审模式 · 隘口已强制打开',
+  gatesCleared: '隘口已全部打开',
 } as const
