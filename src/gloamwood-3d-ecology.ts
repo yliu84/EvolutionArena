@@ -1,4 +1,15 @@
 import type { FormalHuntBasicAttackAction } from './formal-hunt-basic-attack'
+import {
+  gloamwoodEliteAbsorb,
+  gloamwoodEliteCooldown,
+  gloamwoodEliteDamage,
+  gloamwoodEliteDeathBurst,
+  gloamwoodEliteSiphon,
+  gloamwoodEliteSpeed,
+  gloamwoodEliteSplits,
+  type GloamwoodEliteBurst,
+  type GloamwoodEliteState,
+} from './gloamwood-elite'
 
 export type GloamwoodPreyKind = 'fang' | 'shell' | 'swarm'
 export type GloamwoodPreyPhase = 'chase' | 'telegraph' | 'strike' | 'recover' | 'stunned' | 'dead'
@@ -51,6 +62,15 @@ export interface GloamwoodNestPrey {
    * say never.
    */
   stunImmuneSeconds?: number
+  /**
+   * Set only on elites.
+   *
+   * Carried on the creature rather than passed into the damage gate, so a call
+   * site cannot forget to hand it over and quietly turn an elite back into an
+   * ordinary one - which would look exactly like the fight being easy rather
+   * than like a defect.
+   */
+  elite?: GloamwoodEliteState
 }
 
 export interface GloamwoodGeneBank { fang: number; shell: number; swarm: number }
@@ -95,6 +115,12 @@ export interface GloamwoodPreyDamageResult {
   killed: boolean
   biomassGained: number
   geneGained: GloamwoodPreyKind | null
+  /** Damage an elite's barrier swallowed, for presentation to show. */
+  absorbedByShield: number
+  /** True on the hit that takes a brood elite through half health. */
+  splits: boolean
+  /** Left behind by a volatile elite, in world units. */
+  burst: GloamwoodEliteBurst | null
 }
 
 export const GLOAMWOOD_NEST = {
@@ -272,13 +298,23 @@ export function damageGloamwoodNestPrey(
   knockback: number,
 ): GloamwoodPreyDamageResult {
   const target = state.prey.find((prey) => prey.id === preyId)
-  if (!target || target.phase === 'dead') return { state, effectiveDamage: 0, blocked: false, weakness: false, interrupted: false, killed: false, biomassGained: 0, geneGained: null }
+  if (!target || target.phase === 'dead') {
+    return {
+      state, effectiveDamage: 0, blocked: false, weakness: false, interrupted: false,
+      killed: false, biomassGained: 0, geneGained: null, absorbedByShield: 0, splits: false, burst: null,
+    }
+  }
   const spec = GLOAMWOOD_PREY[target.kind]
   const attackerFacing = Math.atan2(-(attacker.z - target.z), attacker.x - target.x)
   const frontalError = Math.abs(shortestAngle(target.facingRadians, attackerFacing))
   const shellFront = target.kind === 'shell' && frontalError <= Math.PI * 0.42
   const multiplier = shellFront ? 0.28 : target.kind === 'shell' ? 1.35 : target.kind === 'fang' && action === 'Claw' ? 1.2 : target.kind === 'swarm' && action === 'TailSwipe' ? 1.3 : 1
-  const effectiveDamage = Math.max(1, Math.round(Math.max(0, rawDamage) * multiplier))
+  const familyDamage = Math.max(1, Math.round(Math.max(0, rawDamage) * multiplier))
+  // The barrier is a step inside this gate, never a second one. Nothing in the
+  // elite layer decides how hard the player hits; it only decides how much of
+  // an already-resolved number reaches the creature.
+  const shielded = gloamwoodEliteAbsorb(target.elite, familyDamage)
+  const effectiveDamage = shielded.damage
   const health = Math.max(0, target.health - effectiveDamage)
   const killed = health <= 0
   const dx = target.x - attacker.x
@@ -292,6 +328,7 @@ export function damageGloamwoodNestPrey(
   // the window expiring a fraction before the swing landed, and at the Fang
   // chain's cadence that produced a cut-short wind-up before nearly every
   // attack - the interruption the player was still seeing.
+  const splits = gloamwoodEliteSplits(target.elite, target.health, health, target.maxHealth)
   const interruptible = (target.stunImmuneSeconds ?? 0) <= 0
   const stunImmunity = spec.stunSeconds + spec.telegraphSeconds + spec.strikeSeconds
   const nextPrey = state.prey.map((prey) => prey.id === preyId ? {
@@ -303,6 +340,7 @@ export function damageGloamwoodNestPrey(
     phaseElapsed: killed || interruptible ? 0 : prey.phaseElapsed,
     attackResolved: killed || interruptible ? false : prey.attackResolved,
     stunImmuneSeconds: interruptible ? stunImmunity : prey.stunImmuneSeconds,
+    elite: shielded.elite && splits ? { ...shielded.elite, broodTriggered: true } : shielded.elite,
   } : prey)
   const biomassGained = killed ? spec.biomass : 0
   const genes = killed ? { ...state.genes, [spec.gene]: state.genes[spec.gene] + 1 } : state.genes
@@ -316,6 +354,9 @@ export function damageGloamwoodNestPrey(
     killed,
     biomassGained,
     geneGained: killed ? spec.gene : null,
+    absorbedByShield: shielded.absorbed,
+    splits,
+    burst: killed ? gloamwoodEliteDeathBurst(target.elite, target.x, target.z) : null,
   }
 }
 
@@ -400,6 +441,7 @@ function stepPrey(
       const currentAngle = Math.atan2(next.z - player.z, next.x - player.x)
       const targetAngle = Math.atan2(slot.z - player.z, slot.x - player.x)
       const moveSpeed = preyMoveSpeed(spec, playerDistance, player)
+        * gloamwoodEliteSpeed(next.elite, next.health, next.maxHealth)
       const radialStep = Math.min(Math.abs(playerDistance - stopDistance), moveSpeed * delta)
       const nextRadius = Math.max(stopDistance, playerDistance + Math.sign(stopDistance - playerDistance) * radialStep)
       const angularStep = Math.min(
@@ -424,12 +466,23 @@ function stepPrey(
       // than letting it run out keeps it a guarantee of one attack rather than
       // a stretch of free immunity.
       next.stunImmuneSeconds = 0
-      if (playerDistance <= attackDistance) events.push({ type: 'prey-attack', preyId: next.id, kind: next.kind, damage: spec.damage, knockback: spec.knockback })
+      if (playerDistance <= attackDistance) {
+        const damage = Math.round(spec.damage * gloamwoodEliteDamage(next.elite, next.health, next.maxHealth))
+        // A siphon elite heals off the hit it just landed. Written here, where
+        // the hit is decided, so its health and the damage event cannot ever
+        // disagree about whether the blow happened.
+        next.health = gloamwoodEliteSiphon(next.elite, next.health, next.maxHealth, damage)
+        events.push({ type: 'prey-attack', preyId: next.id, kind: next.kind, damage, knockback: spec.knockback })
+      }
     }
     if (next.phaseElapsed >= spec.strikeSeconds) next = enterPhase(next, 'recover')
     return { state: next, events }
   }
-  if (next.phaseElapsed >= spec.recoverSeconds) next = enterPhase(next, 'chase')
+  // A wound-up berserker recovers faster; its telegraph is untouched, because
+  // the telegraph is where the fight stays readable.
+  if (next.phaseElapsed >= spec.recoverSeconds * gloamwoodEliteCooldown(next.elite, next.health, next.maxHealth)) {
+    next = enterPhase(next, 'chase')
+  }
   return { state: next, events }
 }
 
