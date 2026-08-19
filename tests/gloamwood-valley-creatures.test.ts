@@ -52,12 +52,25 @@ describe('Who is out there', () => {
       if (creature.tier === 'elite') {
         expect(creature.elite).toBeDefined()
         expect(creature.maxHealth).toBeGreaterThan(GLOAMWOOD_PREY[creature.kind].maxHealth)
+      } else if (creature.tier === 'boss') {
+        expect(creature.elite).toBeUndefined()
       } else {
         expect(creature.elite).toBeUndefined()
         expect(creature.maxHealth).toBe(GLOAMWOOD_PREY[creature.kind].maxHealth)
       }
     }
     expect(GLOAMWOOD_ELITE.healthMultiplier).toBeGreaterThan(1)
+  })
+
+  it('stands every boss behind more health than any elite', () => {
+    // Bosses read their health from their own spec now. Reading the family's
+    // put three region bosses behind ninety-two hit points - fewer than the
+    // elite down the branch, and the same as the beetle standing beside them.
+    const elites = creatures.filter((creature) => creature.tier === 'elite')
+    const strongestElite = Math.max(...elites.map((creature) => creature.maxHealth))
+    const bosses = creatures.filter((creature) => creature.tier === 'boss')
+    expect(bosses).toHaveLength(3)
+    for (const boss of bosses) expect(boss.maxHealth).toBeGreaterThan(strongestElite)
   })
 
   it('rebuilds identically from the same seed', () => {

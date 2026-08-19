@@ -13,6 +13,11 @@ import {
 } from './gloamwood-creature-aggro'
 import { createGloamwoodElite, gloamwoodEliteMaxHealth } from './gloamwood-elite'
 import {
+  gloamwoodValleyBossSpecFor,
+  stepGloamwoodValleyBoss,
+  type GloamwoodValleyBossFields,
+} from './gloamwood-valley-boss'
+import {
   planGloamwoodValleySpawns,
   type GloamwoodValleySpawn,
   type GloamwoodValleySpawnTier,
@@ -40,7 +45,7 @@ import {
  * question in both, and answering it twice is how the two drift apart.
  */
 
-export interface GloamwoodValleyCreature extends GloamwoodNestPrey, GloamwoodAggroCreature {
+export interface GloamwoodValleyCreature extends GloamwoodNestPrey, GloamwoodAggroCreature, GloamwoodValleyBossFields {
   tier: GloamwoodValleySpawnTier
   group: string
   branch: string | null
@@ -88,7 +93,12 @@ function fromSpawn(spawn: GloamwoodValleySpawn, index: number, runSeed: string):
   const spec = GLOAMWOOD_PREY[spawn.kind]
   // Elites are tougher and carry an affix; everything else is its family.
   const elite = spawn.tier === 'elite' ? createGloamwoodElite(runSeed, spawn.id, gloamwoodEliteMaxHealth(spec.maxHealth)) : undefined
-  const maxHealth = spawn.tier === 'elite' ? gloamwoodEliteMaxHealth(spec.maxHealth) : spec.maxHealth
+  // A boss brings its own health. Reading the family's left three region bosses
+  // standing behind ninety-two hit points - the same as the beetle beside them,
+  // and less than the elite down the branch.
+  const boss = gloamwoodValleyBossSpecFor(spawn)
+  const maxHealth = boss ? boss.maxHealth
+    : spawn.tier === 'elite' ? gloamwoodEliteMaxHealth(spec.maxHealth) : spec.maxHealth
   // The body it wears decides how big it is, so what blocks the player is the
   // creature they can see. Falls back to the family radius for anything with no
   // model yet.
@@ -119,6 +129,8 @@ function fromSpawn(spawn: GloamwoodValleySpawn, index: number, runSeed: string):
     wanderSeed: (index + 1) * 0x9e3779b1,
     bodyRadius: body?.footprintRadius,
     facingRadians: index * 2.399,
+    bossPhase: boss ? 1 : undefined,
+    bossTurn: boss ? 0 : undefined,
     attackResolved: false,
     slot: index % 6,
     awake: false,
@@ -152,7 +164,14 @@ export function stepGloamwoodValleyCreatures(
     const woken = { ...creature, awake: state?.awake ?? false, outOfReachSeconds: state?.outOfReachSeconds ?? 0 }
     if (woken.phase === 'dead') return woken
     if (!woken.awake) return settle(woken, delta)
-    const frame = stepPrey(woken, delta, player)
+    // A boss is stepped by its own authority. Everything else - the aggro that
+    // woke it, the confine below, the damage gate, the corpse clock - is shared
+    // with every other creature, so a boss is a creature that fights
+    // differently rather than a second kind of thing.
+    const bossSpec = gloamwoodValleyBossSpecFor(woken)
+    const frame = bossSpec
+      ? stepGloamwoodValleyBoss(woken, bossSpec, delta, player)
+      : stepPrey(woken, delta, player)
     events.push(...frame.events)
     const stepped = { ...woken, ...frame.state }
     // Confined here rather than by the caller. A creature pushed into the river

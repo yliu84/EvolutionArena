@@ -143,6 +143,12 @@ import { createGloamwoodMap, gloamwoodMapStep, type GloamwoodMapContract } from 
 import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
 import { createGloamwoodValleyMap } from './gloamwood-valley-map'
 import type { GloamwoodValleyCreature } from './gloamwood-valley-creatures'
+import {
+  gloamwoodValleyBossClipForPhase,
+  gloamwoodValleyBossSpecFor,
+} from './gloamwood-valley-boss'
+import { gloamwoodBossFxFrame } from './gloamwood-boss-fx'
+import { createGloamwoodBossFxScene, type GloamwoodBossFxEntry } from './gloamwood-boss-fx-scene'
 import { gloamwoodValleyCorpseGone } from './gloamwood-valley-respawn'
 import { GLOAMWOOD_VALLEY_LIFE_CAP } from './gloamwood-valley-progression'
 import { gloamwoodValleyCorridorAt, gloamwoodValleyRegionAt } from './gloamwood-valley-terrain'
@@ -596,7 +602,29 @@ class Gloamwood3DHunt {
    * every passive creature in the valley taking hits without ever looking up.
    */
   private readonly struckThisFrame: string[] = []
+  /**
+   * The boss telegraphs and impacts, drawn from state the authority already
+   * decided. Empty on a map with no bosses, and its own module so that nothing
+   * in the damage path can reach it.
+   */
+  private readonly bossFx = createGloamwoodBossFxScene()
+  /**
+   * What each boss was doing last frame, kept for the effects alone.
+   *
+   * The clip selector keeps its own copy on the model and has already advanced
+   * it by the time the effects are built - reading that one would mean the
+   * impact never registers as new and the screen never shakes.
+   */
+  private readonly bossFxPhase = new Map<string, GloamwoodNestPrey['phase']>()
   private snapCameraNextFrame = false
+  /**
+   * Where the map decided the player comes back, held until they do.
+   *
+   * One authority answers "where does a death put you", and it answers once -
+   * when the life is spent. Coming back alive is a clock running out, not a
+   * second chance to decide the question.
+   */
+  private respawnAt: { x: number; z: number } | null = null
   private deathOverlay?: HTMLElement
   private valleyGroundHeight: ((x: number, z: number) => number) | null = null
   private valley: { update(camera: { x: number; z: number }, elapsed: number, delta: number): void } | null = null
@@ -797,6 +825,7 @@ class Gloamwood3DHunt {
     this.playerRoot.add(this.characterRoot)
     this.scene.add(this.playerRoot)
     this.scene.add(this.nestRoot)
+    this.scene.add(this.bossFx.root)
   }
 
   async start() {
@@ -2121,8 +2150,19 @@ class Gloamwood3DHunt {
           GLOAMWOOD_BOSS_ARENA.playerZ,
         )
       } else {
-        this.playerRoot.position.set(GLOAMWOOD_3D_COMBAT.playerSpawnX, 0, GLOAMWOOD_3D_COMBAT.playerSpawnZ)
+        // Where the *map* put them when the life was spent, not the Gloamwood's
+        // hardcoded spawn. This ran on the valley too and teleported the player
+        // to (-6, 3) at ground level zero a few seconds after they clicked
+        // revive: a blank patch behind the head of the route, off the corridor,
+        // with no scatter on it - and the first step they took slid them back
+        // onto the road, which is what made it read as the game changing its
+        // mind about where they were.
+        const back = this.respawnAt ?? this.map.spawn
+        const moved = Math.hypot(back.x - this.playerRoot.position.x, back.z - this.playerRoot.position.z)
+        this.playerRoot.position.set(back.x, this.map.height(back.x, back.z), back.z)
+        if (moved > 0.5) this.snapCameraNextFrame = true
       }
+      this.respawnAt = null
       this.target.copy(this.playerRoot.position)
       this.attackState = createFormalHuntBasicAttackState()
       this.combatMessage = t('hud.msg.backToHunt')
@@ -2436,6 +2476,16 @@ class Gloamwood3DHunt {
         this.showEvolutionOverlay()
         continue
       }
+      if (event.type === 'boss-enraged') {
+        // Said out loud, because the tell is that the patterns changed rather
+        // than that a bar moved. The colour of every telegraph shifts with it.
+        const enraged = this.nestState.prey.find((prey) => prey.id === event.preyId)
+        const boss = enraged ? gloamwoodValleyBossSpecFor(enraged as GloamwoodValleyCreature) : undefined
+        this.combatMessage = t('hud.msg.bossEnraged', { name: boss?.displayName ?? '' })
+        this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.7)
+        this.playSound('hit-heavy')
+        continue
+      }
       if (event.type !== 'prey-attack') continue
       const attacker = this.nestState.prey.find((prey) => prey.id === event.preyId)
       if (!attacker) continue
@@ -2716,7 +2766,22 @@ class Gloamwood3DHunt {
     model.lastX = prey.x
     model.lastZ = prey.z
     const moving = prey.phase === 'chase'
-    const selection = gloamwoodPreyClipForPhase(prey.phase, model.config, model.previousPhase, moving)
+    // A boss has one clip per pattern where prey have one attack clip for
+    // everything, so the two selectors cannot be shared. Which pattern is
+    // playing was decided by the authority; this only looks it up.
+    const bossSpec = gloamwoodValleyBossSpecFor(prey as GloamwoodValleyCreature)
+    const bossPattern = bossSpec
+      ? model.clips.get(bossSpec.patterns[(prey as GloamwoodValleyCreature).bossPattern ?? '']?.clip ?? '')
+      : undefined
+    const selection = bossSpec
+      ? gloamwoodValleyBossClipForPhase(
+        prey as GloamwoodValleyCreature,
+        bossSpec,
+        model.config,
+        bossPattern?.duration ?? 1,
+        model.previousPhase,
+      )
+      : { ...gloamwoodPreyClipForPhase(prey.phase, model.config, model.previousPhase, moving), rate: 0 }
     const clip = model.clips.get(selection.clip)
     if (clip && (selection.clip !== model.clipName || selection.restart)) {
       const next = model.mixer.clipAction(clip)
@@ -2725,7 +2790,8 @@ class Gloamwood3DHunt {
       next.clampWhenFinished = selection.once
       // The authority decides when the blow lands; the clip is stretched onto
       // it. Nothing here ever reports back into the damage path.
-      next.timeScale = selection.clip === model.config.clips.attack
+      next.timeScale = bossSpec ? selection.rate
+        : selection.clip === model.config.clips.attack
         ? gloamwoodPreyClipRate(clip.duration, spec.telegraphSeconds, spec.strikeSeconds)
         : 1
       if (model.action && model.action !== next) model.action.fadeOut(0.12)
@@ -2887,7 +2953,11 @@ class Gloamwood3DHunt {
       visual.root.rotation.y = prey.facingRadians
       visual.root.visible = true
       visual.targetRing.visible = prey.phase !== 'dead' && this.lockedPreyId === prey.id
-      const telegraphing = prey.phase === 'telegraph'
+      // A boss draws its own areas, at the size its patterns actually test. The
+      // family ring is the prey action ring and would sit inside the real one
+      // marking ground that is not where the blow lands.
+      const bossSpec = gloamwoodValleyBossSpecFor(prey as GloamwoodValleyCreature)
+      const telegraphing = prey.phase === 'telegraph' && !bossSpec
       const telegraphProgress = telegraphing ? Math.min(1, prey.phaseElapsed / spec.telegraphSeconds) : 0
       ;(visual.telegraph.material as THREE.MeshBasicMaterial).opacity = telegraphing ? 0.18 + telegraphProgress * 0.64 : 0
       visual.telegraph.scale.setScalar(telegraphing ? 1.12 - telegraphProgress * 0.12 : 1)
@@ -2909,6 +2979,34 @@ class Gloamwood3DHunt {
       visual.body.position.set(strike * (prey.kind === 'shell' ? 0.72 : 0.48) - impact * 0.34, Math.abs(gait) * (prey.kind === 'shell' ? 0.035 : 0.07) + impact * 0.08, stunned + impact * 0.06)
       visual.body.rotation.z = prey.phase === 'dead' ? -Math.PI / 2 : gait * (prey.kind === 'swarm' ? 0.08 : 0.035) + stunned + impact * 0.11
       visual.body.scale.set(1 + strike * 0.1 - impact * 0.09, 1 - strike * 0.14 + impact * 0.08, 1 + strike * 0.06 + impact * 0.12)
+    }
+    this.syncBossFx(delta)
+  }
+
+  /**
+   * The boss effects, built from state that has already been decided.
+   *
+   * Every number handed over comes from the pattern the authority chose - the
+   * area is the pattern's own shape object, and the trauma is asked for by the
+   * frame rather than measured off the screen. The blow has already been
+   * resolved by the time anything here runs, so no effect can decide one, and
+   * a run with the shake setting off takes identical damage.
+   */
+  private syncBossFx(delta: number) {
+    const entries: GloamwoodBossFxEntry[] = []
+    for (const prey of this.nestState.prey) {
+      const spec = gloamwoodValleyBossSpecFor(prey as GloamwoodValleyCreature)
+      if (!spec) continue
+      const creature = prey as GloamwoodValleyCreature
+      const frame = gloamwoodBossFxFrame(creature, spec, this.bossFxPhase.get(prey.id))
+      this.bossFxPhase.set(prey.id, prey.phase)
+      entries.push({ id: prey.id, x: prey.x, z: prey.z, groundY: this.map.height(prey.x, prey.z), frame })
+    }
+    if (entries.length === 0 && this.bossFxPhase.size === 0) return
+    const trauma = this.bossFx.update(entries, delta)
+    if (trauma > 0) {
+      this.cameraTrauma = Math.min(1, this.cameraTrauma + trauma)
+      this.playSound('hit-heavy')
     }
   }
 
@@ -2995,6 +3093,10 @@ class Gloamwood3DHunt {
       z: this.playerRoot.position.z,
     })
     this.nestState = reset.state
+    // Remembered as well as applied. The respawn timer runs down *after* the
+    // death prompt is dismissed and used to place the player a second time, at
+    // a different point, from a different authority.
+    this.respawnAt = { x: reset.playerAt.x, z: reset.playerAt.z }
     this.playerRoot.position.set(reset.playerAt.x, this.map.height(reset.playerAt.x, reset.playerAt.z), reset.playerAt.z)
     this.target.copy(this.playerRoot.position)
     this.lockedPreyId = null
@@ -3978,6 +4080,25 @@ class Gloamwood3DHunt {
           if (this.evolutionState.phase !== 'selected') this.openEvolutionGateForDebug()
           if (this.evolutionState.phase === 'choosing') void this.chooseEvolution(0)
           else this.startBossEncounter()
+        },
+        // Puts the player in front of a region boss. Reaching the third one on
+        // foot is twelve hundred units of road, and every check of a pattern
+        // would begin with that walk.
+        standAtBoss: (index = 0) => {
+          const bosses = this.nestState.prey
+            .filter((prey) => (prey as GloamwoodValleyCreature).tier === 'boss')
+            .sort((a, b) => (a as GloamwoodValleyCreature).spawnS - (b as GloamwoodValleyCreature).spawnS)
+          const boss = bosses[Math.max(0, Math.min(bosses.length - 1, index))]
+          if (!boss) return null
+          const spec = gloamwoodValleyBossSpecFor(boss as GloamwoodValleyCreature)
+          // On the camera's far side of the boss. The camera sits behind the
+          // player along -X, so standing at +X puts the boss between the two
+          // and its body fills the screen instead of the fight.
+          const stand = this.map.confine(boss.x - (spec?.preferredRange ?? 6), boss.z)
+          this.playerRoot.position.set(stand.x, this.map.height(stand.x, stand.z), stand.z)
+          this.target.set(stand.x, 0, stand.z)
+          this.snapCameraNextFrame = true
+          return { id: boss.id, boss: spec?.bodyId ?? null, x: boss.x, z: boss.z }
         },
         damageBoss: (damage: number) => {
           if (!this.bossActive()) return

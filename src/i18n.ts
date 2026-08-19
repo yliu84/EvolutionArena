@@ -169,6 +169,7 @@ const STRINGS = {
   'hud.msg.missBossRange': { en: 'Missed · Boss out of reach', zh: '挥空 · Boss 超出攻击距离' },
   'hud.msg.nestAwake': { en: 'The nest wakes · first wave incoming', zh: '腐根孵育巢苏醒 · 第一波来袭' },
   'hud.msg.lastWave': { en: 'Last wave broken', zh: '最后一波已击溃' },
+  'hud.msg.bossEnraged': { en: '{name} turns · new patterns', zh: '{name} 转入二阶段 · 招式变了' },
   'hud.msg.downed': { en: 'Downed · returning to the hunt', zh: '倒下 · 即将重返狩猎' },
   'attack.rootSlam': { en: 'Root Slam', zh: '根须震击' },
   'attack.thornCharge': { en: 'Thorn Charge', zh: '荆棘冲锋' },

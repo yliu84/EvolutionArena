@@ -94,6 +94,14 @@ export type GloamwoodNestEvent =
   | { type: 'wave-cleared'; wave: number }
   | { type: 'nest-cleared'; biomass: number; genes: GloamwoodGeneBank }
   | { type: 'prey-attack'; preyId: string; kind: GloamwoodPreyKind; damage: number; knockback: number }
+  /**
+   * A boss crossed half health and turned.
+   *
+   * Carried on the shared event union rather than a boss-only one because the
+   * valley's bosses are creatures in the same list as everything else, and the
+   * runtime already has exactly one place where a creature's events are read.
+   */
+  | { type: 'boss-enraged'; preyId: string; phase: 2 }
 
 export interface GloamwoodPreyDamageResult {
   state: GloamwoodNestState
