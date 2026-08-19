@@ -4400,7 +4400,13 @@ class Gloamwood3DHunt {
     const objectiveZ = this.runPhase === 'guardian' || this.runPhase === 'boss' ? GLOAMWOOD_BOSS_ARENA.z : GLOAMWOOD_NEST.centerZ
     return deriveGloamwoodOnboardingStep({
       runPhase: this.runPhase,
-      movedDistance: Math.hypot(this.playerRoot.position.x + 6, this.playerRoot.position.z - 3),
+      // From where this map actually starts the player. Hard-coded to the
+      // Gloamwood's spawn, this read as tens of units before anyone had moved
+      // on the valley, and the guide skipped its first steps.
+      movedDistance: Math.hypot(
+        this.playerRoot.position.x - this.map.spawn.x,
+        this.playerRoot.position.z - this.map.spawn.z,
+      ),
       nestPhase: this.nestState.phase,
       targetLocked: this.bossLocked || Boolean(this.lockedPrey()),
       targetKind: this.lockedPrey()?.kind ?? null,
@@ -4422,6 +4428,14 @@ class Gloamwood3DHunt {
 
   private updateOnboardingHud() {
     if (!this.onboardingHud) return
+    // The guide describes the Gloamwood's structure - a nest, waves, a
+    // guardian, an evolution, a boss. On a map with none of those it walks the
+    // player through an encounter that never arrives, which is worse than no
+    // guide at all. The valley needs one of its own before it gets one.
+    if (!this.map.hasNest) {
+      this.onboardingHud.hidden = true
+      return
+    }
     const step = this.onboardingStep()
     const setText = (selector: string, value: string) => {
       const element = this.onboardingHud?.querySelector<HTMLElement>(selector)
