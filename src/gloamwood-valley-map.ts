@@ -13,6 +13,11 @@ import {
   type GloamwoodValleyCreature,
 } from './gloamwood-valley-creatures'
 import {
+  createGloamwoodValleyNests,
+  stepGloamwoodValleyNests,
+  type GloamwoodValleyNestState,
+} from './gloamwood-valley-nests'
+import {
   createGloamwoodValleyRespawnState,
   stepGloamwoodValleyRespawn,
 } from './gloamwood-valley-respawn'
@@ -71,6 +76,8 @@ export function createGloamwoodValleyMap(
   )
   const spawn = gloamwoodValleyConfine(spawnPoint.x, spawnPoint.z)
   let respawn = createGloamwoodValleyRespawnState()
+  let nests: GloamwoodValleyNestState[] = []
+  const clearedNests = new Set<string>()
   return {
     id: 'valley',
     buildScenery,
@@ -102,7 +109,12 @@ export function createGloamwoodValleyMap(
         phase: 'cleared',
         wave: GLOAMWOOD_NEST.waveCount,
         phaseElapsed: 0,
-        prey: createGloamwoodValleyCreatures(seed) as GloamwoodNestPrey[],
+        prey: (() => {
+          const built = createGloamwoodValleyCreatures(seed)
+          nests = createGloamwoodValleyNests(built)
+          clearedNests.clear()
+          return built as GloamwoodNestPrey[]
+        })(),
         kills: 0,
         biomass: 0,
         genes: { fang: 0, shell: 0, swarm: 0 },
@@ -122,6 +134,10 @@ export function createGloamwoodValleyMap(
           if (region?.id === milestone.region) reached.push(milestone.id)
           continue
         }
+        if (milestone.kind === 'nest') {
+          if (clearedNests.has(`${milestone.region}-nest`)) reached.push(milestone.id)
+          continue
+        }
         if (milestone.kind === 'boss') {
           const boss = state.prey.find((prey) => {
             const creature = prey as GloamwoodValleyCreature
@@ -130,10 +146,6 @@ export function createGloamwoodValleyMap(
           if (boss && boss.phase === 'dead') reached.push(milestone.id)
           continue
         }
-        // Nests do not run on this map yet, so their milestones cannot be
-        // reached. Left in the list rather than deleted: the pacing was designed
-        // around seven, and a silently missing pair would read as the mutations
-        // simply drying up.
       }
       return reached
     },
@@ -184,7 +196,12 @@ export function createGloamwoodValleyMap(
       )
       // Corpses age out and cleared road packs come back, on their own clock
       // and only well away from the player.
-      const cycled = stepGloamwoodValleyRespawn(respawn, frame.creatures, delta, player)
+      // Nests run before the respawn pass, so a wave that arrives this frame is
+      // not immediately aged as a corpse from the previous one.
+      const nested = stepGloamwoodValleyNests(nests, frame.creatures, delta, player)
+      nests = nested.nests
+      for (const id of nested.cleared) clearedNests.add(id)
+      const cycled = stepGloamwoodValleyRespawn(respawn, nested.creatures, delta, player)
       respawn = cycled.state
       return {
         state: { ...state, prey: cycled.creatures as GloamwoodNestPrey[] },
