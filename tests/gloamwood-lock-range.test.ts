@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import { GLOAMWOOD_AGGRO } from '../src/gloamwood-creature-aggro'
-import { GLOAMWOOD_LOCK_RANGE, nextGloamwoodLockTarget } from '../src/gloamwood-3d-hunt'
+import {
+  GLOAMWOOD_LOCK_RANGE,
+  gloamwoodPrimaryAttackShouldClose,
+  nextGloamwoodLockTarget,
+} from '../src/gloamwood-3d-hunt'
 import type { GloamwoodNestPrey } from '../src/gloamwood-3d-ecology'
 
 function prey(id: string, x: number, z = 0): GloamwoodNestPrey {
@@ -50,5 +54,47 @@ describe('What Tab can reach', () => {
   it('skips the dead', () => {
     const dead = { ...prey('dead', 2), phase: 'dead' as const }
     expect(nextGloamwoodLockTarget([dead, prey('alive', 9)], null, player)).toBe('alive')
+  })
+})
+
+
+describe('Pressing attack on something out of reach', () => {
+  const player = { x: 0, z: 0 }
+  const reach = 2.4
+  const radius = 0.64
+
+  it('walks rather than swinging', () => {
+    // Playtest: locking a creature and pressing attack threw one swing at empty
+    // ground, printed "target out of reach", and only then began walking - and
+    // held down, the next swing started before a step was taken, so the player
+    // appeared not to move at all. Movement is suppressed for the whole of an
+    // attack, so the press was giving the order and then blocking it.
+    expect(gloamwoodPrimaryAttackShouldClose(12, radius, reach)).toBe(true)
+  })
+
+  it('swings when the blow can actually land', () => {
+    expect(gloamwoodPrimaryAttackShouldClose(reach + radius - 0.1, radius, reach)).toBe(false)
+  })
+
+  it('measures to the hurt surface, not to the centre', () => {
+    // A boss four metres across is in reach at a centre distance that would be
+    // far out of it for a swarm creature.
+    const centre = reach + 3
+    expect(gloamwoodPrimaryAttackShouldClose(centre, 3.5, reach)).toBe(false)
+    expect(gloamwoodPrimaryAttackShouldClose(centre, 0.3, reach)).toBe(true)
+  })
+
+  it('still swings at something past the lock range', () => {
+    // The approach refuses to run beyond it, so refusing to swing as well would
+    // leave the button doing nothing at all. The honest miss is the answer.
+    expect(gloamwoodPrimaryAttackShouldClose(GLOAMWOOD_LOCK_RANGE + 1, radius, reach)).toBe(false)
+  })
+
+  it('agrees with the lock about what can be walked to', () => {
+    // If it can be locked it can be walked to. Anything the cycle will select
+    // must therefore be something the press will close on rather than whiff at.
+    const edge = prey('edge', GLOAMWOOD_LOCK_RANGE - 0.5)
+    expect(nextGloamwoodLockTarget([edge], null, player)).toBe('edge')
+    expect(gloamwoodPrimaryAttackShouldClose(GLOAMWOOD_LOCK_RANGE - 0.5, radius, reach)).toBe(true)
   })
 })

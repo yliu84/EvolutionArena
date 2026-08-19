@@ -2026,6 +2026,16 @@ class Gloamwood3DHunt {
     return prey && prey.phase !== 'dead' ? prey.id : null
   }
 
+  /** Where whatever is locked stands, and how wide it is. */
+  private lockedTargetGeometry() {
+    if (this.bossActive() && this.bossLocked) {
+      return { x: this.bossState.x, z: this.bossState.z, radius: GLOAMWOOD_BOSS.bodyRadius }
+    }
+    const prey = this.lockedPrey()
+    if (!prey || prey.phase === 'dead') return null
+    return { x: prey.x, z: prey.z, radius: gloamwoodPreyBodyRadius(prey) }
+  }
+
   /**
    * Close on the locked target along the current bearing and keep the chain
    * running. Never re-aims the approach, and never decides a hit: contact still
@@ -2038,21 +2048,12 @@ class Gloamwood3DHunt {
     // being hit can assist-lock an attacker; without this the order would ride
     // those handovers and clear a whole pack with no further input.
     if (this.currentLockIdentity() !== this.autoEngageTargetId) return this.cancelAutoEngage()
-    const target = this.bossActive() && this.bossLocked
-      ? { x: this.bossState.x, z: this.bossState.z, radius: GLOAMWOOD_BOSS.bodyRadius }
-      : (() => {
-          const prey = this.lockedPrey()
-          return prey && prey.phase !== 'dead'
-            ? { x: prey.x, z: prey.z, radius: gloamwoodPreyBodyRadius(prey) }
-            : null
-        })()
+    const target = this.lockedTargetGeometry()
     if (!target) return this.cancelAutoEngage()
 
     const dx = target.x - this.playerRoot.position.x
     const dz = target.z - this.playerRoot.position.z
     const centreDistance = Math.hypot(dx, dz)
-    // Reach is measured to the hurt surface, so the stop line follows the same rule.
-    const surfaceDistance = centreDistance - target.radius
     // A stray press must not walk the player across the map - but the limit is
     // the lock's reach, not the Gloamwood nest's activation radius, which is a
     // number about a different thing entirely. At 12.6 the player could lock
@@ -2063,7 +2064,8 @@ class Gloamwood3DHunt {
     if (centreDistance > GLOAMWOOD_LOCK_RANGE) return this.cancelAutoEngage()
 
     const reach = this.primaryAttackReach()
-    if (surfaceDistance > reach - 0.35) {
+    // Reach is measured to the hurt surface, so the stop line follows the same rule.
+    if (centreDistance - target.radius > reach - 0.35) {
       // Approach only closes distance; bearing is whatever the player chose.
       this.target.set(
         target.x - dx / centreDistance * (target.radius + reach - 0.5),
@@ -2104,6 +2106,27 @@ class Gloamwood3DHunt {
     // Bind the order to whatever is locked now, after the lock is resolved.
     // A fresh press is what starts the next enemy, so one press is one enemy.
     this.autoEngageTargetId = this.currentLockIdentity()
+    // Out of reach is a walk, not a swing.
+    //
+    // A running attack suppresses movement for its whole duration, so opening
+    // the chain here gave the order and then blocked it: the player threw one
+    // whiff at empty ground, read "target out of reach", and only started
+    // walking once the swing and its recovery had finished. Holding the button
+    // renewed the swing before they ever got a step in, which is why it could
+    // look like they never moved at all.
+    //
+    // The approach opens the chain itself when it arrives, so nothing is lost
+    // by waiting. Beyond the lock's own range the order will not run, and there
+    // the swing and its honest miss are still the right answer.
+    const measured = this.lockedTargetGeometry()
+    if (measured && gloamwoodPrimaryAttackShouldClose(
+      Math.hypot(measured.x - this.playerRoot.position.x, measured.z - this.playerRoot.position.z),
+      measured.radius,
+      this.primaryAttackReach(),
+    )) {
+      this.combatMessage = t('hud.msg.closingIn')
+      return
+    }
     const now = performance.now()
     const previous = this.attackState.action
     this.attackState = requestFormalHuntBasicAttack(this.attackState, now, this.combatProfile)
@@ -5058,6 +5081,29 @@ export function gloamwoodPlayerHitKnockbackDistance(
  * away and the lock read as lost for good.
  */
 export const GLOAMWOOD_LOCK_RANGE = 22
+
+/**
+ * Does a press of attack walk the player in rather than swing?
+ *
+ * A running attack suppresses movement for its whole duration, so a press that
+ * opens the chain out of reach gives the standing order and then blocks it: one
+ * whiff at empty ground, "target out of reach", and the walk only begins once
+ * the swing and its recovery are done. Held down, the next swing starts before
+ * a step is taken and the player never moves at all.
+ *
+ * Reach is measured to the hurt surface, as everywhere else. Past the lock's own
+ * range the order will not run, and there the swing and its honest miss are
+ * still the right answer - refusing to swing as well would leave the button
+ * doing nothing whatsoever.
+ */
+export function gloamwoodPrimaryAttackShouldClose(
+  centreDistance: number,
+  targetRadius: number,
+  reach: number,
+  lockRange = GLOAMWOOD_LOCK_RANGE,
+) {
+  return centreDistance - targetRadius > reach && centreDistance <= lockRange
+}
 
 export function nextGloamwoodLockTarget(
   prey: readonly GloamwoodNestPrey[],
