@@ -106,8 +106,11 @@ describe('quality 3D GLB vertical slice assets', () => {
     expect(coralGecko?.requiredNodes).toContain('FootFL')
     expect(coralGecko?.requiredNodes).toContain('FootBR')
     expect(coralGecko?.requiredNodes).toContain('Jaw')
-    expect(coralGecko?.url).toContain('coral-gecko-rigged-runtime-v1.glb')
-    expect(coralGecko?.url).toContain('texture-budget-v1')
+    expect(coralGecko?.url).toContain('coral-gecko-rigged-runtime-v2.glb')
+    // Bumped with the file. The rig was refitted onto the sculpt, and a browser
+    // holding the old skin would keep walking the player's starting body on two
+    // legs long after the fix shipped.
+    expect(coralGecko?.url).toContain('refit-rig-v1')
 
     const scarletGecko = getQuality3DGLBAsset(1)
     expect(scarletGecko).toMatchObject({

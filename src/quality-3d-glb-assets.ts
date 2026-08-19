@@ -47,7 +47,7 @@ export const QUALITY_3D_GLB_ASSETS: readonly Quality3DGLBAsset[] = [
   asset(
     0,
     'coral-gecko',
-    '/assets/quality-3d/models/coral-gecko-rigged-runtime-v1.glb?v=texture-budget-v1',
+    '/assets/quality-3d/models/coral-gecko-rigged-runtime-v2.glb?v=refit-rig-v1',
     CORAL_GECKO_PRESENTATION.displayScale,
     ['Body', 'Head', 'Jaw', 'LegFL', 'LegFR', 'LegBL', 'LegBR', 'FootFL', 'FootFR', 'FootBL', 'FootBR', 'Tail_0'],
     'embedded',

@@ -1,7 +1,17 @@
 """Put the Coral Gecko's mesh back on its skeleton, then rebind it.
 
-STATUS: the realignment is right and proven; the rebinding is not. Do not run
-this as a fix.
+STATUS: superseded by refit_coral_gecko_rig.py. Do not run this as a fix.
+
+It was half right, and the missing half is why it never worked. The mesh really
+is 0.14 off along x - but mirror symmetry is blind front-to-back, so the 0.28
+the skeleton is *also* out along z was never in the measurement. Every one of
+the six weighting schemes below was solving for a mesh that was still a third of
+a unit away from its own hind legs.
+
+And the offset cannot be taken out by moving the mesh at all: the sculpt's
+stance is narrower than the rig's - foot half-separation 0.205 against 0.334 -
+so no single translation puts four feet on four bones. The bones had to come to
+the body. See the newer script.
 
 Six weighting schemes were tried on the realigned mesh - the asset's own
 positional regions, Blender's heat and envelope binding, nearest-bone,
