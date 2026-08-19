@@ -570,6 +570,11 @@ class Gloamwood3DHunt {
         this.createAtmosphere()
       },
     )
+  private readonly cameraOffset = new THREE.Vector3(
+    this.map.cameraOffset.x,
+    this.map.cameraOffset.y,
+    this.map.cameraOffset.z,
+  )
   private valley: { update(camera: { x: number; z: number }, elapsed: number, delta: number): void } | null = null
   // Keyed by body rather than by family. One family can wear several bodies -
   // a hunter and a grazer, a pack member and the elite promoted from it - and
@@ -813,7 +818,7 @@ class Gloamwood3DHunt {
       spawnAtNestForDebug ? GLOAMWOOD_NEST.centerZ : this.map.spawn.z,
     )
     this.target.copy(this.playerRoot.position)
-    this.camera.position.copy(this.playerRoot.position).add(CAMERA_OFFSET)
+    this.camera.position.copy(this.playerRoot.position).add(this.cameraOffset)
     this.camera.lookAt(this.playerRoot.position.x, CAMERA_LOOK_HEIGHT, this.playerRoot.position.z)
     await this.loadCharacter()
     const debugParams = new URLSearchParams(window.location.search)
@@ -1886,7 +1891,7 @@ class Gloamwood3DHunt {
     this.updateAutoEngage()
     const inputX = Number(this.keys.has(this.inputBindings.moveRight) || this.keys.has('ArrowRight')) - Number(this.keys.has(this.inputBindings.moveLeft) || this.keys.has('ArrowLeft')) + this.touchMoveX
     const inputZ = Number(this.keys.has(this.inputBindings.moveDown) || this.keys.has('ArrowDown')) - Number(this.keys.has(this.inputBindings.moveUp) || this.keys.has('ArrowUp')) + this.touchMoveZ
-    const cameraRelativeInput = gloamwoodScreenMovementVector(inputX, inputZ)
+    const cameraRelativeInput = gloamwoodScreenMovementVector(inputX, inputZ, this.cameraOffset)
     this.movement.set(cameraRelativeInput.x, 0, cameraRelativeInput.z)
     if (this.movement.lengthSq() > 0) {
       // Steering is the player taking the angle back. Drop the automation but
@@ -2995,7 +3000,7 @@ class Gloamwood3DHunt {
   }
 
   private updateCamera(delta: number) {
-    this.desiredCamera.copy(this.playerRoot.position).add(CAMERA_OFFSET)
+    this.desiredCamera.copy(this.playerRoot.position).add(this.cameraOffset)
     this.camera.position.lerp(this.desiredCamera, 1 - Math.exp(-CAMERA_DAMPING * delta))
     if (this.cameraTrauma > 0 && this.feedbackSettings.shake && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const phase = performance.now() * 0.047
@@ -4717,10 +4722,17 @@ export function gloamwoodMovementFacingRadians(movementX: number, movementZ: num
   return Math.atan2(-movementZ, movementX)
 }
 
-export function gloamwoodScreenMovementVector(inputX: number, inputY: number) {
-  const inverseLength = 1 / Math.hypot(CAMERA_OFFSET.x, CAMERA_OFFSET.z)
-  const forwardX = -CAMERA_OFFSET.x * inverseLength
-  const forwardZ = -CAMERA_OFFSET.z * inverseLength
+export function gloamwoodScreenMovementVector(
+  inputX: number,
+  inputY: number,
+  // Defaults to the Gloamwood's, so every existing caller and test is
+  // unchanged. Passed in by the runtime, because which way W walks has to
+  // follow the camera the map is actually framed by.
+  offset: { x: number; z: number } = CAMERA_OFFSET,
+) {
+  const inverseLength = 1 / Math.hypot(offset.x, offset.z)
+  const forwardX = -offset.x * inverseLength
+  const forwardZ = -offset.z * inverseLength
   // Screen-right is camera-forward crossed with world-up. The previous signs
   // produced screen-left, so A/D were visually mirrored even though the four
   // vectors remained orthogonal in unit tests.

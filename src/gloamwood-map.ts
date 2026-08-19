@@ -60,6 +60,17 @@ export interface GloamwoodMapContract {
   /** Where the player starts a run. */
   spawn: { x: number; z: number }
   /**
+   * Where the camera sits relative to the player.
+   *
+   * The distance is the same on every map - it is the game's framing, not the
+   * map's - but the bearing belongs to the ground. The valley's route folds
+   * through six headings and was laid out against a camera looking along about
+   * fifteen degrees, chosen so no leg of it runs edge-on to the lens. Viewed
+   * from the Gloamwood's bearing instead, the same road and river read as
+   * having swapped sides.
+   */
+  cameraOffset: { x: number; y: number; z: number }
+  /**
    * Whether this map runs the nest encounter.
    *
    * The Gloamwood's whole structure is one nest: waves, then a guardian, then
@@ -182,6 +193,7 @@ export function createGloamwoodMap(
     },
     bounds,
     spawn: { x: -6, z: 3 },
+    cameraOffset: { x: 9.2, y: 11.8, z: 13.4 },
     hasNest: true,
     createCreatures: createGloamwoodNestState,
     stepCreatures: (state, delta, player) => stepGloamwoodNest(state, delta, player),

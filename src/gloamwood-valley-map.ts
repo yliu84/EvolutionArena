@@ -74,6 +74,9 @@ export function createGloamwoodValleyMap(
     confine: gloamwoodValleyConfine,
     bounds: valleyBounds(),
     spawn,
+    // Same distance as the Gloamwood's - 20.08 - at a bearing of about fifteen
+    // degrees, which is what the folded route was laid out against.
+    cameraOffset: { x: -15.7, y: 11.8, z: -4.2 },
     hasNest: false,
     createCreatures(): GloamwoodNestState {
       return {
