@@ -1803,7 +1803,13 @@ class Gloamwood3DHunt {
 
   private tick = (forcedDelta?: number) => {
     if (this.disposed) return
-    if (forcedDelta === undefined) this.animationFrame = requestAnimationFrame(this.tick)
+    // Wrapped, not passed directly. The browser hands an rAF callback a
+    // timestamp, and `tick` reads its first argument as a forced delta - so
+    // registering `this.tick` itself made every real frame look like a manual
+    // one, and the loop stopped scheduling after the first. The game ran
+    // exactly one frame and then froze, on both maps, with nothing in the
+    // console: input still arrived, nothing ever read it.
+    if (forcedDelta === undefined) this.animationFrame = requestAnimationFrame(() => this.tick())
     const now = forcedDelta === undefined ? performance.now() : this.lastFrameAt + forcedDelta * 1000
     const frameMilliseconds = Math.max(0, now - this.lastFrameAt)
     this.frameCount += 1
