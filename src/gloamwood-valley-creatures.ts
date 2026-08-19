@@ -18,7 +18,12 @@ import {
   type GloamwoodValleySpawnTier,
 } from './gloamwood-valley-spawns'
 import { gloamwoodModelledPreyFor } from './gloamwood-modelled-prey'
-import { gloamwoodValleyConfine, gloamwoodValleyHeight } from './gloamwood-valley-terrain'
+import {
+  gloamwoodValleyConfine,
+  gloamwoodValleyCorridorAt,
+  gloamwoodValleyHeight,
+  gloamwoodValleyWalkable,
+} from './gloamwood-valley-terrain'
 
 /**
  * The valley's creatures, as one authority.
@@ -40,10 +45,36 @@ export interface GloamwoodValleyCreature extends GloamwoodNestPrey, GloamwoodAgg
   group: string
   branch: string | null
   region: string
-  /** Where it was placed. Asleep, it returns here rather than drifting. */
+  /** Where it was placed. It grazes around here and comes back to it. */
   homeX: number
   homeZ: number
+  /** Where it is ambling to, and how long it stands before choosing again. */
+  wanderX: number
+  wanderZ: number
+  wanderPauseSeconds: number
+  /** Advanced every time a target is chosen, so a run replays identically. */
+  wanderSeed: number
 }
+
+/**
+ * How a grazer passes the time.
+ *
+ * It moves, because a map of statues reads as a diorama. It does not roam,
+ * because a creature that is not where it was last seen cannot be walked past
+ * on purpose - and the placement work that put the pebble among real boulders
+ * would be undone by the first frame.
+ *
+ * So: a short leash around where it was placed, a slow amble, and long pauses.
+ * The pauses matter as much as the movement. Something that ambles constantly
+ * reads as agitated, which is the opposite of what a grazer is for.
+ */
+export const GLOAMWOOD_VALLEY_WANDER = {
+  radius: 2.6,
+  /** Share of its family's speed. A grazer strolls; it does not commute. */
+  speed: 0.32,
+  minPauseSeconds: 2.5,
+  maxPauseSeconds: 7,
+} as const
 
 export function createGloamwoodValleyCreatures(seed: number, runSeed = 'valley-run'): GloamwoodValleyCreature[] {
   return planGloamwoodValleySpawns(seed).map((spawn, index) => fromSpawn(spawn, index, runSeed))
@@ -74,6 +105,11 @@ function fromSpawn(spawn: GloamwoodValleySpawn, index: number, runSeed: string):
     z: spawn.z,
     homeX: spawn.x,
     homeZ: spawn.z,
+    wanderX: spawn.x,
+    wanderZ: spawn.z,
+    // Staggered from the index so a bank of grazers does not step off together.
+    wanderPauseSeconds: (index % 7) * 0.9,
+    wanderSeed: (index + 1) * 0x9e3779b1,
     bodyRadius: body?.footprintRadius,
     facingRadians: index * 2.399,
     attackResolved: false,
@@ -126,31 +162,91 @@ export function stepGloamwoodValleyCreatures(
 }
 
 /**
- * An unwoken creature drifts home and faces where it was put.
+ * An unwoken creature grazes where it was put.
  *
- * Not a patrol. A grazer that wanders is a grazer the player cannot decide to
- * walk past, because it will not be where they last looked - and the placement
- * work that put it among the right rocks would be undone by the first frame.
+ * Aggressive creatures are deliberately excluded: a pack that drifts leaves the
+ * spot it was placed to ambush from, and the spacing that keeps one pack from
+ * waking the next is measured from where they stand.
  */
 function settle(creature: GloamwoodValleyCreature, delta: number): GloamwoodValleyCreature {
+  const next = {
+    ...creature,
+    phase: 'chase' as const,
+    phaseElapsed: creature.phaseElapsed + delta,
+    attackResolved: false,
+  }
+  if (creature.role !== 'passive') return holdStill(next, delta)
+
+  if (next.wanderPauseSeconds > 0) {
+    next.wanderPauseSeconds = Math.max(0, next.wanderPauseSeconds - delta)
+    return next
+  }
+
+  const dx = next.wanderX - next.x
+  const dz = next.wanderZ - next.z
+  const distance = Math.hypot(dx, dz)
+  if (distance < 0.12) {
+    const chosen = chooseWanderTarget(next)
+    next.wanderX = chosen.x
+    next.wanderZ = chosen.z
+    next.wanderSeed = chosen.seed
+    next.wanderPauseSeconds = chosen.pause
+    return next
+  }
+
+  const speed = GLOAMWOOD_PREY[creature.kind].moveSpeed * GLOAMWOOD_VALLEY_WANDER.speed
+  const step = Math.min(distance, speed * delta)
+  const held = gloamwoodValleyConfine(next.x + (dx / distance) * step, next.z + (dz / distance) * step)
+  next.x = held.x
+  next.z = held.z
+  next.facingRadians = Math.atan2(-dz, dx)
+  return next
+}
+
+/** Walks back to where it was placed, without grazing on the way. */
+function holdStill(creature: GloamwoodValleyCreature, delta: number): GloamwoodValleyCreature {
   const dx = creature.homeX - creature.x
   const dz = creature.homeZ - creature.z
   const distance = Math.hypot(dx, dz)
-  if (distance < 0.05) {
-    return { ...creature, phase: 'chase', phaseElapsed: creature.phaseElapsed + delta, attackResolved: false }
-  }
+  if (distance < 0.05) return creature
   const speed = GLOAMWOOD_PREY[creature.kind].moveSpeed * 0.45
   const step = Math.min(distance, speed * delta)
   const held = gloamwoodValleyConfine(creature.x + (dx / distance) * step, creature.z + (dz / distance) * step)
-  return {
-    ...creature,
-    x: held.x,
-    z: held.z,
-    phase: 'chase',
-    phaseElapsed: creature.phaseElapsed + delta,
-    facingRadians: Math.atan2(-dz, dx),
-    attackResolved: false,
+  return { ...creature, x: held.x, z: held.z, facingRadians: Math.atan2(-dz, dx) }
+}
+
+/**
+ * Somewhere near home worth ambling to.
+ *
+ * Seeded from the creature rather than from `Math.random`, because a run has to
+ * replay identically against the map it happened on - a recorded session is
+ * worth nothing if the grazers stood somewhere else the second time.
+ *
+ * Rejects the road. Grazers are placed off it on purpose, and one that wanders
+ * into the path is standing in the fight the player is walking into.
+ */
+function chooseWanderTarget(creature: GloamwoodValleyCreature) {
+  let seed = creature.wanderSeed
+  const random = () => {
+    seed = (Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x9e3779b1) >>> 0
+    return (seed >>> 8) / 0x1000000
   }
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const angle = random() * Math.PI * 2
+    const reach = GLOAMWOOD_VALLEY_WANDER.radius * Math.sqrt(random())
+    const x = creature.homeX + Math.cos(angle) * reach
+    const z = creature.homeZ + Math.sin(angle) * reach
+    if (!gloamwoodValleyWalkable(x, z)) continue
+    const corridor = gloamwoodValleyCorridorAt(x, z)
+    if (corridor.pathDistance < corridor.pathHalfWidth + gloamwoodPreyBodyRadius(creature)) continue
+    return {
+      x, z, seed,
+      pause: GLOAMWOOD_VALLEY_WANDER.minPauseSeconds
+        + random() * (GLOAMWOOD_VALLEY_WANDER.maxPauseSeconds - GLOAMWOOD_VALLEY_WANDER.minPauseSeconds),
+    }
+  }
+  // Nowhere to go: stand where it is and try again later rather than teleport.
+  return { x: creature.x, z: creature.z, seed, pause: GLOAMWOOD_VALLEY_WANDER.minPauseSeconds }
 }
 
 /** Keeps living creatures out of each other, so a pack does not stack up. */

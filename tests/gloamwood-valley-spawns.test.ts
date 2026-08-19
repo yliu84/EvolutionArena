@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import { gloamwoodPreyBodyRadius } from '../src/gloamwood-3d-ecology'
 import { GLOAMWOOD_AGGRO } from '../src/gloamwood-creature-aggro'
+import { createGloamwoodValleyCreatures } from '../src/gloamwood-valley-creatures'
 import { GLOAMWOOD_VALLEY_BRANCHES } from '../src/gloamwood-valley-branches'
 import {
   GLOAMWOOD_PACK_SPACING,
@@ -154,5 +156,40 @@ describe('Reproducibility', () => {
     // But the composition is a decision, not a roll: the same creatures appear.
     expect(other.filter((spawn) => spawn.tier === 'pack').length)
       .toBe(spawns.filter((spawn) => spawn.tier === 'pack').length)
+  })
+})
+
+describe('Room to stand', () => {
+  it('never places two of a pack inside each other', () => {
+    // The bodies grew after the packs were laid out, and this went unnoticed
+    // until a playtest: members spawned overlapping, the separation pass shoved
+    // them off their own ambush spots, and they spent the run walking back.
+    const creatures = createGloamwoodValleyCreatures(0x5a11e)
+    const byGroup = new Map<string, typeof creatures>()
+    for (const creature of creatures) {
+      const list = byGroup.get(creature.group) ?? []
+      list.push(creature)
+      byGroup.set(creature.group, list)
+    }
+    for (const list of byGroup.values()) {
+      for (let a = 0; a < list.length; a += 1) {
+        for (let b = a + 1; b < list.length; b += 1) {
+          const needed = gloamwoodPreyBodyRadius(list[a]) + gloamwoodPreyBodyRadius(list[b])
+          const gap = Math.hypot(list[a].x - list[b].x, list[a].z - list[b].z)
+          expect(gap, `${list[a].id} and ${list[b].id} overlap`).toBeGreaterThanOrEqual(needed)
+        }
+      }
+    }
+  })
+
+  it('never anchors a pack on its region boundary', () => {
+    // A pack anchored on the edge cannot spread along the route: every member's
+    // offset clamps back onto the same point.
+    for (const spawn of planGloamwoodValleySpawns(0x5a11e)) {
+      if (spawn.tier !== 'pack') continue
+      const region = GLOAMWOOD_VALLEY.regions.find((entry) => entry.id === spawn.region)!
+      expect(spawn.s).toBeGreaterThan(region.from)
+      expect(spawn.s).toBeLessThan(region.to)
+    }
   })
 })

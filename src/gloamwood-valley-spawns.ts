@@ -1,11 +1,15 @@
 import type { GloamwoodPreyKind } from './gloamwood-3d-ecology'
 import { GLOAMWOOD_AGGRO, type GloamwoodCreatureRole } from './gloamwood-creature-aggro'
 import { GLOAMWOOD_VALLEY_BRANCHES, gloamwoodValleyBranchHalfWidth } from './gloamwood-valley-branches'
+import { GLOAMWOOD_PREY_BODY_RADII } from './gloamwood-3d-ecology'
+import { gloamwoodModelledPreyFor } from './gloamwood-modelled-prey'
 import {
   GLOAMWOOD_VALLEY,
   GLOAMWOOD_VALLEY_LENGTH,
   gloamwoodValleyBranchPointAt,
+  gloamwoodValleyCorridorAt,
   gloamwoodValleyHalfWidth,
+  gloamwoodValleyWalkableHalfWidth,
   gloamwoodValleyPointAt,
   gloamwoodValleyRoadHalfWidth,
   gloamwoodValleyRoadOffset,
@@ -129,6 +133,16 @@ export interface GloamwoodValleySpawn {
   branch: string | null
 }
 
+/** The size a creature will actually be, so placement can leave room for it. */
+function gloamwoodValleyModelledRadius(
+  kind: GloamwoodPreyKind,
+  role: 'passive' | 'aggressive',
+  branch: string | null,
+) {
+  return gloamwoodModelledPreyFor(kind, role, branch)?.footprintRadius
+    ?? GLOAMWOOD_PREY_BODY_RADII[kind]
+}
+
 export function planGloamwoodValleySpawns(seed: number): GloamwoodValleySpawn[] {
   const random = seededRandom(seed)
   const spawns: GloamwoodValleySpawn[] = []
@@ -163,10 +177,22 @@ export function planGloamwoodValleySpawns(seed: number): GloamwoodValleySpawn[] 
       // blocked slot to the same first free position past the block, which put
       // two gorge packs four tenths of a unit apart - close enough that one
       // fight was six creatures and the region was a pack short.
+      // Kept inside the region by a margin, not clamped to its edge. Nudging
+      // off the end used to park the slot exactly on `usable.to`, and a pack
+      // anchored on the boundary cannot spread along the route at all - every
+      // member's route offset clamps back onto the same point and four
+      // creatures spawned inside one another.
+      const margin = GLOAMWOOD_PACK_SPACING * 0.5
+      const low = usable.from + margin
+      const high = Math.max(low + 1, usable.to - margin)
+      // Wrapping happens inside the candidate, so the spacing check sees where
+      // the slot will actually be. Wrapping after the check is how a slot that
+      // passed at one end came to rest next to a slot at the other.
+      const wrap = (candidate: number) => low + ((candidate - low) % (high - low) + (high - low)) % (high - low)
       const clear = (candidate: number) =>
-        free(candidate) && slots.every((taken) => Math.abs(taken - candidate) >= apart)
-      for (let nudge = 0; nudge < 80 && !clear(s); nudge += 1) s += 6
-      slots.push(Math.min(usable.to, s))
+        free(wrap(candidate)) && slots.every((taken) => Math.abs(taken - wrap(candidate)) >= apart)
+      for (let nudge = 0; nudge < 120 && !clear(s); nudge += 1) s += 6
+      slots.push(wrap(s))
     }
 
     // The nest takes the widest slot it can, because it is the one fight that
@@ -179,9 +205,38 @@ export function planGloamwoodValleySpawns(seed: number): GloamwoodValleySpawn[] 
       const group = `${plan.region}-pack-${index + 1}`
       for (const [memberIndex, kind] of members.entries()) {
         const angle = (memberIndex / members.length) * Math.PI * 2 + index
-        const spread = memberIndex === 0 ? 0 : 2.2 + random() * 1.4
+        // The ring has to clear the bodies standing on it. These were spaced
+        // 2.2 when every creature was the family's collision radius; modelled
+        // animals carry their own size and a Ford Fang is 1.55 across, so a
+        // pack of three was placed 0.93 apart needing 2.97 and spawned inside
+        // each other - the separation pass then shoved them off their own
+        // ambush spots for the rest of the run.
+        //
+        // Chord length for `n` bodies on a ring of radius r is 2r·sin(π/n), so
+        // the radius that fits them is the reverse of that.
+        const body = gloamwoodValleyModelledRadius(kind, 'aggressive', null)
+        const anchorBody = gloamwoodValleyModelledRadius(members[0], 'aggressive', null)
+        const neighbours = Math.max(2, members.length - 1)
+        // Two constraints, and the second was missed first time round. The ring
+        // has to clear its own neighbours - chord length for `n` bodies on a
+        // ring of radius r is 2r·sin(π/n), so the radius that fits them is the
+        // reverse of that. And it has to clear the creature standing at the
+        // centre, which the chord formula says nothing about: with member zero
+        // on the anchor, a ring that fits its neighbours perfectly still put two
+        // Ford Fangs 2.21 apart needing 3.10.
+        const clearance = Math.max(
+          (body * 2 + 0.4) / (2 * Math.sin(Math.PI / neighbours)),
+          anchorBody + body + 0.4,
+        )
+        const spread = memberIndex === 0 ? 0 : Math.max(2.2, clearance) + random() * 1.2
+        // Across the valley the ring is capped to the floor that exists; along
+        // it, it is not. A ring wider than the corridor was not made smaller by
+        // `placeInside`, it was flattened - every member clamped onto the same
+        // edge, which is how a pack of four ended up 0.11 apart. A pack strung
+        // out along a gorge is what a pack in a gorge looks like anyway.
+        const room = Math.max(1.2, gloamwoodValleyWalkableHalfWidth(anchorS) - body - 0.3)
         const s = anchorS + Math.cos(angle) * spread
-        const lateral = gloamwoodValleyRoadOffset(anchorS) + Math.sin(angle) * spread
+        const lateral = gloamwoodValleyRoadOffset(anchorS) + Math.sin(angle) * Math.min(spread, room)
         const point = placeInside(s, lateral)
         spawns.push({
           id: `${group}-${memberIndex}`,
@@ -225,8 +280,15 @@ export function planGloamwoodValleySpawns(seed: number): GloamwoodValleySpawn[] 
           const { branch, branchIndex } = regionBranches[index % regionBranches.length]
           const t = 0.35 + random() * 0.6
           const half = gloamwoodValleyBranchHalfWidth(branch, t)
-          const point = gloamwoodValleyBranchPointAt(branchIndex, t, (random() - 0.5) * half * 1.1)
+          // Pushed off the branch's own path, not just onto walkable ground.
+          // A grazer standing in a chamber's approach is standing in the fight
+          // the player is walking into - the same rule the road already has,
+          // and the branches were missing it.
+          const side = random() < 0.5 ? -1 : 1
+          const point = gloamwoodValleyBranchPointAt(branchIndex, t, side * (2.6 + random() * (half - 2.6)))
           if (!gloamwoodValleyWalkable(point.x, point.z)) continue
+          const lane = gloamwoodValleyCorridorAt(point.x, point.z)
+          if (lane.pathDistance < lane.pathHalfWidth + 1.6) continue
           if (spawns.some((other) => Math.hypot(other.x - point.x, other.z - point.z) < 4)) continue
           placed = { x: point.x, z: point.z, s: branch.mouthS, branch: branch.id }
           continue

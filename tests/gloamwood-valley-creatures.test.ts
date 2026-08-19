@@ -4,12 +4,13 @@ import { GLOAMWOOD_PREY } from '../src/gloamwood-3d-ecology'
 import { GLOAMWOOD_AGGRO } from '../src/gloamwood-creature-aggro'
 import { GLOAMWOOD_ELITE } from '../src/gloamwood-elite'
 import {
+  GLOAMWOOD_VALLEY_WANDER,
   createGloamwoodValleyCreatures,
   gloamwoodValleyAwake,
   stepGloamwoodValleyCreatures,
   type GloamwoodValleyCreature,
 } from '../src/gloamwood-valley-creatures'
-import { gloamwoodValleyWalkable } from '../src/gloamwood-valley-terrain'
+import { gloamwoodValleyCorridorAt, gloamwoodValleyWalkable } from '../src/gloamwood-valley-terrain'
 
 const SEED = 0x5a11e
 const creatures = createGloamwoodValleyCreatures(SEED)
@@ -92,14 +93,66 @@ describe('Noticing', () => {
   })
 })
 
-describe('Standing still', () => {
-  it('keeps an unwoken creature where it was placed', () => {
-    // A grazer that wanders cannot be walked past on purpose, and the placement
-    // work that put it among the right rocks is undone by the first frame.
-    const grazer = creatures.find((creature) => creature.role === 'passive')!
-    const after = run(creatures, { x: 9999, z: 9999, alive: true, bodyRadius: 1.56 }, 8).creatures
-    const moved = after.find((entry) => entry.id === grazer.id)!
-    expect(Math.hypot(moved.x - grazer.homeX, moved.z - grazer.homeZ)).toBeLessThan(0.5)
+describe('Grazing', () => {
+  const grazers = creatures.filter((creature) => creature.role === 'passive')
+  const away = { x: 99999, z: 99999, alive: true, bodyRadius: 1.56 }
+
+  it('moves, because a map of statues reads as a diorama', () => {
+    const after = run(creatures, away, 30).creatures
+    const moved = grazers.filter((grazer) => {
+      const now = after.find((entry) => entry.id === grazer.id)!
+      return Math.hypot(now.x - grazer.homeX, now.z - grazer.homeZ) > 0.4
+    })
+    expect(moved.length).toBeGreaterThan(grazers.length * 0.5)
+  })
+
+  it('never goes far, so it can still be walked past on purpose', () => {
+    // A creature that is not where it was last seen cannot be avoided
+    // deliberately, and the placement that put the pebble among real boulders
+    // would be undone by the first frame.
+    const after = run(creatures, away, 60).creatures
+    for (const grazer of grazers) {
+      const now = after.find((entry) => entry.id === grazer.id)!
+      expect(
+        Math.hypot(now.x - grazer.homeX, now.z - grazer.homeZ),
+        `${grazer.id} wandered off`,
+      ).toBeLessThanOrEqual(GLOAMWOOD_VALLEY_WANDER.radius + 0.2)
+    }
+  })
+
+  it('stays off the road it was placed beside', () => {
+    // A grazer standing in the path is standing in the fight the player is
+    // walking into.
+    const after = run(creatures, away, 60).creatures
+    for (const grazer of grazers) {
+      const now = after.find((entry) => entry.id === grazer.id)!
+      const corridor = gloamwoodValleyCorridorAt(now.x, now.z)
+      expect(corridor.pathDistance, `${grazer.id} stepped onto the path`).toBeGreaterThan(corridor.pathHalfWidth * 0.7)
+    }
+  })
+
+  it('never leaves the ground it can stand on', () => {
+    const after = run(creatures, away, 60).creatures
+    for (const creature of after) {
+      expect(gloamwoodValleyWalkable(creature.x, creature.z), `${creature.id} left the map`).toBe(true)
+    }
+  })
+
+  it('replays identically, so a recorded run means something', () => {
+    const first = run(createGloamwoodValleyCreatures(SEED), away, 20).creatures
+    const second = run(createGloamwoodValleyCreatures(SEED), away, 20).creatures
+    expect(first.map((entry) => [entry.id, entry.x, entry.z]))
+      .toEqual(second.map((entry) => [entry.id, entry.x, entry.z]))
+  })
+
+  it('leaves the packs planted where they were placed to ambush from', () => {
+    // The spacing that stops one pack waking the next is measured from where
+    // they stand, so a pack that drifts undoes it.
+    const after = run(creatures, away, 60).creatures
+    for (const creature of creatures.filter((entry) => entry.role === 'aggressive')) {
+      const now = after.find((entry) => entry.id === creature.id)!
+      expect(Math.hypot(now.x - creature.homeX, now.z - creature.homeZ)).toBeLessThan(0.5)
+    }
   })
 })
 
