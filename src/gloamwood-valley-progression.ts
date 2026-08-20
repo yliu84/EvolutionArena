@@ -69,6 +69,30 @@ export const GLOAMWOOD_VALLEY_MILESTONES: readonly GloamwoodValleyMilestone[] = 
  * through the shallows does not bank a stack of lives to spend carelessly in
  * the headwater.
  */
+/**
+ * The biomass that earns the run's one evolution.
+ *
+ * The Gloamwood hands it over when the nest is cleared, which is the only
+ * structure it has. The valley has no nest to clear - it is a road - so it was
+ * handing it over never: a player could eat their way to 156 biomass and still
+ * be wearing the body they hatched in.
+ *
+ * Biomass rather than a boss or a region, because biomass is the number already
+ * on the HUD and the one players read as "progress towards something". And
+ * before the first boss rather than after: the Gloamwood has you meet its boss
+ * already evolved, and the Tide Cleaver is a worse fight than anything the
+ * starting body was designed against.
+ *
+ * 80 is roughly what the Gloamwood's nest pays out by the time it is cleared,
+ * so the two runs hand it over at about the same strength. In the valley it
+ * lands partway through the shallows, with the first gate still ahead.
+ */
+export const GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS = 80
+
+export function gloamwoodValleyEvolutionDue(biomass: number, alreadyOffered: boolean) {
+  return !alreadyOffered && biomass >= GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS
+}
+
 export const GLOAMWOOD_VALLEY_LIFE_CAP = 4
 
 export interface GloamwoodValleyProgression {

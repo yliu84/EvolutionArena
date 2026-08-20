@@ -151,7 +151,7 @@ import {
 import { gloamwoodBossFxFrame } from './gloamwood-boss-fx'
 import { createGloamwoodBossFxScene, type GloamwoodBossFxEntry } from './gloamwood-boss-fx-scene'
 import { gloamwoodValleyCorpseGone } from './gloamwood-valley-respawn'
-import { GLOAMWOOD_VALLEY_LIFE_CAP } from './gloamwood-valley-progression'
+import { GLOAMWOOD_VALLEY_LIFE_CAP, gloamwoodValleyEvolutionDue } from './gloamwood-valley-progression'
 import { gloamwoodValleyCorridorAt, gloamwoodValleyRegionAt } from './gloamwood-valley-terrain'
 import {
   gloamwoodPreyClipForPhase,
@@ -3664,6 +3664,23 @@ class Gloamwood3DHunt {
       }
       this.logSession({ kind: 'phase', phase: milestone })
     }
+    // The run's one evolution. On the Gloamwood it is paid out by clearing the
+    // nest; the valley has no nest to clear, so without this the player wears
+    // their starting body for the whole road.
+    if (
+      this.runPhase === 'hunt'
+      && this.evolutionState.phase !== 'choosing'
+      && gloamwoodValleyEvolutionDue(this.nestState.biomass, this.evolutionState.phase === 'selected')
+    ) {
+      this.evolutionState = openGloamwoodEvolutionOffer(
+        this.evolutionState,
+        this.nestState.genes,
+        this.nestState.recentHunts,
+      )
+      this.runPhase = 'evolution'
+      this.combatMessage = t('hud.msg.chooseEvolution')
+      this.showEvolutionOverlay()
+    }
   }
 
   private updateSessionLog() {
@@ -3806,7 +3823,13 @@ class Gloamwood3DHunt {
     this.applyProgressionModifiers()
   }
 
-  private async chooseEvolution(index: number, nextEncounter: 'guardian' | 'boss' = 'guardian') {
+  private async chooseEvolution(
+    index: number,
+    // 'none' is the valley: its evolution is earned on the road and hands the
+    // player straight back to it. The Gloamwood's two callers lead into an
+    // encounter because that map's evolution sits between two fights.
+    nextEncounter: 'guardian' | 'boss' | 'none' = this.map.hasNest ? 'guardian' : 'none',
+  ) {
     const candidate = this.evolutionState.candidates[index]
     if (!candidate || this.evolutionState.phase !== 'choosing') return
     this.evolutionState = selectGloamwoodEvolutionCandidate(this.evolutionState, candidate.id)
@@ -3841,7 +3864,8 @@ class Gloamwood3DHunt {
       this.evolutionOverlay.dataset.busy = 'false'
     }
     if (nextEncounter === 'boss') this.startBossEncounter()
-    else this.startGuardianEncounter()
+    else if (nextEncounter === 'guardian') this.startGuardianEncounter()
+    else this.runPhase = 'hunt'
     this.renderer.domElement.focus()
   }
 

@@ -12,6 +12,8 @@ import {
   gloamwoodValleyNextGate,
   holdGloamwoodValleyAtGate,
   recordGloamwoodValleyMilestone,
+  GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS,
+  gloamwoodValleyEvolutionDue,
 } from '../src/gloamwood-valley-progression'
 import {
   GLOAMWOOD_VALLEY,
@@ -202,5 +204,32 @@ describe('Walking into a shut gate', () => {
         expect(gloamwoodValleyWalkable(held.x, held.z)).toBe(true)
       }
     }
+  })
+})
+
+describe('Earning the run\'s evolution on a road', () => {
+  it('waits for real biomass rather than firing at spawn', () => {
+    expect(gloamwoodValleyEvolutionDue(0, false)).toBe(false)
+    expect(gloamwoodValleyEvolutionDue(GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS - 1, false)).toBe(false)
+  })
+
+  it('fires once the player has eaten their way to it', () => {
+    // The valley has no nest to clear, which is the Gloamwood's trigger, so a
+    // player could reach 156 biomass still wearing the body they hatched in.
+    expect(gloamwoodValleyEvolutionDue(GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS, false)).toBe(true)
+    expect(gloamwoodValleyEvolutionDue(156, false)).toBe(true)
+  })
+
+  it('only ever fires once', () => {
+    expect(gloamwoodValleyEvolutionDue(400, true)).toBe(false)
+  })
+
+  it('lands before the first gate, not after it', () => {
+    // The Tide Cleaver is a worse fight than the starting body was designed
+    // against, and the Gloamwood has the player meet its boss already evolved.
+    // Roughly what a cleared Gloamwood nest pays out, so the two runs hand it
+    // over at about the same strength.
+    expect(GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS).toBeLessThan(100)
+    expect(GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS).toBeGreaterThan(40)
   })
 })
