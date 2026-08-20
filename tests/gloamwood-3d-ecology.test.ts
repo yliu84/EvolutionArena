@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { GLOAMWOOD_3D_COMBAT } from '../src/gloamwood-3d-combat'
-import type { GloamwoodPreyKind } from '../src/gloamwood-3d-ecology'
+import { gloamwoodPreyAttackDistance, stepPrey } from '../src/gloamwood-3d-ecology'
+import type { GloamwoodNestPrey, GloamwoodPreyKind } from '../src/gloamwood-3d-ecology'
 
 import {
   GLOAMWOOD_NEST_GUARDIAN,
@@ -458,5 +459,55 @@ describe('What each family is for', () => {
     for (const kind of Object.keys(GLOAMWOOD_PREY) as GloamwoodPreyKind[]) {
       expect(GLOAMWOOD_PREY[kind].damage).toBeLessThanOrEqual(GLOAMWOOD_3D_COMBAT.playerMaxHealth * 0.16)
     }
+  })
+})
+
+describe('The circle the player is shown', () => {
+  const player = { x: 0, z: 0, alive: true, bodyRadius: 1.1 }
+
+  it('is the circle the blow is tested against', () => {
+    // Playtest: "I walked out of the attack area and was hit anyway." The ring
+    // was built from the family's attackRange while the hit used the creature's
+    // real stand-off - its own body radius plus the player's - so a modelled
+    // river fang struck at 3.49 behind a ring promising 2.12.
+    const fang = { id: 'a', kind: 'fang' as const, bodyRadius: 1.55 }
+    const reach = gloamwoodPreyAttackDistance(fang, player.bodyRadius)
+    expect(reach).toBeGreaterThan(GLOAMWOOD_PREY.fang.attackRange)
+    // Whatever the drawing does, it must ask this function - which is the only
+    // thing this test can hold: one number, one caller for both jobs.
+    expect(reach).toBe(
+      gloamwoodPreyStopDistance(fang, player.bodyRadius) + GLOAMWOOD_COMBAT_SPACING.strikeReach.fang,
+    )
+  })
+
+  it('grows with the player, because the stand-off does', () => {
+    // The player's body changes with every evolution, so a reach measured once
+    // at spawn is wrong for the rest of the run.
+    const swarm = { id: 'b', kind: 'swarm' as const, bodyRadius: 0.9 }
+    expect(gloamwoodPreyAttackDistance(swarm, 1.6)).toBeGreaterThan(gloamwoodPreyAttackDistance(swarm, 0.8))
+  })
+
+  it('lets a creature that stands off further reach further', () => {
+    const small = { id: 'c', kind: 'fang' as const, bodyRadius: 1.02 }
+    const large = { id: 'd', kind: 'fang' as const, bodyRadius: 1.55 }
+    expect(gloamwoodPreyAttackDistance(large, 1.1)).toBeGreaterThan(gloamwoodPreyAttackDistance(small, 1.1))
+  })
+
+  it('does not make the blow a certainty: stepping past it still misses', () => {
+    // The creature is guaranteed one uninterrupted *attempt*, which is not the
+    // same as a guaranteed hit, and the distance is re-tested at contact.
+    const spec = GLOAMWOOD_PREY.fang
+    let prey: GloamwoodNestPrey = {
+      id: 'e', kind: 'fang', phase: 'telegraph', phaseElapsed: spec.telegraphSeconds,
+      health: 40, maxHealth: 40, x: 0, z: 0, facingRadians: 0, attackResolved: false, slot: 0,
+    }
+    const reach = gloamwoodPreyAttackDistance(prey, player.bodyRadius)
+    let events: ReturnType<typeof stepPrey>['events'] = []
+    for (let step = 0; step < 12; step += 1) {
+      const frame = stepPrey(prey, 0.05, { ...player, x: reach + 1.2 })
+      prey = frame.state
+      events = [...events, ...frame.events]
+    }
+    expect(events.some((event) => event.type === 'prey-attack')).toBe(false)
   })
 })

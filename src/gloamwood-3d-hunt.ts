@@ -69,6 +69,7 @@ import {
   inspectGloamwoodPlayerPreyClearance,
   inspectGloamwoodPlayerPreyActionClearance,
   inspectGloamwoodPreyPairClearance,
+  gloamwoodPreyAttackDistance,
   gloamwoodPreyBodyRadius,
   resolveGloamwoodPlayerPreyCollision,
   type GloamwoodNestPrey,
@@ -3023,7 +3024,12 @@ class Gloamwood3DHunt {
       const telegraphing = prey.phase === 'telegraph' && !bossSpec
       const telegraphProgress = telegraphing ? Math.min(1, prey.phaseElapsed / spec.telegraphSeconds) : 0
       ;(visual.telegraph.material as THREE.MeshBasicMaterial).opacity = telegraphing ? 0.18 + telegraphProgress * 0.64 : 0
-      visual.telegraph.scale.setScalar(telegraphing ? 1.12 - telegraphProgress * 0.12 : 1)
+      // Asked of the authority rather than drawn from a constant, and asked
+      // every frame: the reach depends on the player's body, which grows with
+      // every evolution. It closes onto the true circle over the wind-up, so
+      // the edge is exact at the moment the blow is tested.
+      const reach = gloamwoodPreyAttackDistance(prey, gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily))
+      visual.telegraph.scale.setScalar(reach * (telegraphing ? 1.12 - telegraphProgress * 0.12 : 1))
       if (visual.model) {
         // One writer for the body. The primitive gait, strike lunge and stun
         // wobble below are the fallback's animation; running them as well would

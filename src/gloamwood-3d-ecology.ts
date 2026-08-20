@@ -500,7 +500,7 @@ export function stepPrey(
   const dx = desiredX - next.x
   const dz = desiredZ - next.z
   const playerDistance = Math.hypot(player.x - next.x, player.z - next.z)
-  const attackDistance = Math.max(spec.attackRange, stopDistance + GLOAMWOOD_COMBAT_SPACING.strikeReach[state.kind])
+  const attackDistance = gloamwoodPreyAttackDistance(state, player.bodyRadius ?? 0)
   const desiredDistance = Math.hypot(dx, dz)
   const facing = Math.atan2(-(player.z - next.z), player.x - next.x)
   // A committed creature keeps the facing it chose when the telegraph began, so
@@ -747,6 +747,30 @@ export function gloamwoodPreyStopDistance(
   return Math.max(
     GLOAMWOOD_PREY[prey.kind].stopRange,
     Math.max(0, playerBodyRadius) + gloamwoodPreyBodyRadius(prey) + GLOAMWOOD_COMBAT_SPACING.actionSpace[prey.kind],
+  )
+}
+
+/**
+ * How far a creature's blow actually reaches.
+ *
+ * Exported because presentation has to draw *this* circle and nothing else.
+ * The telegraph ring used to be built from `spec.attackRange` alone while the
+ * hit was tested against this, and the two are not the same number: a modelled
+ * river fang stands off at its own body radius plus the player's, so it struck
+ * at 3.49 while the ring on the ground promised 2.12. Stepping out of the
+ * drawn circle and being hit anyway was the player reading a picture that was
+ * 65% too small.
+ *
+ * It cannot be a constant. It depends on the player's body, which grows with
+ * every evolution, and on the creature's, which is whatever model it wears.
+ */
+export function gloamwoodPreyAttackDistance(
+  prey: Pick<GloamwoodNestPrey, 'id' | 'kind'> & { bodyRadius?: number },
+  playerBodyRadius: number,
+) {
+  return Math.max(
+    GLOAMWOOD_PREY[prey.kind].attackRange,
+    gloamwoodPreyStopDistance(prey, playerBodyRadius) + GLOAMWOOD_COMBAT_SPACING.strikeReach[prey.kind],
   )
 }
 
