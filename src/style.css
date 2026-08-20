@@ -1048,21 +1048,49 @@ body.is-gloamwood-3d * {
   .g3d-target-bar i { height: 5px; }
 }
 
+/* A row across the top rather than one block in the corner. The panels below
+   carry the chrome; this only places them and leaves the middle clear. */
 .gloamwood-3d-hud {
   position: absolute;
   top: max(18px, env(safe-area-inset-top));
+  right: max(18px, env(safe-area-inset-right));
   left: max(18px, env(safe-area-inset-left));
   z-index: 8;
-  width: min(340px, calc(100% - 36px));
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  color: #edf3e5;
+  pointer-events: none;
+}
+.g3d-hud-left,
+.g3d-hud-right {
   padding: 14px 16px;
   border: 1px solid rgba(210, 191, 132, .28);
   border-radius: 4px;
-  color: #edf3e5;
   background: linear-gradient(135deg, rgba(7, 18, 13, .9), rgba(17, 29, 21, .72));
   box-shadow: 0 16px 44px rgba(0, 0, 0, .28);
   backdrop-filter: blur(9px);
-  pointer-events: none;
 }
+/* What the player reacts to: narrow, so the view past it stays open. */
+.g3d-hud-left { width: min(304px, 42%); }
+/* How the run is going, read between fights. Sized to its contents so it never
+   grows into the view. */
+.g3d-hud-right {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  width: max-content;
+  max-width: 42%;
+}
+.g3d-status-line {
+  display: block;
+  margin-top: 9px;
+  color: #d9e4bf;
+  font-size: 9px;
+  letter-spacing: .08em;
+}
+.g3d-hud-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .gloamwood-3d-hud header { display: grid; gap: 3px; }
 .gloamwood-3d-hud span { color: #d6b86d; font-size: 9px; font-weight: 800; letter-spacing: .16em; }
 .gloamwood-3d-hud strong { font-size: 17px; letter-spacing: -.015em; }
@@ -1078,7 +1106,6 @@ body.is-gloamwood-3d * {
 }
 .g3d-settings-toggle {
   min-height: 30px;
-  margin-top: 9px;
   padding: 4px 9px;
   border: 1px solid rgba(224, 203, 141, .25);
   border-radius: 4px;
@@ -1092,7 +1119,6 @@ body.is-gloamwood-3d * {
 .g3d-hud-details-toggle { display: none; }
 .g3d-fullscreen-toggle {
   min-height: 30px;
-  margin: 9px 0 0 6px;
   padding: 4px 9px;
   border: 1px solid rgba(224, 203, 141, .25);
   border-radius: 4px;
@@ -1191,18 +1217,17 @@ body.is-gloamwood-3d * {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 5px 10px;
-  margin-top: 9px;
+  /* Never wider than the panel holding it. On a phone the row is forced to one
+     nowrap line, and without this it grew past the block and spilled off the
+     left edge of the screen. */
+  box-sizing: border-box;
+  max-width: 100%;
   padding: 7px 9px;
   border: 1px solid rgba(180, 203, 129, .15);
   border-radius: 3px;
   background: rgba(5, 12, 9, .34);
-}
-.gloamwood-3d-hud .g3d-nest-resources > b {
-  flex-basis: 100%;
-  color: #d9e4bf;
-  font-size: 9px;
-  letter-spacing: .08em;
 }
 .gloamwood-3d-hud .g3d-nest-resources > span {
   color: #95a998;
@@ -1329,12 +1354,37 @@ body.is-gloamwood-3d * {
 }
 
 @media (max-width: 900px), (max-height: 520px) {
+  /* A phone has no free corner: the joystick, the attack button and the guide
+     already own three of them. Fold the two panels back into the one block this
+     was before, which is what the small-screen tuning below is written for. */
   .gloamwood-3d-hud {
     top: max(8px, env(safe-area-inset-top));
+    right: auto;
     left: max(8px, env(safe-area-inset-left));
+    display: block;
     width: min(270px, calc(100% - 16px));
     padding: 8px 10px;
+    border: 1px solid rgba(210, 191, 132, .28);
+    border-radius: 4px;
+    background: linear-gradient(135deg, rgba(7, 18, 13, .9), rgba(17, 29, 21, .72));
+    box-shadow: 0 16px 44px rgba(0, 0, 0, .28);
+    backdrop-filter: blur(9px);
   }
+  .g3d-hud-left,
+  .g3d-hud-right {
+    display: block;
+    width: auto;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  .g3d-hud-actions { justify-content: flex-start; margin-top: 5px; }
+  .g3d-nest-resources { justify-content: flex-start; margin-top: 5px; }
+  .g3d-status-line { margin-top: 5px; }
   .gloamwood-3d-hud strong { font-size: 13px; }
   .gloamwood-3d-hud p { margin: 4px 0 0; font-size: 9px; }
   .gloamwood-3d-hud small { display: none; }
@@ -1355,7 +1405,6 @@ body.is-gloamwood-3d * {
   .g3d-combat-bars { margin-top: 6px; gap: 4px; }
   .g3d-combat-bars i { height: 5px; }
   .g3d-nest-resources { gap: 3px 7px; margin-top: 5px; padding: 4px 6px; }
-  .gloamwood-3d-hud .g3d-nest-resources > b { flex-basis: auto; margin-right: 3px; }
   .gloamwood-evolution-overlay { padding: 8px; overflow: auto; place-items: start center; }
   .g3d-evolution-panel { padding: 12px; }
   .g3d-evolution-panel h1 { font-size: 18px; }
@@ -1382,6 +1431,7 @@ body.is-gloamwood-3d * {
     border-radius: 7px;
     background: linear-gradient(135deg, rgba(5, 16, 11, .86), rgba(14, 26, 18, .67));
   }
+  .g3d-status-line { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .gloamwood-3d-hud header span { display: none; }
   /* Combat messages carry the reason a hit missed or what a wave brings, so they
      must stay readable. English runs roughly 1.7x the length of the Chinese the
@@ -1399,14 +1449,19 @@ body.is-gloamwood-3d * {
   .g3d-combat-bars b { font-size: 7px; }
   .g3d-combat-bars i { height: 4px; }
   .g3d-nest-resources { flex-wrap: nowrap; gap: 3px 5px; margin-top: 4px; padding: 3px 4px; overflow: hidden; font-size: 7px; white-space: nowrap; }
-  .gloamwood-3d-hud .g3d-nest-resources > b { max-width: 45px; overflow: hidden; text-overflow: ellipsis; }
   .gloamwood-3d-hud [data-g3d-controls],
   .gloamwood-3d-hud [data-g3d-state] { display: none; }
+  .g3d-hud-actions { gap: 4px; width: 100%; }
+  /* Shared out by the flexbox rather than by a percentage. Three buttons at
+     33.333% minus a gap came to 195 of 196 available and sub-pixel rounding
+     wrapped the last one onto its own row. */
+  .g3d-hud-actions > button { flex: 1 1 0; min-width: 0; }
   .g3d-hud-details-toggle,
   .g3d-fullscreen-toggle,
   .g3d-settings-toggle {
     display: inline-grid;
-    width: calc(33.333% - 4px);
+    box-sizing: border-box;
+    width: auto;
     min-height: 44px;
     /* Inline-grid boxes align on their text baseline by default, which offsets
        the three entries from each other when their labels differ in length. */

@@ -4453,18 +4453,35 @@ class Gloamwood3DHunt {
   private createHud() {
     const hud = document.createElement('section')
     hud.className = 'gloamwood-3d-hud'
+    // Two panels, not one block.
+    //
+    // Everything lived in a single box in the top-left and it covered a real
+    // part of the view. Split by what the player is doing with it: the left
+    // panel is what they react to - what is happening and how much health they
+    // have - and the right is how the run is going, which is read between
+    // fights. The right one sits in the corner nothing else uses.
     hud.innerHTML = [
+      '<div class="g3d-hud-left">',
       `<header><span data-g3d-nest-title>${t('hud.nestTitle')}</span><strong data-g3d-message>${t('hud.initialMsg')}</strong></header>`,
       '<div class="g3d-combat-bars">',
       `<label>${t('hud.health')} <b data-g3d-player-health>100 / 100</b><i><em data-g3d-player-bar></em></i></label>`,
       '</div>',
-      `<div class="g3d-nest-resources"><b data-g3d-remaining>${t('hud.undisturbed')}</b><span>${t('hud.lives')} <strong data-g3d-lives>${this.map.lives}</strong></span><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span data-g3d-mutation-progress-cell hidden>${t('hud.mutationTrack')} <strong data-g3d-mutation-progress>0/0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
+      // The status line belongs with the message: both answer "what is
+      // happening right now", and the nest's wave count is only useful while
+      // the player is inside it.
+      `<b class="g3d-status-line" data-g3d-remaining>${t('hud.undisturbed')}</b>`,
+      '</div>',
+      '<div class="g3d-hud-right">',
+      `<div class="g3d-nest-resources"><span>${t('hud.lives')} <strong data-g3d-lives>${this.map.lives}</strong></span><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span data-g3d-mutation-progress-cell hidden>${t('hud.mutationTrack')} <strong data-g3d-mutation-progress>0/0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
       // Mutations stack rather than replace, and a build the player cannot see
       // is a build they cannot plan around. Hidden until the first one is taken.
       '<div class="g3d-mutation-list" data-g3d-mutations hidden></div>',
+      '<div class="g3d-hud-actions">',
       `<button class="g3d-hud-details-toggle" type="button" data-g3d-hud-details aria-expanded="false">${t('hud.expand')}</button>`,
       `<button class="g3d-fullscreen-toggle" type="button" data-g3d-fullscreen>${t('fs.enter')}</button>`,
       `<button class="g3d-settings-toggle" type="button" data-g3d-settings-toggle>${t('hud.settings')}</button>`,
+      '</div>',
+      '</div>',
     ].join('')
     this.hud = hud
     hud.dataset.mobileExpanded = 'false'

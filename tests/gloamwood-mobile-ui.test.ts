@@ -72,8 +72,13 @@ describe('Gloamwood mobile HUD', () => {
     // Full-screen entry must survive being toggled back off.
     expect(source).toContain('document.exitFullscreen()')
     expect(source).toContain("document.addEventListener('fullscreenchange', this.fullscreenChanged)")
-    // Three HUD entries must still each hold a 44px touch target in landscape.
-    expect(css).toMatch(/\.g3d-fullscreen-toggle,\s*\.g3d-settings-toggle\s*{[^}]*33\.333%/s)
+    // Three HUD entries must still each hold a 44px touch target in landscape,
+    // and still share one row. The width was pinned at 33.333% here, which is
+    // one way of getting three across and not the property being protected -
+    // three buttons at 33.333% minus a gap came to 195 of 196 available and
+    // sub-pixel rounding wrapped the last one onto its own row.
+    expect(css).toMatch(/\.g3d-fullscreen-toggle,\s*\.g3d-settings-toggle\s*{[^}]*min-height:\s*44px/s)
+    expect(css).toMatch(/\.g3d-hud-actions\s*>\s*button\s*{[^}]*flex:\s*1 1 0/s)
   })
 
   it('uses a continuous left joystick and a holdable one-button combo', () => {
