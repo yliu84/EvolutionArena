@@ -9,7 +9,14 @@ import {
   type GloamwoodNestPrey,
 } from '../src/gloamwood-3d-ecology'
 import { createGloamwoodValleyCreatures } from '../src/gloamwood-valley-creatures'
-import { gloamwoodEliteDeathBurst } from '../src/gloamwood-elite'
+import { ELITE_AFFIX_IDS } from '../src/elite-affixes'
+import {
+  gloamwoodEliteAffixDeal,
+  gloamwoodEliteBroodHealth,
+  gloamwoodEliteBroodPositions,
+  gloamwoodEliteDeathBurst,
+  gloamwoodEliteSplits,
+} from '../src/gloamwood-elite'
 import { CORAL_GECKO_PRESENTATION } from '../src/quality-3d-character-presentation'
 
 /**
@@ -184,5 +191,82 @@ describe('The Volatile elite leaves something behind', () => {
     for (const affix of ['berserker', 'siphon', 'brood', 'barrier'] as const) {
       expect(gloamwoodEliteDeathBurst({ affix, shield: 0, broodTriggered: false }, 0, 0)).toBeNull()
     }
+  })
+})
+
+describe('The Brood elite breaks into two', () => {
+  const parent = { affix: 'brood' as const, shield: 0, broodTriggered: false }
+
+  it('splits once, at half health, and never again', () => {
+    // The gate stamps the parent so a long fight cannot farm splits out of it.
+    expect(gloamwoodEliteSplits(parent, 101, 50, 101)).toBe(true)
+    expect(gloamwoodEliteSplits(parent, 50, 40, 101)).toBe(false)
+    expect(gloamwoodEliteSplits({ ...parent, broodTriggered: true }, 101, 50, 101)).toBe(false)
+  })
+
+  it('makes splits that are a real threat rather than a lap of honour', () => {
+    const health = gloamwoodEliteBroodHealth(101)
+    expect(health).toBeGreaterThan(GLOAMWOOD_PREY.fang.maxHealth * 0.5)
+    expect(health).toBeLessThan(101)
+  })
+
+  it('stands them apart rather than inside each other', () => {
+    // Two creatures born overlapping spend their first seconds being shoved
+    // apart by the separation pass instead of coming for the player.
+    const places = gloamwoodEliteBroodPositions(0, 0, 1.55, 0)
+    expect(places).toHaveLength(2)
+    const gap = Math.hypot(places[0].x - places[1].x, places[0].z - places[1].z)
+    expect(gap).toBeGreaterThan(0)
+    for (const place of places) {
+      expect(Math.hypot(place.x, place.z)).toBeGreaterThan(1.55)
+    }
+  })
+
+  it('widens the ring with the body, rather than being a constant', () => {
+    const small = gloamwoodEliteBroodPositions(0, 0, 0.64, 0)
+    const large = gloamwoodEliteBroodPositions(0, 0, 1.98, 0)
+    expect(Math.hypot(large[0].x, large[0].z)).toBeGreaterThan(Math.hypot(small[0].x, small[0].z))
+  })
+
+  it('puts them behind the parent, not in the player\'s lap', () => {
+    // Facing +X means the player is that way; the splits belong on the far side.
+    for (const place of gloamwoodEliteBroodPositions(0, 0, 1.55, 0)) {
+      expect(place.x).toBeLessThan(0)
+    }
+  })
+})
+
+describe('Which affix each elite gets', () => {
+  const elites = createGloamwoodValleyCreatures(0x5a11e).filter((creature) => creature.tier === 'elite')
+
+  it('shows every affix before it shows any twice', () => {
+    // Rolled independently, the valley's six elites came out as volatile,
+    // volatile, barrier, berserker, berserker, barrier - three affixes doubled,
+    // with brood and siphon never appearing at all. Two of the five were dead
+    // content, and the tier exists so the optional fight at the end of a branch
+    // is a different fight each time.
+    const seen = new Set(elites.map((elite) => elite.elite?.affix))
+    expect(seen.size).toBe(ELITE_AFFIX_IDS.length)
+  })
+
+  it('deals the same hand from the same run seed', () => {
+    // A recorded run has to replay against the elites it actually happened to.
+    const ids = elites.map((elite) => elite.id)
+    expect(gloamwoodEliteAffixDeal('valley-run', ids)).toEqual(gloamwoodEliteAffixDeal('valley-run', ids))
+  })
+
+  it('deals a different hand from a different run', () => {
+    const ids = elites.map((elite) => elite.id)
+    expect(gloamwoodEliteAffixDeal('valley-run', ids)).not.toEqual(gloamwoodEliteAffixDeal('another-run', ids))
+  })
+
+  it('keeps dealing past the end of the deck', () => {
+    const many = Array.from({ length: ELITE_AFFIX_IDS.length * 2 + 1 }, (_, index) => `e${index}`)
+    const deal = gloamwoodEliteAffixDeal('valley-run', many)
+    expect(Object.keys(deal)).toHaveLength(many.length)
+    // The first full deck holds one of each, so no affix appears twice before
+    // all of them have appeared once.
+    const first = many.slice(0, ELITE_AFFIX_IDS.length).map((id) => deal[id])
+    expect(new Set(first).size).toBe(ELITE_AFFIX_IDS.length)
   })
 })

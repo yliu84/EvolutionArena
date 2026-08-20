@@ -1,4 +1,6 @@
+import { hashSeed } from './evolution'
 import {
+  ELITE_AFFIX_IDS,
   absorbEliteShield,
   eliteAffixFor,
   eliteCooldownMultiplier,
@@ -65,9 +67,52 @@ export interface GloamwoodEliteBurst {
   telegraphSeconds: number
 }
 
-export function createGloamwoodElite(runSeed: string, encounterId: string, maxHealth: number): GloamwoodEliteState {
-  const affix = eliteAffixFor(runSeed, encounterId)
+export function createGloamwoodElite(
+  runSeed: string,
+  encounterId: string,
+  maxHealth: number,
+  /** Dealt by the caller when it knows the whole set. See gloamwoodEliteAffixDeal. */
+  chosen?: EliteAffixId,
+): GloamwoodEliteState {
+  const affix = chosen ?? eliteAffixFor(runSeed, encounterId)
   return { affix, shield: initialEliteShield(affix, maxHealth), broodTriggered: false }
+}
+
+/**
+ * One affix per elite, dealt rather than rolled.
+ *
+ * Rolling each elite independently is what a single encounter would do, and
+ * across a set it does the wrong thing: the valley's six elites came out as
+ * volatile, volatile, barrier, berserker, berserker, barrier - three affixes
+ * doubled, with brood and siphon never appearing at all. Two of the five were
+ * dead content, and the tier exists precisely so that the optional fight at the
+ * end of a branch is a different fight each time.
+ *
+ * So they are dealt from a shuffled deck, reshuffled each time it runs out.
+ * Every affix appears before any appears twice, and the order is still seeded,
+ * so a recorded run replays against the elites it happened to.
+ */
+export function gloamwoodEliteAffixDeal(
+  runSeed: string,
+  encounterIds: readonly string[],
+): Record<string, EliteAffixId> {
+  const deal: Record<string, EliteAffixId> = {}
+  let deck: EliteAffixId[] = []
+  encounterIds.forEach((id, index) => {
+    if (deck.length === 0) {
+      deck = [...ELITE_AFFIX_IDS]
+      // Seeded from the pass rather than the elite, so the whole deal is a
+      // function of the run seed and nothing else.
+      for (let slot = deck.length - 1; slot > 0; slot -= 1) {
+        const swap = hashSeed(`${runSeed}:elite-deal:${index}:${slot}`) % (slot + 1)
+        const held = deck[slot]
+        deck[slot] = deck[swap]
+        deck[swap] = held
+      }
+    }
+    deal[id] = deck.pop()!
+  })
+  return deal
 }
 
 export function gloamwoodEliteMaxHealth(baseMaxHealth: number) {
@@ -102,6 +147,32 @@ export function gloamwoodEliteSplits(
 ) {
   if (!elite) return false
   return shouldTriggerBrood(elite.affix, previousHealth, nextHealth, maxHealth, elite.broodTriggered)
+}
+
+/**
+ * Where a brood elite's splits stand when it breaks.
+ *
+ * Placed on a ring around the parent rather than on top of it: two creatures
+ * born inside each other spend their first seconds being shoved apart by the
+ * separation pass instead of coming for the player, which reads as a bug.
+ *
+ * The ring is measured from the bodies that have to fit on it, so it widens
+ * with the family rather than being a constant that works for the swarm and
+ * overlaps for the shell.
+ */
+export function gloamwoodEliteBroodPositions(x: number, z: number, bodyRadius: number, facingRadians = 0) {
+  const ring = Math.max(0.6, bodyRadius * 2.1)
+  return Array.from({ length: GLOAMWOOD_ELITE.broodCount }, (_, index) => {
+    // Spread across the parent's back, so the player is not immediately
+    // surrounded by something they have not seen yet.
+    const angle = facingRadians + Math.PI + (index - (GLOAMWOOD_ELITE.broodCount - 1) / 2) * 0.9
+    return { x: x + Math.cos(angle) * ring, z: z - Math.sin(angle) * ring, facingRadians }
+  })
+}
+
+/** Health each split is born with. */
+export function gloamwoodEliteBroodHealth(parentMaxHealth: number) {
+  return Math.max(1, Math.round(parentMaxHealth * GLOAMWOOD_ELITE.broodHealthShare))
 }
 
 /** The burst a volatile elite leaves behind, or null for every other affix. */

@@ -11,7 +11,8 @@ import {
   type GloamwoodAggroCreature,
   type GloamwoodAggroEvent,
 } from './gloamwood-creature-aggro'
-import { createGloamwoodElite, gloamwoodEliteMaxHealth } from './gloamwood-elite'
+import type { EliteAffixId } from './elite-affixes'
+import { createGloamwoodElite, gloamwoodEliteAffixDeal, gloamwoodEliteMaxHealth } from './gloamwood-elite'
 import {
   gloamwoodValleyBossSpecFor,
   stepGloamwoodValleyBoss,
@@ -86,13 +87,29 @@ export const GLOAMWOOD_VALLEY_WANDER = {
 } as const
 
 export function createGloamwoodValleyCreatures(seed: number, runSeed = 'valley-run'): GloamwoodValleyCreature[] {
-  return planGloamwoodValleySpawns(seed).map((spawn, index) => fromSpawn(spawn, index, runSeed))
+  const spawns = planGloamwoodValleySpawns(seed)
+  // Dealt across the whole set, not rolled one at a time. Rolled, the six
+  // elites came out as three affixes doubled with two of the five never
+  // appearing - and the tier exists so that the optional fight at the end of a
+  // branch is a different fight each time.
+  const affixes = gloamwoodEliteAffixDeal(
+    runSeed,
+    spawns.filter((spawn) => spawn.tier === 'elite').map((spawn) => spawn.id),
+  )
+  return spawns.map((spawn, index) => fromSpawn(spawn, index, runSeed, affixes[spawn.id]))
 }
 
-function fromSpawn(spawn: GloamwoodValleySpawn, index: number, runSeed: string): GloamwoodValleyCreature {
+function fromSpawn(
+  spawn: GloamwoodValleySpawn,
+  index: number,
+  runSeed: string,
+  affix?: EliteAffixId,
+): GloamwoodValleyCreature {
   const spec = GLOAMWOOD_PREY[spawn.kind]
   // Elites are tougher and carry an affix; everything else is its family.
-  const elite = spawn.tier === 'elite' ? createGloamwoodElite(runSeed, spawn.id, gloamwoodEliteMaxHealth(spec.maxHealth)) : undefined
+  const elite = spawn.tier === 'elite'
+    ? createGloamwoodElite(runSeed, spawn.id, gloamwoodEliteMaxHealth(spec.maxHealth), affix)
+    : undefined
   // A boss brings its own health. Reading the family's left three region bosses
   // standing behind ninety-two hit points - the same as the beetle beside them,
   // and less than the elite down the branch.

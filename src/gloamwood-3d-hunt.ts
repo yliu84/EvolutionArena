@@ -146,7 +146,12 @@ import {
 } from './gloamwood-input-settings'
 import { assetUrl } from './asset-url'
 import { ELITE_AFFIXES } from './elite-affixes'
-import { gloamwoodEliteBurstHits, type GloamwoodEliteBurst } from './gloamwood-elite'
+import {
+  gloamwoodEliteBroodHealth,
+  gloamwoodEliteBroodPositions,
+  gloamwoodEliteBurstHits,
+  type GloamwoodEliteBurst,
+} from './gloamwood-elite'
 import { gloamwoodOccludesCameraView } from './gloamwood-camera-occlusion'
 import { createGloamwoodMap, gloamwoodMapStep, type GloamwoodMapContract } from './gloamwood-map'
 import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
@@ -2379,6 +2384,7 @@ class Gloamwood3DHunt {
     // reads it as "my attack is weak now" and grinds through fifteen hits.
     if (damage.blocked && !damage.killed) this.combatMessage = t('hud.msg.blockedFront')
     if (damage.burst) this.spawnEliteBurst(damage.burst)
+    if (damage.splits) this.spawnEliteBrood(target)
     if (damage.killed) {
       this.combatMessage = target.id === GLOAMWOOD_NEST_GUARDIAN.id
         ? t('hud.msg.guardianDown', { name: t('creature.guardian') })
@@ -3201,6 +3207,64 @@ class Gloamwood3DHunt {
       )
       ;(particle.sprite.material as THREE.SpriteMaterial).opacity = 0
     }
+  }
+
+  /**
+   * Breaks a brood elite into its two splits.
+   *
+   * The gate decides *that* it splits and stamps the parent so it can only
+   * happen once; nothing built the splits, so the affix did nothing at all.
+   *
+   * They are spread copies of the parent, which is how every other creature in
+   * this pipeline is derived - the valley fields a creature carries (region,
+   * home, wander, branch) survive the copy rather than being rebuilt and
+   * quietly dropped. What is overridden is what a split is not: it is not an
+   * elite, so no affix and no shield; it is not road furniture, so it never
+   * respawns; and it wears the family's own body at the family's own size
+   * rather than the elite's, which is the tell that it is the weaker thing.
+   */
+  private spawnEliteBrood(parent: GloamwoodNestPrey) {
+    const valley = parent as GloamwoodValleyCreature
+    // 'nest' is what the body registry and the respawn clock both read as
+    // "spawned into a fight, not placed on the road" - the base body, and
+    // nothing brings it back.
+    const born = { ...valley, tier: 'nest' as const, elite: undefined }
+    const body = this.map.bodyFor(born)
+    const health = gloamwoodEliteBroodHealth(parent.maxHealth)
+    const places = gloamwoodEliteBroodPositions(
+      parent.x, parent.z,
+      body?.footprintRadius ?? gloamwoodPreyBodyRadius(parent),
+      parent.facingRadians,
+    )
+    const splits = places.map((place, index) => {
+      const held = this.map.confine(place.x, place.z)
+      return {
+        ...born,
+        id: `${parent.id}-brood-${index}`,
+        health,
+        maxHealth: health,
+        x: held.x,
+        z: held.z,
+        homeX: held.x,
+        homeZ: held.z,
+        wanderX: held.x,
+        wanderZ: held.z,
+        phase: 'chase' as const,
+        phaseElapsed: 0,
+        attackResolved: false,
+        stunImmuneSeconds: 0,
+        corpseSeconds: undefined,
+        // Born into a fight already in progress. A split that has to notice the
+        // player first would give away the moment it exists for.
+        awake: true,
+        outOfReachSeconds: 0,
+        slot: (parent.slot ?? 0) + index + 1,
+        bodyRadius: body?.footprintRadius,
+      }
+    })
+    this.nestState = { ...this.nestState, prey: [...this.nestState.prey, ...splits] as GloamwoodNestPrey[] }
+    this.combatMessage = t('hud.msg.eliteBrood')
+    this.playSound('boss-phase')
   }
 
   /**
