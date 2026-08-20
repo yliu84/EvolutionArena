@@ -65,6 +65,16 @@ export interface GloamwoodNestPrey {
   /** Overrides the family radius. Set on modelled creatures, which have a size. */
   bodyRadius?: number
   /**
+   * What this creature is on its map, when the map has tiers.
+   *
+   * Read here for exactly one thing: a boss does not carry its family's
+   * frontal-damage rule. See `gloamwoodPreyGuardsItsFront`.
+   *
+   * Deliberately loose: the ecology has no business knowing a map's tier names,
+   * and a valley creature narrows it back down to its own union.
+   */
+  tier?: string | undefined
+  /**
    * Set only on elites.
    *
    * Carried on the creature rather than passed into the damage gate, so a call
@@ -381,9 +391,32 @@ export function gloamwoodFlankApproachAngle(
   return targetFacing + (blockedArc + clearance) * (error >= 0 ? 1 : -1)
 }
 
-/** True when this creature's front is worth walking around. */
-export function gloamwoodPreyGuardsItsFront(kind: GloamwoodPreyKind) {
-  return kind === 'shell'
+/**
+ * True when this creature's front is worth walking around.
+ *
+ * The Carapace family sheds 72% of a frontal blow and takes 35% extra from
+ * anywhere else, and that is answerable because a shell creature commits its
+ * facing for the whole of its attack window: the flank is a real opening the
+ * player can learn.
+ *
+ * A boss is not answerable that way. It turns to face whoever is in front of it
+ * whenever it is not committed, so there is no flank to find - and all three
+ * valley bosses are typed `shell`, because that is the collision family their
+ * bodies belong to. Sized to the Carapace radius and given its damage rule as
+ * well, the first boss took 4 a hit from the front and 22 from behind, with the
+ * behind unreachable: 340 health at 4 a hit is eighty-five landed blows.
+ * Reported as "I fought it at full health, three lives, and could not win."
+ *
+ * The body registry already warned about exactly this - sizing a boss to the
+ * Carapace radius "is deliberately not the same as giving it that family's
+ * frontal-damage rule" - and the spawn plan handed it the rule anyway through
+ * `kind`.
+ *
+ * A boss's defence is its patterns and its health. Those the player can answer.
+ */
+export function gloamwoodPreyGuardsItsFront(creature: GloamwoodPreyKind | Pick<GloamwoodNestPrey, 'kind' | 'tier'>) {
+  if (typeof creature === 'string') return creature === 'shell'
+  return creature.kind === 'shell' && creature.tier !== 'boss'
 }
 
 export function damageGloamwoodPreyList(
@@ -404,8 +437,11 @@ export function damageGloamwoodPreyList(
   const spec = GLOAMWOOD_PREY[target.kind]
   const attackerFacing = Math.atan2(-(attacker.z - target.z), attacker.x - target.x)
   const frontalError = Math.abs(shortestAngle(target.facingRadians, attackerFacing))
-  const shellFront = target.kind === 'shell' && frontalError <= GLOAMWOOD_SHELL_FRONT_ARC
-  const multiplier = shellFront ? 0.28 : target.kind === 'shell' ? 1.35 : target.kind === 'fang' && action === 'Claw' ? 1.2 : target.kind === 'swarm' && action === 'TailSwipe' ? 1.3 : 1
+  const shellFront = gloamwoodPreyGuardsItsFront(target) && frontalError <= GLOAMWOOD_SHELL_FRONT_ARC
+  // The 1.35 is the other half of the frontal rule - the reward for finding the
+  // flank - so it belongs to whatever carries the rule, not to the family name.
+  const carapace = gloamwoodPreyGuardsItsFront(target)
+  const multiplier = shellFront ? 0.28 : carapace ? 1.35 : target.kind === 'fang' && action === 'Claw' ? 1.2 : target.kind === 'swarm' && action === 'TailSwipe' ? 1.3 : 1
   const familyDamage = Math.max(1, Math.round(Math.max(0, rawDamage) * multiplier))
   const shielded = gloamwoodEliteAbsorb(target.elite, familyDamage)
   const effectiveDamage = shielded.damage

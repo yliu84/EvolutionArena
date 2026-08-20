@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { GLOAMWOOD_3D_COMBAT } from '../src/gloamwood-3d-combat'
 import {
   GLOAMWOOD_SHELL_FRONT_ARC,
+  damageGloamwoodPreyList,
   gloamwoodFlankApproachAngle,
   gloamwoodPreyAttackDistance,
   gloamwoodPreyGuardsItsFront,
@@ -582,5 +583,53 @@ describe('Where the attack order walks you', () => {
     expect(gloamwoodPreyGuardsItsFront('shell')).toBe(true)
     expect(gloamwoodPreyGuardsItsFront('fang')).toBe(false)
     expect(gloamwoodPreyGuardsItsFront('swarm')).toBe(false)
+  })
+})
+
+describe('Whose front is worth walking around', () => {
+  const shellPrey = { id: 'p', kind: 'shell' as const }
+  const shellBoss = { id: 'b', kind: 'shell' as const, tier: 'boss' }
+
+  const hit = (target: Record<string, unknown>, from: { x: number; z: number }) =>
+    damageGloamwoodPreyList(
+      [{
+        ...target, phase: 'chase', phaseElapsed: 0, health: 400, maxHealth: 400,
+        x: 0, z: 0, facingRadians: 0, attackResolved: false, slot: 0,
+      } as GloamwoodNestPrey],
+      String(target.id), 16, 'Bite', from, 0,
+    )
+
+  it('keeps the rule on Carapace prey, front and back', () => {
+    // 72% shed from the front, 35% extra from anywhere else. It is answerable
+    // because a shell creature commits its facing for its whole attack window,
+    // so the flank is a real opening the player can learn.
+    expect(hit(shellPrey, { x: 4, z: 0 }).blocked).toBe(true)
+    expect(hit(shellPrey, { x: -4, z: 0 }).weakness).toBe(true)
+  })
+
+  it('takes it off a boss, which has no flank to find', () => {
+    // A boss turns to face whoever is in front of it whenever it is not
+    // committed. All three valley bosses are typed `shell` because that is the
+    // collision family their bodies belong to, and with the damage rule as well
+    // the first one took 4 a hit from the front and 22 from behind, with behind
+    // unreachable: 340 health at 4 a hit is eighty-five landed blows. Reported
+    // as "full health, three lives, could not win".
+    expect(hit(shellBoss, { x: 4, z: 0 }).blocked).toBe(false)
+    expect(hit(shellBoss, { x: -4, z: 0 }).weakness).toBe(false)
+  })
+
+  it('gives a boss the same blow from every side', () => {
+    // Its defence is its patterns and its health. Those the player can answer.
+    const front = hit(shellBoss, { x: 4, z: 0 }).effectiveDamage
+    for (const from of [{ x: -4, z: 0 }, { x: 0, z: 4 }, { x: 3, z: 3 }]) {
+      expect(hit(shellBoss, from).effectiveDamage).toBe(front)
+    }
+  })
+
+  it('reads the same answer for the approach and the gate', () => {
+    // The attack order walks the player around an armoured front. It must not
+    // walk them around a boss that has none.
+    expect(gloamwoodPreyGuardsItsFront(shellPrey)).toBe(true)
+    expect(gloamwoodPreyGuardsItsFront(shellBoss)).toBe(false)
   })
 })

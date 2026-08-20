@@ -46,7 +46,10 @@ import {
  * question in both, and answering it twice is how the two drift apart.
  */
 
-export interface GloamwoodValleyCreature extends GloamwoodNestPrey, GloamwoodAggroCreature, GloamwoodValleyBossFields {
+// `tier` is omitted and re-declared: the ecology types it loosely, because it
+// has no business knowing a map's tier names, and here it narrows to this map's.
+export interface GloamwoodValleyCreature
+  extends Omit<GloamwoodNestPrey, 'tier'>, GloamwoodAggroCreature, GloamwoodValleyBossFields {
   tier: GloamwoodValleySpawnTier
   group: string
   branch: string | null
@@ -201,7 +204,9 @@ export function stepGloamwoodValleyCreatures(
     return stepped
   })
 
-  return { creatures: separate(next), events, aggro: aggro.events }
+  // `stepPrey` widens `tier` back to the ecology's loose string on the way
+  // through, so it is narrowed here rather than at every call site.
+  return { creatures: separate(next as GloamwoodValleyCreature[]), events, aggro: aggro.events }
 }
 
 /**
