@@ -9,9 +9,13 @@ import {
   GLOAMWOOD_VALLEY_MILESTONES,
   createGloamwoodValleyProgression,
   enterGloamwoodValleyRegion,
+  gloamwoodValleyBossMilestone,
   gloamwoodValleyGateOpen,
   gloamwoodValleyMilestoneGaps,
   gloamwoodValleyNextGate,
+  gloamwoodValleyTerminalRegion,
+  gloamwoodValleyTerminalBossDefeated,
+  resolveGloamwoodValleyBossDefeat,
   holdGloamwoodValleyAtGate,
   recordGloamwoodValleyMilestone,
   GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS,
@@ -28,19 +32,19 @@ import {
   gloamwoodValleyWalkable,
 } from '../src/gloamwood-valley-terrain'
 
-/** A 25-minute run, which is the time budget the whole map was sized from. */
-const RUN_SECONDS = 25 * 60
+/** The centre of the roughly twenty-minute acceptance window. */
+const RUN_SECONDS = 20 * 60
 
 describe('Pacing', () => {
-  it('pays out about every three minutes across the run', () => {
+  it('pays out a meaningful decision about every four minutes across the run', () => {
     const perOffer = RUN_SECONDS / GLOAMWOOD_VALLEY_MILESTONES.length
-    expect(perOffer).toBeGreaterThan(150)
-    expect(perOffer).toBeLessThan(260)
+    expect(perOffer).toBeGreaterThanOrEqual(210)
+    expect(perOffer).toBeLessThanOrEqual(270)
   })
 
   it('thins out towards the end, so the run gets harder and not just longer', () => {
-    // The producer's note was "about three minutes, and harder to come by
-    // later". Measured in thirds of the route rather than by region, because
+    // The choices should grow rarer as risk grows. Measured in thirds of the
+    // route rather than by region, because
     // the regions are not the same length.
     const third = GLOAMWOOD_VALLEY_LENGTH / 3
     const count = (from: number, to: number) =>
@@ -103,6 +107,35 @@ describe('Feeding the mutation layer', () => {
 })
 
 describe('Gates', () => {
+  it('pays Boss rewards only before the terminal Headwater region', () => {
+    expect(gloamwoodValleyBossMilestone('shallows')?.id).toBe('shallows-boss-defeated')
+    expect(gloamwoodValleyBossMilestone('gorge')?.id).toBe('gorge-boss-defeated')
+    expect(gloamwoodValleyBossMilestone('headwater')).toBeNull()
+    expect(gloamwoodValleyTerminalRegion('headwater')).toBe(true)
+    expect(gloamwoodValleyTerminalRegion('shallows')).toBe(false)
+  })
+
+  it('ends only for a dead Headwater Boss, never for its visual/body metadata', () => {
+    expect(gloamwoodValleyTerminalBossDefeated({ tier: 'boss', region: 'headwater', phase: 'dead' })).toBe(true)
+    expect(gloamwoodValleyTerminalBossDefeated({ tier: 'boss', region: 'headwater', phase: 'chase' })).toBe(false)
+    expect(gloamwoodValleyTerminalBossDefeated({ tier: 'pack', region: 'headwater', phase: 'dead' })).toBe(false)
+    expect(gloamwoodValleyTerminalBossDefeated({ tier: 'boss', region: 'gorge', phase: 'dead' })).toBe(false)
+  })
+
+  it('turns the Boss-death sequence into two gate rewards and one terminal result', () => {
+    const shallows = resolveGloamwoodValleyBossDefeat(createGloamwoodValleyProgression(), 'shallows')
+    expect(shallows).toMatchObject({ milestone: { id: 'shallows-boss-defeated' }, victory: false })
+    expect(gloamwoodValleyGateOpen(shallows.state, 0)).toBe(true)
+
+    const gorge = resolveGloamwoodValleyBossDefeat(shallows.state, 'gorge')
+    expect(gorge).toMatchObject({ milestone: { id: 'gorge-boss-defeated' }, victory: false })
+    expect(gloamwoodValleyGateOpen(gorge.state, 1)).toBe(true)
+
+    const headwater = resolveGloamwoodValleyBossDefeat(gorge.state, 'headwater')
+    expect(headwater).toMatchObject({ milestone: null, victory: true })
+    expect(headwater.state.reached).toEqual(['shallows-boss-defeated', 'gorge-boss-defeated'])
+  })
+
   it('holds every choke shut until the boss before it is dead', () => {
     let state = createGloamwoodValleyProgression()
     for (const index of GLOAMWOOD_VALLEY.chokes.keys()) {

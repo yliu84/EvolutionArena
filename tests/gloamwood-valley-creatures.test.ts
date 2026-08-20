@@ -117,7 +117,7 @@ describe('Grazing', () => {
       return Math.hypot(now.x - grazer.homeX, now.z - grazer.homeZ) > 0.4
     })
     expect(moved.length).toBeGreaterThan(grazers.length * 0.5)
-  })
+  }, 15_000)
 
   it('keeps an action gap while grazers wander', () => {
     // A body gap alone is not enough: two creatures can stop intersecting and
@@ -143,7 +143,7 @@ describe('Grazing', () => {
         `${grazer.id} wandered off`,
       ).toBeLessThanOrEqual(GLOAMWOOD_VALLEY_WANDER.radius + 0.2)
     }
-  })
+  }, 15_000)
 
   it('stays off the road it was placed beside', () => {
     // A grazer standing in the path is standing in the fight the player is

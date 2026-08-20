@@ -38,11 +38,11 @@ npm run validate:gltf -- public/assets/quality-3d/models/coral-gecko-rigged-v4.g
 
 The coral-crested gecko is the first completed mother-monster production reference.
 
-## Active player route — Goal 6A
+## Accepted player route — Goal 6B
 
 The **bare live entry now opens Gloamwood Valley**, the river-valley vertical slice. The compact Gloamwood nest remains reachable only with `?map=gloamwood` for focused legacy combat checks.
 
-Goal 6A is the current acceptance pass for a player’s first minutes, not a map-art rewrite:
+Goal 6A was the accepted first-minutes pass, not a map-art rewrite:
 
 - river-valley start has a two-step, low-coverage guide and an 18-second / 14-metre calm-reading window; a strike still wakes its target immediately;
 - valley tree trunks and loose boulders now share their physical footprints with the rendered scatter; cliffs and vegetation remain visual/terrain-confined rather than becoming frustrating invisible walls;
@@ -52,6 +52,34 @@ Goal 6A is the current acceptance pass for a player’s first minutes, not a map
 
 Official local acceptance entry: `http://127.0.0.1:<vite-port>/?debug=1&evolutionSeed=goal6a&mapSeed=goal6a`.
 For the first Boss: append `&bossGate=1&bossIndex=0`. Do not use a `?maplab=5` or `?quality3d=1` URL for this acceptance.
+
+Goal 6B now turns that first-minute route into one whole River Valley hunt. Its
+natural-run pacing target is approximately 20 minutes (18–22 minutes), with
+five meaningful mutation boundaries: Shallows nest, Shallows Boss, Gorge entry,
+Gorge Boss and Headwater entry. The two regional gates are runtime-authoritative
+and cannot be crossed by movement, knockback or collision correction before the
+preceding Boss dies; the Headwater Boss is terminal and opens the result. The
+result reports hunted Genes, chosen mutations and the probabilistic relationship
+between them. No map assets, player model or skills were added for Goal 6B.
+The Headwater end condition is now combat-authoritative: a dead Headwater Boss
+ends the run even if its model/body registry cannot resolve. Victory clears
+keyboard/touch movement intent before showing the focused result dialog.
+
+Official local Goal 6B entry: `http://127.0.0.1:<vite-port>/?debug=1&evolutionSeed=goal6b&mapSeed=goal6b`.
+Goal 6B was accepted by the project owner on 2026-08-20. The remaining
+real-device performance measurement and outside no-explanation sessions are
+Goal 7 evidence, not unclosed Goal 6B implementation.
+
+## Accepted presentation pass — Goal 6C
+
+Goal 6C makes combat tiers visually legible without changing combat authority,
+models, map environment or controls. Normal prey keeps the quiet target plate;
+an Elite carries a pulsing hexagonal ground seal and an `ELITE` lock plate with
+shape-marked affix text; a locked River Valley Boss retains its in-world ground
+seal while using one top-centre encounter plate for its name, health and phase.
+The Boss therefore never duplicates a nameplate or health bar over its body. See
+`docs/GOAL-6C-ACCEPTANCE.md` for the visual and responsive evidence. Goal 6C
+was accepted by the project owner on 2026-08-20.
 
 Runtime identifiers:
 
@@ -79,10 +107,11 @@ The three attack animations are ordinary attacks, not skills. The skill-attack s
 ## Latest validation evidence
 
 - Production build passed; Vite still reports the existing chunks larger than 500 kB.
-- Vitest: 70 test files and 386 tests passed, including the 3D-map routing, signed camera-relative four-way movement, stage-aware oriented world and living-entity collision, turn-before-move/cardinal-facing rules, stage-1 core-spine locomotion stabilization, clamped one-shot cleanup before locomotion, presentation motion, deformation-safe stage-0/1 GLB contracts, ground-safe visible leap-bite envelope and full-spin tail-swipe envelope, route-specific combat styles, all 13 random-evolution endpoints and the complete three-wave ecological nest authority.
+- Vitest: 103 test files and 949 tests passed, including 3D-map routing, signed camera-relative four-way movement, stage-aware oriented world and living-entity collision, turn-before-move/cardinal-facing rules, stage-1 core-spine locomotion stabilization, clamped one-shot cleanup before locomotion, presentation motion, deformation-safe stage-0/1 GLB contracts, ground-safe visible leap-bite envelope and full-spin tail-swipe envelope, route-specific combat styles, all 13 random-evolution endpoints, the complete three-wave ecological nest authority, River Valley gate/progression pacing and tiered Elite/Boss presentation contracts.
 - The native stage-2 source and rigged runtime GLBs both have zero glTF errors and warnings; the rigged candidate reports 14 non-blocking validator infos and zero hints.
-- Desktop 1440×900 passed at approximately 115–120 FPS; simulated mobile landscape 844×390 passed at approximately 69 FPS on the development machine, with no HUD overflow and 44-pixel-or-larger touch controls.
+- Goal 6B desktop 1440×900 loaded River Valley with `Mutations 0/5`, no horizontal HUD overflow and no console errors/warnings; the sampled development-machine frame rate was approximately 95 FPS. Simulated mobile landscape 844×390 likewise had no horizontal overflow and no console errors/warnings; lock/attack controls measured 52 px / 82 px. Real-device 30-FPS evidence remains an explicit Goal 7 measurement requirement.
 - Browser console/page errors: zero in the latest accepted pass.
+- Goal 6C browser validation: a River Valley Boss at desktop 1440×900 and simulated 844×390 landscape displayed the dedicated name/phase/health encounter plate without horizontal overflow or console warnings/errors. Following user playtest feedback, the redundant world nameplate and health bar were removed; the in-world Boss seal remains.
 - Stage-0 deformation repair: V4 GLB validates at 0 errors/0 warnings/0 infos/0 hints. A clean browser tab loaded the V4 cache tag and completed `Bite → Claw → TailSwipe` with health 84→68→56→42, grounded=true, aim error 0, root scale 1.25/1.25/1.25, maximum bone-scale deviation 0 and no console errors/warnings.
 - Stage-0 short-foreleg combat revision: the current runtime chain is `Bite → Pounce → TailSwipe`. Browser sampling confirmed crouch, airborne launch, forward bite contact and compressed recovery; the leap strike dealt one authoritative 18-damage contact, emitted four enhanced landing-dust sprites, kept root scale at 1.25/1.25/1.25 and maximum bone-scale deviation at 0, and produced no console errors or warnings at desktop and 844×390.
 - Stage-0 grounding/spin revision: leap recovery no longer lowers the complete rig below terrain; grounded phases re-enable foot correction and sampled recovery clearance is approximately -0.01 with 0.01 planted-foot error. TailSwipe now coils to about -25°, crosses the locked target tail-first at 180°, completes 360° and returns to zero without changing authoritative facing, damage, range or the 8-degree rule.
@@ -281,19 +310,26 @@ The MapLab 5 vertical slice now contains one complete clearable Corrupted Brood 
 - usability: click or Tab cycles only living prey, the HUD exposes target health/state/weakness, wave progress and rewards, and player death returns surviving prey to the nest before a protected respawn;
 - boundaries: the accepted player GLB, one-button form-specific basic combo, 8-degree contact rule and disabled skill system are unchanged.
 
-## Active next-stage decision
+## Active next-stage decision — Goal 7
 
-Commercial vertical-slice Goals 1-4 are user-accepted. Goal 5 is developed but **not closed**: `docs/GOAL-5-PLAYTEST-RECORD.md` still has no physical-device `PERF` reading and no outside no-instruction playtest. Those two remain the honest acceptance gates, and the roadmap makes them the input that decides whether the map and species lines expand at all.
+Commercial vertical-slice Goals 1-4, Goal 6A, Goal 6B and Goal 6C are
+user-accepted. Goal 5's real-device `PERF` capture and external no-instruction
+sessions remain uncollected; they are explicit Goal 7 playtest evidence rather
+than a reason to reopen accepted river-valley implementation.
+
+Goal 7 is a build-expression and external-playtest gate. It audits the existing
+mutation layer so each route gives a visible tactical decision, makes the
+Gene-to-weighted-candidate relationship readable, and records actual 18–22
+minute external runs. It does not add skills, map-environment assets or a new
+batch of models. See `docs/GOAL-7-BUILD-EXPRESSION-PLAN.md`.
 
 The Shell first evolution was completed and accepted on 2026-08-17 as the first measurement of production cost. Swarm stage-1 concept B was accepted the same day as the modelling target; the source GLB does not exist yet.
 
 Valley gate-1 boss design was locked on 2026-08-18 to concept C (rim visor) as `tide-cleaver` / 溯流刀甲. This is the first modelled boss in the project; 荆心守卫 remains primitives and 腐根巢卫 remains a scaled Shell grunt until a passing source exists. Meshy pack: `docs/concepts/valley/tide-cleaver/source/SOURCE.md`. Do not start Blender until that mesh passes the contract gates. Valley map implementation is still a separate, unaccepted spec.
 
-Recommended order from here:
-
-1. Close Goal 5 - capture the `PERF` line on a real mid-range phone, then run at least three strangers with only the URL. The key question is whether they notice their creature became a different animal.
-2. In parallel, the user runs Meshy Image to 3D from the Swarm pack and, separately, from the 溯流刀甲 pack. Do not start Blender on either until that mesh passes its contract gates. A passing Swarm body is the second player-form production-cost data point (Shell was 3 source + 2 rig). A passing 溯流刀甲 body is the first modelled-boss cost number.
-3. Two player-form points give the slope that decides whether the species matrix is produced in full or cut. The boss number decides whether valley's three modelled bosses are affordable.
+After Goal 7, the recorded player comprehension, route choices and mobile
+performance—not asset volume—decide whether the next investment is mutation
+depth, model production or map expansion.
 
 **Open design question, raised by the user on 2026-08-17 after their own playthrough**: the run is two minutes long and contains exactly one decision, so the three evolution routes read as skins. `docs/design/MUTATION-LOOP-PROPOSAL-V1.md` proposes the answer - splitting evolution into a cheap mutation layer that changes rules rather than percentages, and the existing expensive form layer - and argues for building the mutation layer first because it is the only change that tests whether players want a second run without spending any art. Proposal only; not implemented.
 

@@ -64,15 +64,15 @@ describe('Killing a region boss', () => {
 })
 
 describe('Pacing', () => {
-  it('keeps every milestone the design counted on, reachable or not', () => {
-    // Two of the seven belong to nests, which this map does not run yet.
-    // Deleting them would quietly re-pace the whole run; the offers would
-    // simply dry up and read as the layer being broken.
-    expect(GLOAMWOOD_VALLEY_MILESTONES).toHaveLength(7)
-    expect(GLOAMWOOD_VALLEY_MILESTONES.filter((entry) => entry.kind === 'nest')).toHaveLength(2)
+  it('keeps the five deliberate decision boundaries in the run', () => {
+    // One is a set-piece nest; the rest are region crossings and bosses. This
+    // keeps the player making route/build choices, not opening an offer after
+    // every minor clean-up.
+    expect(GLOAMWOOD_VALLEY_MILESTONES).toHaveLength(5)
+    expect(GLOAMWOOD_VALLEY_MILESTONES.filter((entry) => entry.kind === 'nest')).toHaveLength(1)
   })
 
-  it('can pay out five of them today', () => {
+  it('can pay out every non-nest boundary today', () => {
     const everythingDead = {
       ...state,
       prey: state.prey.map((prey) => ({ ...prey, phase: 'dead' as const, health: 0 })),
@@ -85,7 +85,31 @@ describe('Pacing', () => {
         [...seen],
       )) seen.add(milestone)
     }
-    expect(seen.size).toBe(5)
+    expect(seen.size).toBe(4)
+  })
+
+  it('pays the Shallows nest boundary after its real waves are cleared', () => {
+    const localMap = createGloamwoodValleyMap(0x5a11e, async () => {}, undefined)
+    let localState = localMap.createCreatures()
+    const marker = localState.prey.find((prey) => (prey as GloamwoodValleyCreature).id === 'shallows-nest') as GloamwoodValleyCreature
+    const player = { x: marker.x, z: marker.z, alive: true }
+    let paid = false
+
+    for (let tick = 0; tick < 400 && !paid; tick += 1) {
+      const frame = localMap.stepCreatures(localState, 0.05, player, [], { allowNotice: false })
+      localState = {
+        ...frame.state,
+        prey: frame.state.prey.map((prey) => {
+          const creature = prey as GloamwoodValleyCreature
+          return creature.id === marker.id || creature.group === `${marker.id}-wave`
+            ? { ...creature, phase: 'dead' as const, health: 0 }
+            : creature
+        }),
+      }
+      paid = localMap.reachedMilestones(localState, player, []).includes('shallows-nest-cleared')
+    }
+
+    expect(paid).toBe(true)
   })
 })
 

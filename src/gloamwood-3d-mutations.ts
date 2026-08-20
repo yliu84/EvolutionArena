@@ -93,7 +93,7 @@ export interface GloamwoodMutationState {
  * headspace of reading telegraphs, so they pick fast and badly, which is exactly
  * what this layer exists not to be.
  *
- * The valley now supplies its own, in `gloamwood-valley-progression`: seven
+ * The valley now supplies its own, in `gloamwood-valley-progression`: five
  * boundaries, thinning towards the headwater so the run gets harder rather than
  * merely longer. The runtime records opaque ids and does not know what a wave
  * or a region is, so only the source changed - these four stay as the Gloamwood

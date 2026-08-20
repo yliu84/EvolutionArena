@@ -2582,3 +2582,49 @@ function terrainHeight(x, z) { ... }   // 纯函数，没有高度图
 - Review: `?debug=1&bossGate=1&bossIndex=0..2` evolves the valley player, then stands at the actual river-valley Boss and locks it; it no longer starts the retired Gloamwood arena Boss.
 - Mobile: compact landscape HUD retains health/status/lives/Biomass and moves Genes/milestone totals behind `More info`.
 - Evidence: targeted regressions passed; production build passed with the existing >500 kB legacy-chunk warning. See `docs/GOAL-6A-ACCEPTANCE.md` for the final browser and physical-device checklist.
+
+# 2026-08-20 · Goal 6B — River valley complete-run authority
+
+- Player-facing route: the two River Valley Boss gates now use the same authoritative progression state as their milestone rewards. Normal movement, enemy knockback and obstacle-correction motion are re-clamped at a shut choke, so a collision cannot bypass a Boss.
+- Completion: killing a regional Boss immediately records its matched milestone; killing the Headwater Boss now opens the actual victory result. The result explains the causal chain with hunted Fang/Carapace/Swarm Genes, selected mutations and an explicit probabilistic-weighting note.
+- Pacing: user set the natural-run target to about 20 minutes. The acceptance window is now 18–22 minutes, with five decision boundaries (one nest, two Bosses, two regional entries), not the obsolete seven-boundary/short-run accounting.
+- Scope: no map assets, environment rendering, character models or skills were changed.
+- Evidence: focused valley/run tests passed (48 assertions, including the real Shallows nest clear and Boss defeat → gate/terminal state), full Vitest passed (102 files / 944 tests), TypeScript/Vite production build passed and `git diff --check` passed. Desktop 1440×900 and simulated 844×390 landscape loaded the bare River Valley with `Mutations 0/5`, no horizontal overflow and zero browser console errors/warnings. The existing Vite legacy-bundle-size warning remains.
+- Next gate: user records one fresh no-skip natural Source Root completion (and ideally an external no-explanation run) to validate actual 18–22 minute pacing. See `docs/GOAL-6B-ACCEPTANCE.md`.
+
+# 2026-08-20 · Goal 6B — Headwater victory authority repair
+
+- Reported P1: the player could kill the Source Root and remain in the live valley. The original completion path incorrectly required the Boss's visual/body specification to resolve during the killing-contact frame.
+- Fix: any dead Headwater creature with `tier: 'boss'` now ends the run from the authoritative ecology state. The direct killing path remains for immediate feedback; a frame-level fallback catches every other death path. Victory clears keyboard and touch movement intent, freezes simulation and opens/focuses the result dialog.
+- Evidence: the regression asserts only a dead Headwater Boss can satisfy the terminal condition; focused valley/run tests passed (50 assertions), full Vitest passed (102 files / 945 tests), production build and `git diff --check` passed. Reloaded local River Valley has no console errors/warnings.
+
+# 2026-08-20 · Goal 6C — Elite and Boss threat readability
+
+- Player-visible result: combat tier no longer relies on “this health bar looks bigger.” Normal prey remains quiet; Elite targets gain a named affix, a geometric tier mark and a breathing hexagonal world seal; Boss targets gain a centred encounter plate that states the name, phase and health, plus an in-world spatial seal only.
+- Authority boundary: the new presentation reads existing creature `tier`, `elite.affix`, `bossPhase`, health and maximum health. It does not alter damage, collision, AI, progression, model loading, map art or controls. Every affix has an icon and localised label, so colour is not the sole signal.
+- Responsive rule: Bosses never create a duplicate world target plate, so the encounter plate remains the one stable health/status surface. Phone landscape retains a compact top plate outside the left HUD, right actions and bottom touch controls.
+- Evidence: added pure tier/shape/pulse contracts; full Vitest passed (103 files / 948 tests), TypeScript/Vite production build and `git diff --check` passed. River Valley Boss was browser-checked at 1440×900 and 844×390 landscape with no horizontal overflow or console warnings/errors.
+
+# 2026-08-20 · Goal 6C — Boss information hierarchy correction
+
+- Playtest report: the Boss presented its name, phase and health twice—once in
+  the dedicated top encounter plate and again above the model. The duplicate
+  world card covered the Boss silhouette and combat telegraphs.
+- Fix: Bosses now use the top encounter plate as their sole name/phase/health
+  surface. The in-world Boss seal remains for spatial identity and range
+  readability; normal and Elite locked-target plates are unchanged.
+- Guardrail: `gloamwoodUsesWorldTargetPlate()` makes this a typed presentation
+  policy rather than a fragile CSS-only suppression, with a regression proving
+  only Bosses opt out of the world target plate.
+
+# 2026-08-20 · Goal 6B / 6C — Owner acceptance and next gate
+
+- Acceptance: the project owner completed River Valley complete-run testing and
+  Elite/Boss presentation testing. Goal 6B's terminal result and Goal 6C's
+  single Boss information surface are accepted.
+- Honest carry-forward: no external no-explanation session or real-device
+  30-FPS measurement is being retroactively claimed. Both become explicit
+  Goal 7 evidence.
+- Next gate: Goal 7 tests build expression before content expansion—visible
+  mutation cause/effect, tactical route differences, and recorded 18–22 minute
+  external playtests—not additional skins, maps or skills.

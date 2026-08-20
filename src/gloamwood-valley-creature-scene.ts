@@ -4,6 +4,7 @@ import { clone as cloneSkinnedHierarchy } from 'three/examples/jsm/utils/Skeleto
 
 import { assetUrl } from './asset-url'
 import { ELITE_AFFIXES } from './elite-affixes'
+import { gloamwoodEliteThreatPulse } from './gloamwood-threat-presentation'
 import { GLOAMWOOD_PREY } from './gloamwood-3d-ecology'
 import {
   gloamwoodValleyBodyFor,
@@ -43,6 +44,8 @@ interface CreatureVisual {
   lastX: number
   lastZ: number
   walking?: boolean
+  eliteHalo?: THREE.Group
+  elapsedSeconds: number
 }
 
 export interface GloamwoodValleyCreatureScene {
@@ -106,8 +109,12 @@ export async function buildGloamwoodValleyCreatureScene(
     // boss. The ring says which affix, in the colour the affix layer already
     // carries - the player learns one mapping and it holds everywhere.
     if (creature.tier === 'elite' && creature.elite) {
+      const halo = new THREE.Group()
+      halo.name = 'EliteThreatHalo'
       const ring = new THREE.Mesh(
-        new THREE.RingGeometry(config.footprintRadius * 0.92, config.footprintRadius * 1.12, 36)
+        // A hexagonal seal is a shape cue as well as a colour cue. It remains
+        // legible for players who cannot distinguish the affix's hue.
+        new THREE.RingGeometry(config.footprintRadius * 0.92, config.footprintRadius * 1.12, 6)
           .rotateX(-Math.PI / 2),
         new THREE.MeshBasicMaterial({
           color: ELITE_AFFIXES[creature.elite.affix].color,
@@ -118,7 +125,34 @@ export async function buildGloamwoodValleyCreatureScene(
       )
       ring.position.y = 0.05
       ring.renderOrder = 2
-      holder.add(ring)
+      halo.add(ring)
+      const outer = new THREE.Mesh(
+        new THREE.RingGeometry(config.footprintRadius * 1.22, config.footprintRadius * 1.27, 6)
+          .rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({
+          color: ELITE_AFFIXES[creature.elite.affix].color,
+          transparent: true,
+          opacity: 0.26,
+          depthWrite: false,
+        }),
+      )
+      outer.position.y = 0.052
+      outer.rotation.y = Math.PI / 6
+      outer.renderOrder = 2
+      halo.add(outer)
+      holder.add(halo)
+      visuals.set(creature.id, {
+        root: holder,
+        mixer: new THREE.AnimationMixer(body),
+        clips: new Map(template.clips.map((clip) => [clip.name, clip])),
+        config,
+        lastX: creature.x,
+        lastZ: creature.z,
+        eliteHalo: halo,
+        elapsedSeconds: 0,
+      })
+      root.add(holder)
+      continue
     }
     root.add(holder)
     visuals.set(creature.id, {
@@ -128,6 +162,7 @@ export async function buildGloamwoodValleyCreatureScene(
       config,
       lastX: creature.x,
       lastZ: creature.z,
+      elapsedSeconds: 0,
     })
   }
 
@@ -152,6 +187,18 @@ export async function buildGloamwoodValleyCreatureScene(
         drawn += 1
         visual.root.position.set(creature.x, gloamwoodValleyCreatureHeight(creature), creature.z)
         visual.root.rotation.y = creature.facingRadians
+        visual.elapsedSeconds += delta
+        if (visual.eliteHalo) {
+          const pulse = gloamwoodEliteThreatPulse(visual.elapsedSeconds)
+          const scale = 1 + pulse * 0.055
+          visual.eliteHalo.scale.setScalar(scale)
+          for (const child of visual.eliteHalo.children) {
+            const material = (child as THREE.Mesh).material as THREE.MeshBasicMaterial
+            material.opacity = child === visual.eliteHalo.children[0]
+              ? 0.42 + pulse * 0.22
+              : 0.14 + pulse * 0.2
+          }
+        }
         // Measured, not assumed. A creature slowed by circling, by a knockback
         // or by the crowd around it moves at neither its spec speed nor zero,
         // and only the distance it actually covered knows which.

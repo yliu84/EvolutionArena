@@ -12,10 +12,9 @@
  * look around. The route now folds, the open ground sits at its corners, and
  * `s` - distance travelled along it - replaced x in every function here.
  *
- * The length still comes from the time budget in
- * `docs/design/maps/VALLEY-MAP-SPEC-V1.md`: 25 minutes minus what the
- * encounters cost leaves 485s of travel, which at PLAYER_SPEED 6.2 and 70% path
- * efficiency is about 1565 units of route.
+ * The route length originated in `docs/design/maps/VALLEY-MAP-SPEC-V1.md`.
+ * Its current roughly-twenty-minute target is governed by encounter and
+ * milestone pacing, not by changing this accepted map geometry.
  */
 
 import {

@@ -147,6 +147,7 @@ import {
 } from './gloamwood-input-settings'
 import { assetUrl } from './asset-url'
 import { ELITE_AFFIXES } from './elite-affixes'
+import { gloamwoodThreatMark, gloamwoodThreatTier, gloamwoodUsesWorldTargetPlate, type GloamwoodThreatTier } from './gloamwood-threat-presentation'
 import {
   createGloamwoodMeatDrop,
   gloamwoodMeatDropPosition,
@@ -173,10 +174,18 @@ import { gloamwoodBossFxFrame } from './gloamwood-boss-fx'
 import { createGloamwoodBossFxScene, type GloamwoodBossFxEntry } from './gloamwood-boss-fx-scene'
 import { gloamwoodValleyCorpseGone } from './gloamwood-valley-respawn'
 import {
-  GLOAMWOOD_VALLEY_LIFE_CAP,
+  createGloamwoodValleyProgression,
+  enterGloamwoodValleyRegion,
   GLOAMWOOD_VALLEY_MILESTONES,
+  gloamwoodValleyMilestone,
   gloamwoodValleyEvolutionDue,
+  gloamwoodValleyNextGate,
   gloamwoodValleyNextEvolution,
+  gloamwoodValleyTerminalBossDefeated,
+  holdGloamwoodValleyAtGate,
+  recordGloamwoodValleyMilestone,
+  resolveGloamwoodValleyBossDefeat,
+  type GloamwoodValleyProgression,
 } from './gloamwood-valley-progression'
 import { gloamwoodValleyCorridorAt, gloamwoodValleyRegionAt } from './gloamwood-valley-terrain'
 import {
@@ -468,6 +477,14 @@ interface DebugState {
     modifiers: GloamwoodEvolutionCandidate['modifiers'] | null
   }
   run: { phase: GloamwoodRunPhase; elapsedSeconds: number; deaths: number }
+  /** Live river-valley route state; null in the focused Gloamwood combat lab. */
+  valley: {
+    region: string | null
+    progress: string[]
+    entered: string[]
+    gateIndex: number | null
+    evolutionsTaken: number
+  } | null
   onboarding: { phase: GloamwoodOnboardingStep['phase']; step: number; totalSteps: number; title: string }
   settings: { paused: boolean; shake: boolean; flash: boolean; volume: number }
   audio: { lastEvent: GloamwoodSoundEvent | null; eventCount: number }
@@ -629,6 +646,13 @@ class Gloamwood3DHunt {
         playerAt: { x: GLOAMWOOD_BOSS_ARENA.playerX, z: GLOAMWOOD_BOSS_ARENA.playerZ },
       }),
     )
+  /**
+   * The map's progression is authoritative for gates and checkpoint lives.
+   * Mutation state records the same opaque milestone ids, but it cannot own
+   * these rules: a mutation offer being visible must never be what opens a
+   * gate. Keeping both states explicit makes that boundary inspectable.
+   */
+  private valleyProgression: GloamwoodValleyProgression = createGloamwoodValleyProgression()
   private readonly cameraOffset = new THREE.Vector3(
     this.map.cameraOffset.x,
     this.map.cameraOffset.y,
@@ -806,6 +830,7 @@ class Gloamwood3DHunt {
   private homeScreenTip?: HTMLElement
   private damageLayer?: HTMLElement
   private targetBar?: HTMLElement
+  private bossPlate?: HTMLElement
   /**
    * Floating damage readouts. Pure presentation: each entry is spawned from an
    * already-resolved authoritative result and never feeds back into combat.
@@ -1997,6 +2022,17 @@ class Gloamwood3DHunt {
     }
     this.updateMeat(delta)
     this.updateEliteBursts(delta)
+    // `resolvePlayerContact` normally ends the run on the killing hit. Keep
+    // the authoritative death-state check here as well: final completion must
+    // not depend on whether a particular model/body registry resolved during
+    // that contact frame.
+    if (this.resolveValleyTerminalBossDeath()) {
+      this.updateCamera(delta)
+      this.renderer.render(this.scene, this.camera)
+      this.updateHud()
+      this.updateDebug()
+      return
+    }
     this.updateValleyProgression()
     this.updateSessionLog()
     this.updateModelledBoss(delta)
@@ -2072,8 +2108,13 @@ class Gloamwood3DHunt {
       const stepped = gloamwoodMapStep(this.map, { x: this.playerRoot.position.x, z: this.playerRoot.position.z }, { x: next.x, z: next.z })
       next.x = stepped.x
       next.z = stepped.z
+      this.holdValleyGate(next)
       this.confineToArena(next)
       this.resolveObstacles(next)
+      // A solid tree/rock can push a player a fraction of a unit while it is
+      // resolving. Re-apply the route authority afterwards so collision cannot
+      // be used to slip through a shut regional gate.
+      if (this.holdValleyGate(next)) this.target.copy(next)
       this.playerRoot.position.x = next.x
       this.playerRoot.position.z = next.z
     }
@@ -2429,7 +2470,43 @@ class Gloamwood3DHunt {
         ? t('hud.msg.guardianDown', { name: t('creature.guardian') })
         : t('hud.msg.kill', { name: this.preyName(target), biomass: displayedBiomass, gene: this.geneName(target.kind) })
       this.lockedPreyId = this.nearestLivePrey()?.id ?? null
+      this.handleValleyBossDefeat(target)
     }
+  }
+
+  /**
+   * Region bosses are ordinary creatures for movement and damage, but their
+   * deaths are run boundaries. Previously that connection existed only in the
+   * map's pure milestone query: a gate could stay conceptually closed while a
+   * dead boss lay behind it, and the final boss never ended the run.
+   */
+  private handleValleyBossDefeat(target: GloamwoodNestPrey) {
+    if (this.map.id !== 'valley') return
+    const creature = target as GloamwoodValleyCreature
+    if (creature.tier !== 'boss') return
+    const resolution = resolveGloamwoodValleyBossDefeat(this.valleyProgression, creature.region)
+    const { milestone } = resolution
+    if (milestone) {
+      this.mutationState = recordGloamwoodMutationMilestone(this.mutationState, milestone.id)
+      this.logSession({ kind: 'phase', phase: milestone.id })
+    }
+    this.valleyProgression = resolution.state
+    if (resolution.victory) {
+      this.completeRunVictory()
+      return
+    }
+    this.combatMessage = t('hud.msg.valleyBossDown', { name: this.preyName(target) })
+  }
+
+  /** Safety net for every way a valley creature can become dead. */
+  private resolveValleyTerminalBossDeath() {
+    if (this.map.id !== 'valley' || this.runPhase !== 'hunt') return false
+    const terminalBoss = this.nestState.prey.find((prey) =>
+      gloamwoodValleyTerminalBossDefeated(prey as GloamwoodValleyCreature),
+    )
+    if (!terminalBoss) return false
+    this.completeRunVictory()
+    return true
   }
 
   private resolveBossContact(action: FormalHuntBasicAttackAction) {
@@ -2685,11 +2762,13 @@ class Gloamwood3DHunt {
         this.knockbackRecoverySeconds = GLOAMWOOD_PLAYER_HIT_REACTION.recoverySeconds
         this.playerRoot.position.x += dx * inverse * knockbackDistance
         this.playerRoot.position.z += dz * inverse * knockbackDistance
+        this.holdValleyGate(this.playerRoot.position)
         this.confineToArena(this.playerRoot.position)
         const held = this.map.confine(this.playerRoot.position.x, this.playerRoot.position.z)
         this.playerRoot.position.x = held.x
         this.playerRoot.position.z = held.z
         this.resolveObstacles(this.playerRoot.position)
+        this.holdValleyGate(this.playerRoot.position)
         // Knockback is a completed hit reaction, not a new move command. Reset
         // the click-to-move destination so the controller does not immediately
         // auto-run back into the attacker after every impact.
@@ -4009,18 +4088,20 @@ class Gloamwood3DHunt {
     )
     for (const milestone of reached) {
       this.mutationState = recordGloamwoodMutationMilestone(this.mutationState, milestone)
+      this.valleyProgression = recordGloamwoodValleyMilestone(this.valleyProgression, milestone)
+      const milestoneDefinition = gloamwoodValleyMilestone(milestone)
       // Entering a region tops the life budget back up rather than adding to
       // it. A region is a checkpoint: the player arrives at a new tier whole,
       // and a careful run through the shallows does not bank lives to spend
       // carelessly in the headwater.
-      if (milestone.endsWith('-entered')) {
-        this.livesRemaining = Math.max(this.livesRemaining, GLOAMWOOD_VALLEY_LIFE_CAP)
+      if (milestoneDefinition?.kind === 'region-entry') {
+        this.valleyProgression = enterGloamwoodValleyRegion(this.valleyProgression, milestoneDefinition.region)
+        this.livesRemaining = this.valleyProgression.livesRemaining
       }
       this.logSession({ kind: 'phase', phase: milestone })
     }
-    // The run's one evolution. On the Gloamwood it is paid out by clearing the
-    // nest; the valley has no nest to clear, so without this the player wears
-    // their starting body for the whole road.
+    // The valley's two form evolutions are biomass-paid. Without this bridge,
+    // a player could clear the whole road in their starting body.
     if (
       this.runPhase === 'hunt'
       && this.evolutionState.phase !== 'choosing'
@@ -4035,6 +4116,34 @@ class Gloamwood3DHunt {
       this.combatMessage = t('hud.msg.chooseEvolution')
       this.showEvolutionOverlay()
     }
+  }
+
+  /**
+   * Holds ordinary movement and knockback on the near side of an unopened
+   * regional gate. The pure valley progression module owns the geometry; this
+   * runtime method is deliberately only the one bridge from authoritative run
+   * state to a player position.
+   */
+  private holdValleyGate(position: THREE.Vector3) {
+    if (this.map.id !== 'valley') return false
+    const held = holdGloamwoodValleyAtGate(this.valleyProgression, position.x, position.z)
+    const blocked = Math.hypot(held.x - position.x, held.z - position.z) > 0.02
+    position.x = held.x
+    position.z = held.z
+    if (!blocked) return false
+    const gate = gloamwoodValleyNextGate(
+      this.valleyProgression,
+      gloamwoodValleyCorridorAt(position.x, position.z).s,
+    )
+    if (!gate) return false
+    const boss = this.nestState.prey.find((prey) => {
+      const creature = prey as GloamwoodValleyCreature
+      return creature.tier === 'boss' && creature.spawnS < gate.s && creature.phase !== 'dead'
+    })
+    this.combatMessage = boss
+      ? t('hud.msg.valleyGateHeld', { name: this.preyName(boss) })
+      : t('hud.msg.takeTheRoad')
+    return true
   }
 
   private updateSessionLog() {
@@ -4296,6 +4405,12 @@ class Gloamwood3DHunt {
     this.bossLocked = false
     this.primaryHeld = false
     this.keys.clear()
+    this.touchMoveX = 0
+    this.touchMoveZ = 0
+    this.movement.set(0, 0, 0)
+    this.target.copy(this.playerRoot.position)
+    this.moving = false
+    this.turning = false
     this.attackState = createFormalHuntBasicAttackState()
     this.cameraTrauma = 1
     this.playSound('victory')
@@ -4408,6 +4523,22 @@ class Gloamwood3DHunt {
     const params = new URLSearchParams(window.location.search)
     const debugSkip = params.get('evolutionGate') === '1' || params.get('bossGate') === '1'
     const pace = classifyGloamwoodRunPace(elapsedSeconds, debugSkip)
+    const valleyBuild = this.map.hasNest ? '' : [
+      '<section class="g3d-result-story">',
+      `<strong>${escapeGloamwoodHtml(t('result.valleyBuild'))}</strong>`,
+      `<div><b>${escapeGloamwoodHtml(t('result.valleyGenes'))}</b><span>${escapeGloamwoodHtml([
+        `${t('gene.fang')} ${this.nestState.genes.fang}`,
+        `${t('gene.shell')} ${this.nestState.genes.shell}`,
+        `${t('gene.swarm')} ${this.nestState.genes.swarm}`,
+      ].join(' · '))}</span></div>`,
+      `<small>${escapeGloamwoodHtml(t('result.valleyGeneReason'))}</small>`,
+      `<div><b>${escapeGloamwoodHtml(t('result.valleyMutations'))}</b><span>${escapeGloamwoodHtml(
+        this.mutationState.taken.length
+          ? this.mutationState.taken.map((id) => t(`mutation.${id}.name` as 'mutation.fang-thin-hide.name')).join(' · ')
+          : '—',
+      )}</span></div>`,
+      '</section>',
+    ].join('')
     this.resultOverlay.innerHTML = [
       '<div class="g3d-result-panel">',
       `<span>${victory ? t('result.victory') : t('result.defeat')}</span>`,
@@ -4437,6 +4568,7 @@ class Gloamwood3DHunt {
           `<div><dt>${t('hud.mutationTrack')}</dt><dd>${GLOAMWOOD_VALLEY_MILESTONES.filter((milestone) => this.mutationState.reached.includes(milestone.id)).length}/${GLOAMWOOD_VALLEY_MILESTONES.length}</dd></div>`,
         ]),
       '</dl>',
+      valleyBuild,
       `<button data-run-restart>${t('result.restart')}</button>`,
       '</div>',
     ].join('')
@@ -4518,6 +4650,18 @@ class Gloamwood3DHunt {
     this.hud = hud
     hud.dataset.mobileExpanded = 'false'
     this.container.append(hud)
+    const bossPlate = document.createElement('section')
+    bossPlate.className = 'g3d-boss-plate'
+    bossPlate.hidden = true
+    bossPlate.setAttribute('aria-live', 'polite')
+    bossPlate.innerHTML = [
+      '<span data-g3d-boss-badge></span>',
+      '<div><small data-g3d-boss-eyebrow></small><strong data-g3d-boss-name></strong></div>',
+      '<b data-g3d-boss-phase></b>',
+      '<i><em data-g3d-boss-fill></em></i>',
+    ].join('')
+    this.bossPlate = bossPlate
+    this.container.append(bossPlate)
     this.fullscreenToggle = hud.querySelector<HTMLButtonElement>('[data-g3d-fullscreen]') ?? undefined
     // Already launched from a home-screen icon: there is no browser chrome to hide.
     if (this.fullscreenToggle && gloamwoodStandaloneDisplay()) this.fullscreenToggle.hidden = true
@@ -4751,6 +4895,7 @@ class Gloamwood3DHunt {
     this.container.querySelector('.gloamwood-3d-touch')?.remove()
     this.damageNumbers.length = 0
     this.targetBar = undefined
+    this.bossPlate = undefined
     this.fullscreenToggle = undefined
 
     this.createHud()
@@ -4776,7 +4921,13 @@ class Gloamwood3DHunt {
     const bar = document.createElement('div')
     bar.className = 'g3d-target-bar'
     bar.hidden = true
-    bar.innerHTML = '<b data-g3d-target-name></b><i><em data-g3d-target-fill></em></i>'
+    bar.innerHTML = [
+      '<span class="g3d-target-mark" data-g3d-target-mark aria-hidden="true"></span>',
+      '<small data-g3d-target-tier></small>',
+      '<b data-g3d-target-name></b>',
+      '<em class="g3d-target-affix" data-g3d-target-affix></em>',
+      '<i><em data-g3d-target-fill></em></i>',
+    ].join('')
     this.targetBar = bar
     layer.append(bar)
   }
@@ -4787,27 +4938,86 @@ class Gloamwood3DHunt {
     const boss = this.bossActive() && this.bossLocked
     const prey = boss ? null : this.lockedPrey()
     const live = boss
-      ? { x: this.bossState.x, z: this.bossState.z, top: GLOAMWOOD_BOSS.bodyRadius * 1.9, health: this.bossState.health, max: this.bossState.maxHealth, name: t('creature.boss') }
+      ? {
+          x: this.bossState.x, z: this.bossState.z, top: GLOAMWOOD_BOSS.bodyRadius * 1.9,
+          health: this.bossState.health, max: this.bossState.maxHealth, name: t('creature.boss'),
+          tier: 'boss' as GloamwoodThreatTier, affix: undefined, phase: this.bossState.phase,
+        }
       : prey && prey.phase !== 'dead'
-        ? { x: prey.x, z: prey.z, top: gloamwoodPreyBodyRadius(prey) * 1.7, health: prey.health, max: prey.maxHealth, name: this.preyName(prey) }
+        ? (() => {
+            const creature = prey as GloamwoodValleyCreature
+            const valleyBoss = gloamwoodValleyBossSpecFor(creature)
+            return {
+              x: prey.x, z: prey.z, top: gloamwoodPreyBodyRadius(prey) * 1.7,
+              health: prey.health, max: prey.maxHealth, name: this.preyName(prey),
+              tier: gloamwoodThreatTier({ tier: creature.tier, eliteAffix: creature.elite?.affix, boss: Boolean(valleyBoss) }),
+              affix: creature.elite?.affix,
+              phase: creature.bossPhase ?? 1,
+            }
+          })()
         : null
     if (!live) {
+      bar.hidden = true
+      this.updateBossPlate(null)
+      return
+    }
+    this.updateBossPlate(live.tier === 'boss' ? live : null)
+    // Boss identity, phase and health deliberately live in one stable place:
+    // the encounter plate. The ground seal still marks the boss in-world, but
+    // a duplicate card over the model hides telegraphs and competes with hits.
+    if (!gloamwoodUsesWorldTargetPlate(live.tier)) {
       bar.hidden = true
       return
     }
     const projected = new THREE.Vector3(live.x, live.top, live.z).project(this.camera)
     if (projected.z > 1) {
       bar.hidden = true
+      this.updateBossPlate(null)
       return
     }
     bar.hidden = false
+    bar.dataset.tier = live.tier
     const x = (projected.x * 0.5 + 0.5) * this.container.clientWidth
     const y = (-projected.y * 0.5 + 0.5) * this.container.clientHeight
     bar.style.transform = `translate(-50%, -100%) translate(${x}px, ${y}px)`
     const name = bar.querySelector<HTMLElement>('[data-g3d-target-name]')
     if (name && name.textContent !== live.name) name.textContent = live.name
+    const mark = bar.querySelector<HTMLElement>('[data-g3d-target-mark]')
+    if (mark) mark.textContent = gloamwoodThreatMark(live.tier)
+    const tier = bar.querySelector<HTMLElement>('[data-g3d-target-tier]')
+    if (tier) tier.textContent = live.tier === 'elite' ? t('threat.elite.label') : ''
+    const affix = bar.querySelector<HTMLElement>('[data-g3d-target-affix]')
+    if (affix) affix.textContent = live.tier === 'elite' && live.affix
+      ? `${ELITE_AFFIXES[live.affix].icon} ${t(`elite.affix.${live.affix}` as 'elite.affix.berserker')}`
+      : ''
     const fill = bar.querySelector<HTMLElement>('[data-g3d-target-fill]')
     if (fill) fill.style.width = `${Math.max(0, Math.min(1, live.health / Math.max(1, live.max))) * 100}%`
+  }
+
+  private updateBossPlate(boss: {
+    health: number
+    max: number
+    name: string
+    phase: 1 | 2
+  } | null) {
+    const plate = this.bossPlate
+    if (!plate) return
+    if (!boss) {
+      plate.hidden = true
+      return
+    }
+    plate.hidden = false
+    const setText = (selector: string, value: string) => {
+      const element = plate.querySelector<HTMLElement>(selector)
+      if (element && element.textContent !== value) element.textContent = value
+    }
+    setText('[data-g3d-boss-badge]', gloamwoodThreatMark('boss'))
+    setText('[data-g3d-boss-eyebrow]', t('threat.boss.eyebrow'))
+    setText('[data-g3d-boss-name]', boss.name)
+    setText('[data-g3d-boss-phase]', t('threat.boss.phase', { phase: boss.phase }))
+    const fill = plate.querySelector<HTMLElement>('[data-g3d-boss-fill]')
+    if (fill) fill.style.width = `${Math.max(0, Math.min(1, boss.health / Math.max(1, boss.max))) * 100}%`
+    plate.dataset.phase = String(boss.phase)
   }
 
   /**
@@ -5200,8 +5410,8 @@ class Gloamwood3DHunt {
     setText('[data-g3d-biomass]', nextEvolution
       ? `${this.nestState.biomass} / ${nextEvolution.target}`
       : `${this.nestState.biomass}`)
-    // And the milestone track, which existed entirely out of sight: seven of
-    // them on this map, and a run that ends in the shallows collects none.
+    // And the milestone track, which existed entirely out of sight: five
+    // meaningful boundaries show whether a short run actually progressed.
     const progressCell = this.hud.querySelector<HTMLElement>('[data-g3d-mutation-progress-cell]')
     if (progressCell) {
       const total = this.map.hasNest ? 0 : GLOAMWOOD_VALLEY_MILESTONES.length
@@ -5429,6 +5639,17 @@ class Gloamwood3DHunt {
         elapsedSeconds: round(this.runElapsedSeconds()),
         deaths: this.runDeaths,
       },
+      valley: this.map.id === 'valley' ? (() => {
+        const corridor = gloamwoodValleyCorridorAt(this.playerRoot.position.x, this.playerRoot.position.z)
+        const gate = gloamwoodValleyNextGate(this.valleyProgression, corridor.s)
+        return {
+          region: gloamwoodValleyRegionAt(corridor.s)?.id ?? null,
+          progress: [...this.valleyProgression.reached],
+          entered: [...this.valleyProgression.entered],
+          gateIndex: gate?.index ?? null,
+          evolutionsTaken: this.evolutionsTaken,
+        }
+      })() : null,
       onboarding: (() => {
         const step = this.map.hasNest ? this.onboardingStep() : this.valleyOnboardingStep()
         if (!step) return { phase: 'complete' as const, step: 2, totalSteps: 2, title: '' }

@@ -31,21 +31,22 @@ export interface GloamwoodValleyMilestone {
    *
    * Nominal. The trigger is the event, not the position - a nest sits wherever
    * its seed put it. This is here so the *pacing* can be checked, which is the
-   * property the producer actually specified: about three minutes apart, and
+   * property the producer actually specified: enough space for a meaningful
+   * encounter before the next choice, and
    * thinning out as the run goes on.
    */
   s: number
 }
 
 /**
- * The seven boundaries that pay out a mutation.
+ * The five boundaries that pay out a mutation.
  *
- * Spacing is the design. The producer's note was "about three minutes, and
- * harder to come by later", so the offers are dense through the shallows and
- * the gorge and then stop: the whole headwater, the longest region in the
- * valley, pays out exactly once, at its boss. The last stretch is the longest
- * a player ever goes without one, which is what makes the run get harder rather
- * than merely longer.
+ * Spacing is the design. The producer asked for an approximately twenty-minute
+ * complete run, so the offers are dense through the shallows and
+ * the gorge and then stop: entering the headwater pays out the final choice,
+ * leaving its long climb and final Boss to test the build the player made. Five
+ * decisions leave room for exploration, fights and recovery in an 18–22 minute
+ * acceptance window; seven were an old estimate disguised as more variety.
  *
  * Branch elites deliberately do not pay out. They are worth the walk for what
  * they drop, and making exploration also the fastest route to mutations would
@@ -55,10 +56,8 @@ export const GLOAMWOOD_VALLEY_MILESTONES: readonly GloamwoodValleyMilestone[] = 
   { id: 'shallows-nest-cleared', region: 'shallows', kind: 'nest', s: 200 },
   { id: 'shallows-boss-defeated', region: 'shallows', kind: 'boss', s: GLOAMWOOD_VALLEY.bossSlots[0] },
   { id: 'gorge-entered', region: 'gorge', kind: 'region-entry', s: GLOAMWOOD_VALLEY.chokes[0] },
-  { id: 'gorge-nest-cleared', region: 'gorge', kind: 'nest', s: 640 },
   { id: 'gorge-boss-defeated', region: 'gorge', kind: 'boss', s: GLOAMWOOD_VALLEY.bossSlots[1] },
   { id: 'headwater-entered', region: 'headwater', kind: 'region-entry', s: GLOAMWOOD_VALLEY.chokes[1] },
-  { id: 'headwater-boss-defeated', region: 'headwater', kind: 'boss', s: GLOAMWOOD_VALLEY.bossSlots[2] },
 ]
 
 /**
@@ -70,7 +69,7 @@ export const GLOAMWOOD_VALLEY_MILESTONES: readonly GloamwoodValleyMilestone[] = 
  * the headwater.
  */
 /**
- * The biomass that earns the run's one evolution.
+ * The biomass that earns the run's form evolutions.
  *
  * The Gloamwood hands it over when the nest is cleared, which is the only
  * structure it has. The valley has no nest to clear - it is a road - so it was
@@ -152,6 +151,49 @@ export function createGloamwoodValleyProgression(): GloamwoodValleyProgression {
 
 export function gloamwoodValleyMilestone(id: string) {
   return GLOAMWOOD_VALLEY_MILESTONES.find((entry) => entry.id === id) ?? null
+}
+
+/** The boundary paid by a regional Boss; the Headwater Boss ends the run. */
+export function gloamwoodValleyBossMilestone(region: string) {
+  return GLOAMWOOD_VALLEY_MILESTONES.find((entry) => entry.kind === 'boss' && entry.region === region) ?? null
+}
+
+export function gloamwoodValleyTerminalRegion(region: string) {
+  return region === 'headwater'
+}
+
+/**
+ * The end condition is combat state, not an authored body lookup.
+ *
+ * If a final Boss has died, its model or animation registry must never be able
+ * to leave the player in a supposedly completed run.
+ */
+export function gloamwoodValleyTerminalBossDefeated(creature: {
+  tier?: string
+  region?: string
+  phase?: string
+}) {
+  return creature.tier === 'boss'
+    && creature.phase === 'dead'
+    && gloamwoodValleyTerminalRegion(creature.region ?? '')
+}
+
+/**
+ * Applies the progression effect of a regional Boss death exactly once.
+ *
+ * Earlier bosses unlock their matching choke; the Headwater Boss ends the run
+ * without accidentally paying a post-finale mutation reward.
+ */
+export function resolveGloamwoodValleyBossDefeat(
+  state: GloamwoodValleyProgression,
+  region: string,
+) {
+  const milestone = gloamwoodValleyBossMilestone(region)
+  return {
+    state: milestone ? recordGloamwoodValleyMilestone(state, milestone.id) : state,
+    milestone,
+    victory: gloamwoodValleyTerminalRegion(region),
+  }
 }
 
 export function recordGloamwoodValleyMilestone(

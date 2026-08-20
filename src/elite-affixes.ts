@@ -7,27 +7,29 @@ export interface EliteAffixDefinition {
   name: string
   description: string
   color: number
+  /** A compact non-colour cue used by the elite nameplate. */
+  icon: string
 }
 
 export const ELITE_AFFIXES: Record<EliteAffixId, EliteAffixDefinition> = {
   berserker: {
-    id: 'berserker', name: '狂暴', color: 0xff5c54,
+    id: 'berserker', name: '狂暴', icon: '▲', color: 0xff5c54,
     description: '生命低于一半时，移动、攻击频率和伤害提高',
   },
   siphon: {
-    id: 'siphon', name: '吸血', color: 0xff6f91,
+    id: 'siphon', name: '吸血', icon: '◒', color: 0xff6f91,
     description: '对玩家造成伤害时恢复生命',
   },
   brood: {
-    id: 'brood', name: '分裂', color: 0x74e8d1,
+    id: 'brood', name: '分裂', icon: '✣', color: 0x74e8d1,
     description: '生命首次降至一半时产生两只弱化分体',
   },
   barrier: {
-    id: 'barrier', name: '护盾', color: 0x7acbff,
+    id: 'barrier', name: '护盾', icon: '⬡', color: 0x7acbff,
     description: '拥有一层可被击破的额外护盾',
   },
   volatile: {
-    id: 'volatile', name: '毒爆', color: 0xa7ef62,
+    id: 'volatile', name: '毒爆', icon: '✹', color: 0xa7ef62,
     description: '死亡后留下短暂预警的毒素爆发',
   },
 }

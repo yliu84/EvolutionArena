@@ -1024,6 +1024,9 @@ body.is-gloamwood-3d * {
   pointer-events: none;
 }
 .g3d-target-bar[hidden] { display: none; }
+.g3d-target-mark,
+.g3d-target-tier,
+.g3d-target-affix { display: none; }
 .g3d-target-bar b {
   display: block;
   margin-bottom: 4px;
@@ -1042,10 +1045,94 @@ body.is-gloamwood-3d * {
   background: rgba(6, 12, 8, .78);
 }
 .g3d-target-bar em { display: block; height: 100%; background: linear-gradient(90deg, #d8663f, #e9b95c); transition: width .12s linear; }
+.g3d-target-bar[data-tier="elite"] {
+  width: 138px;
+  padding: 5px 7px 12px;
+  border: 1px solid rgba(136, 216, 190, .58);
+  border-radius: 6px;
+  background: linear-gradient(125deg, rgba(8, 28, 23, .83), rgba(19, 47, 39, .63));
+  box-shadow: 0 0 0 1px rgba(20, 8, 4, .38), 0 10px 25px rgba(0, 0, 0, .27);
+}
+.g3d-target-bar[data-tier="elite"] .g3d-target-mark,
+.g3d-target-bar[data-tier="elite"] .g3d-target-tier,
+.g3d-target-bar[data-tier="elite"] .g3d-target-affix { display: block; }
+.g3d-target-bar[data-tier="elite"] .g3d-target-mark {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #b9ead0;
+  border-radius: 3px;
+  color: #e6f8d8;
+  background: #153f32;
+  font-size: 12px;
+  line-height: 17px;
+  transform: translateX(-50%) rotate(45deg);
+  box-shadow: 0 3px 9px rgba(0, 0, 0, .35);
+}
+.g3d-target-bar[data-tier="elite"] .g3d-target-mark::first-letter { display: inline-block; transform: rotate(-45deg); }
+.g3d-target-bar[data-tier="elite"] .g3d-target-tier {
+  color: #a9e7c4;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .18em;
+}
+.g3d-target-bar[data-tier="elite"] b { margin: 2px 0 1px; color: #fff0ca; font-size: 12px; }
+.g3d-target-bar[data-tier="elite"] .g3d-target-affix { margin: 0 0 4px; color: #bdebd5; font-size: 9px; font-style: normal; font-weight: 800; letter-spacing: .04em; }
+.g3d-target-bar[data-tier="elite"] i { height: 7px; border-color: rgba(162, 232, 193, .42); }
+.g3d-target-bar[data-tier="elite"] i em { background: linear-gradient(90deg, #43a77e, #c7dd80); }
+/* One boss plate, only while the player has it locked. It makes an encounter
+   read as a set-piece without permanently occupying the centre of the map. */
+.g3d-boss-plate {
+  position: absolute;
+  top: max(18px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  column-gap: 9px;
+  align-items: center;
+  width: min(430px, calc(100% - 660px));
+  min-width: 260px;
+  padding: 8px 14px 10px;
+  border: 1px solid rgba(236, 180, 87, .72);
+  border-radius: 3px;
+  color: #f7e8c1;
+  background: linear-gradient(135deg, rgba(57, 14, 17, .91), rgba(18, 18, 16, .86));
+  box-shadow: inset 0 0 0 1px rgba(117, 31, 27, .52), 0 14px 38px rgba(0, 0, 0, .36), 0 0 26px rgba(185, 60, 36, .18);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+.g3d-boss-plate[hidden] { display: none; }
+.g3d-boss-plate > span { color: #f3c26a; font-size: 20px; text-shadow: 0 0 12px rgba(245, 144, 61, .55); }
+.g3d-boss-plate > div { min-width: 0; }
+.g3d-boss-plate small { display: block; overflow: hidden; color: #d99b56; font-size: 8px; font-weight: 900; letter-spacing: .17em; text-overflow: ellipsis; white-space: nowrap; }
+.g3d-boss-plate strong { display: block; overflow: hidden; margin-top: 2px; color: #fff0c8; font-size: 15px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+.g3d-boss-plate > b { color: #efc984; font-size: 9px; font-variant-numeric: tabular-nums; letter-spacing: .1em; white-space: nowrap; }
+.g3d-boss-plate > i { grid-column: 1 / -1; display: block; height: 7px; margin-top: 8px; overflow: hidden; border: 1px solid rgba(245, 200, 110, .5); border-radius: 2px; background: rgba(0, 0, 0, .52); }
+.g3d-boss-plate > i em { display: block; width: 100%; height: 100%; background: linear-gradient(90deg, #8e2f31, #da8140 62%, #ffe394); transition: width .14s linear; }
+.g3d-boss-plate[data-phase="2"] { border-color: rgba(255, 109, 79, .86); box-shadow: inset 0 0 0 1px rgba(154, 38, 31, .65), 0 14px 38px rgba(0, 0, 0, .36), 0 0 32px rgba(226, 62, 39, .31); }
+.g3d-boss-plate[data-phase="2"] > i em { background: linear-gradient(90deg, #c32f31, #ff7948 62%, #ffd782); }
 @media (max-width: 900px) and (orientation: landscape), (max-height: 520px) and (orientation: landscape) {
   .g3d-target-bar { width: 92px; padding-bottom: 9px; }
   .g3d-target-bar b { font-size: 9px; }
   .g3d-target-bar i { height: 5px; }
+  .g3d-target-bar[data-tier="elite"] { width: 108px; padding: 4px 5px 8px; }
+  .g3d-target-bar[data-tier="elite"] b { font-size: 10px; }
+  .g3d-target-bar[data-tier="elite"] .g3d-target-affix { font-size: 7px; }
+  .g3d-boss-plate {
+    top: max(7px, env(safe-area-inset-top));
+    width: min(250px, calc(100% - 258px));
+    min-width: 182px;
+    padding: 5px 8px 6px;
+    column-gap: 5px;
+  }
+  .g3d-boss-plate > span { font-size: 15px; }
+  .g3d-boss-plate small { font-size: 6px; }
+  .g3d-boss-plate strong { font-size: 10px; }
+  .g3d-boss-plate > b { font-size: 7px; }
+  .g3d-boss-plate > i { height: 4px; margin-top: 4px; }
 }
 
 /* A row across the top rather than one block in the corner. The panels below
@@ -1303,6 +1390,12 @@ body.is-gloamwood-3d * {
 .g3d-result-panel dl div { padding: 12px 7px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 7px; background: rgba(255, 255, 255, .035); }
 .g3d-result-panel dt { color: #849487; font-size: 9px; }
 .g3d-result-panel dd { margin: 5px 0 0; color: #f0d382; font-size: 15px; font-weight: 800; }
+.g3d-result-story { display: grid; gap: 8px; margin: -8px 0 22px; padding: 13px 14px; border: 1px solid rgba(109, 199, 164, .24); border-radius: 8px; text-align: left; background: linear-gradient(125deg, rgba(60, 128, 105, .13), rgba(255, 255, 255, .025)); }
+.g3d-result-story > strong { color: #9fe0bf; font-size: 11px; letter-spacing: .02em; }
+.g3d-result-story > div { display: grid; grid-template-columns: minmax(76px, auto) 1fr; gap: 10px; align-items: baseline; }
+.g3d-result-story b { color: #d9c278; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.g3d-result-story span { color: #e4ece1; font-size: 11px; line-height: 1.35; }
+.g3d-result-story small { color: #9fae9f; font-size: 9px; line-height: 1.45; }
 .g3d-result-panel button { min-width: 210px; min-height: 48px; border: 1px solid rgba(239, 202, 105, .7); border-radius: 6px; color: #fff4cf; background: linear-gradient(180deg, #75542c, #50351f); font-weight: 900; cursor: pointer; }
 
 @media (hover: none), (pointer: coarse), (max-height: 520px) {
@@ -1554,6 +1647,9 @@ body.is-gloamwood-3d * {
 @media (max-width: 900px), (max-height: 520px) {
   .g3d-result-panel { padding: 18px; }
   .g3d-result-panel dl { grid-template-columns: repeat(2, 1fr); margin: 14px 0; }
+  .g3d-result-story { gap: 6px; margin: -4px 0 14px; padding: 9px 10px; }
+  .g3d-result-story > div { grid-template-columns: 68px 1fr; gap: 7px; }
+  .g3d-result-story span { font-size: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

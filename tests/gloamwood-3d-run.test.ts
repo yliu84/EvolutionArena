@@ -7,12 +7,12 @@ import {
 } from '../src/gloamwood-3d-run'
 
 describe('Gloamwood complete-run pacing', () => {
-  it('uses the requested inclusive 8–13 minute acceptance window', () => {
-    expect(GLOAMWOOD_RUN_PACING).toEqual({ targetMinimumSeconds: 480, targetMaximumSeconds: 780 })
-    expect(classifyGloamwoodRunPace(479).pace).toBe('fast')
-    expect(classifyGloamwoodRunPace(480).pace).toBe('target')
-    expect(classifyGloamwoodRunPace(780).pace).toBe('target')
-    expect(classifyGloamwoodRunPace(781).pace).toBe('slow')
+  it('uses the requested inclusive roughly-20-minute acceptance window', () => {
+    expect(GLOAMWOOD_RUN_PACING).toEqual({ targetMinimumSeconds: 1080, targetMaximumSeconds: 1320 })
+    expect(classifyGloamwoodRunPace(1079).pace).toBe('fast')
+    expect(classifyGloamwoodRunPace(1080).pace).toBe('target')
+    expect(classifyGloamwoodRunPace(1320).pace).toBe('target')
+    expect(classifyGloamwoodRunPace(1321).pace).toBe('slow')
   })
 
   it('never treats a debug skip as natural-run timing evidence', () => {
@@ -23,7 +23,7 @@ describe('Gloamwood complete-run pacing', () => {
 describe('Who the pacing readout is for', () => {
   it('stays hidden unless it is asked for', () => {
     // It is a development instrument, not player copy: "this run does not count
-    // toward the 8-13 minute acceptance" is a note to the producer about a
+    // toward the 18-22 minute acceptance" is a note to the producer about a
     // gate. Goal 5 needs three English-speaking testers with no instructions,
     // and they were being shown an untranslated internal acceptance note on the
     // death screen.
