@@ -175,6 +175,10 @@ const STRINGS = {
     en: 'Nest broken · the road is yours again',
     zh: '巢穴清空 · 路重新属于你',
   },
+  'hud.msg.eliteBurst': {
+    en: 'It is bursting · get out of the ring',
+    zh: '它要爆了 · 退出圈外',
+  },
   'hud.msg.blockedFront': {
     en: 'Blocked by its plates · strike from the side',
     zh: '正面被甲壳弹开 · 绕到侧面或背后',

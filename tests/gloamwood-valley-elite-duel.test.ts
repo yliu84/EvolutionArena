@@ -9,6 +9,7 @@ import {
   type GloamwoodNestPrey,
 } from '../src/gloamwood-3d-ecology'
 import { createGloamwoodValleyCreatures } from '../src/gloamwood-valley-creatures'
+import { gloamwoodEliteDeathBurst } from '../src/gloamwood-elite'
 import { CORAL_GECKO_PRESENTATION } from '../src/quality-3d-character-presentation'
 
 /**
@@ -150,5 +151,38 @@ describe('Why it did not feel avoidable', () => {
     const spec = GLOAMWOOD_PREY[elite.kind]
     expect(spec.contactSeconds).toBeGreaterThan(0)
     expect(spec.contactSeconds).toBeLessThan(spec.strikeSeconds)
+  })
+})
+
+describe('The Volatile elite leaves something behind', () => {
+  it('is the affix the first two elites actually carry', () => {
+    // Which is why it mattered that nothing read it: the damage gate computed
+    // the burst, returned it, and the runtime dropped it. Both of the first two
+    // elites were a bigger health bar and nothing else.
+    const elites = createGloamwoodValleyCreatures(0x5a11e)
+      .filter((creature) => creature.tier === 'elite')
+      .sort((a, b) => a.spawnS - b.spawnS)
+    expect(elites[0].elite?.affix).toBe('volatile')
+  })
+
+  it('reaches further than the creature it comes from, and less far than a boss', () => {
+    // A parting shot is worth stepping away from. It must not out-reach the
+    // region boss it leads to.
+    const burst = gloamwoodEliteDeathBurst({ affix: 'volatile', shield: 0, broodTriggered: false }, 0, 0)!
+    expect(burst.radius).toBeGreaterThan(gloamwoodPreyAttackDistance(elite, 1.28) - 1.28)
+    expect(burst.radius).toBeLessThan(4.3)
+  })
+
+  it('gives long enough to walk out of it', () => {
+    // At the player's 6.2 units a second, the telegraph has to cover the gap
+    // between standing on the corpse and standing outside the ring.
+    const burst = gloamwoodEliteDeathBurst({ affix: 'volatile', shield: 0, broodTriggered: false }, 0, 0)!
+    expect(burst.telegraphSeconds * 6.2).toBeGreaterThan(burst.radius)
+  })
+
+  it('leaves nothing behind for any other affix', () => {
+    for (const affix of ['berserker', 'siphon', 'brood', 'barrier'] as const) {
+      expect(gloamwoodEliteDeathBurst({ affix, shield: 0, broodTriggered: false }, 0, 0)).toBeNull()
+    }
   })
 })

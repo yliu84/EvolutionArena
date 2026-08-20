@@ -145,6 +145,8 @@ import {
   type GloamwoodInputBindings,
 } from './gloamwood-input-settings'
 import { assetUrl } from './asset-url'
+import { ELITE_AFFIXES } from './elite-affixes'
+import { gloamwoodEliteBurstHits, type GloamwoodEliteBurst } from './gloamwood-elite'
 import { gloamwoodOccludesCameraView } from './gloamwood-camera-occlusion'
 import { createGloamwoodMap, gloamwoodMapStep, type GloamwoodMapContract } from './gloamwood-map'
 import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
@@ -697,6 +699,20 @@ class Gloamwood3DHunt {
   private damageReduction = 0
   /** Points taken off every blow, earned by growing rather than by route. */
   private flatArmour = 0
+  /**
+   * Toxic bursts left by dying elites, waiting to go off.
+   *
+   * The affix computed its burst, the damage gate returned it, and nothing read
+   * it - so the Volatile elite, which is the affix both of the first two carry,
+   * did precisely nothing. Its whole design is a parting shot you have to step
+   * away from, and it was a bigger health bar.
+   */
+  private eliteBursts: Array<{
+    burst: GloamwoodEliteBurst
+    elapsed: number
+    resolved: boolean
+    mesh: THREE.Mesh
+  }> = []
   private biomassMultiplier = 1
   private killHeal = 0
   private mutationState: GloamwoodMutationState = createGloamwoodMutationState('gloamwood-first-run')
@@ -1937,6 +1953,7 @@ class Gloamwood3DHunt {
       this.mixer?.update(delta)
       this.applySecondaryMotion()
     }
+    this.updateEliteBursts(delta)
     this.updateValleyProgression()
     this.updateSessionLog()
     this.updateModelledBoss(delta)
@@ -2361,6 +2378,7 @@ class Gloamwood3DHunt {
     // sharpest decision in the game - and a player who has not been told simply
     // reads it as "my attack is weak now" and grinds through fifteen hits.
     if (damage.blocked && !damage.killed) this.combatMessage = t('hud.msg.blockedFront')
+    if (damage.burst) this.spawnEliteBurst(damage.burst)
     if (damage.killed) {
       this.combatMessage = target.id === GLOAMWOOD_NEST_GUARDIAN.id
         ? t('hud.msg.guardianDown', { name: t('creature.guardian') })
@@ -3185,6 +3203,63 @@ class Gloamwood3DHunt {
     }
   }
 
+  /**
+   * Marks the ground a dying elite is about to poison.
+   *
+   * Drawn at the radius the player's *body* crosses, not the one their centre
+   * does - the hit is a centre-to-centre test, and a disc drawn at the full
+   * radius covers the player's own body as well, which is what made the prey
+   * telegraph read as an area attack the size of a house.
+   */
+  private spawnEliteBurst(burst: GloamwoodEliteBurst) {
+    const drawn = Math.max(0.3, burst.radius - gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily))
+    const mesh = new THREE.Mesh(
+      new THREE.RingGeometry(drawn * 0.34, drawn, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({
+        color: ELITE_AFFIXES.volatile.color,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      }),
+    )
+    mesh.position.set(burst.x, this.map.height(burst.x, burst.z) + 0.07, burst.z)
+    mesh.renderOrder = 3
+    this.scene.add(mesh)
+    this.eliteBursts.push({ burst, elapsed: 0, resolved: false, mesh })
+    this.combatMessage = t('hud.msg.eliteBurst')
+  }
+
+  private updateEliteBursts(delta: number) {
+    for (const entry of [...this.eliteBursts]) {
+      entry.elapsed += delta
+      const material = entry.mesh.material as THREE.MeshBasicMaterial
+      const winding = Math.min(1, entry.elapsed / Math.max(0.001, entry.burst.telegraphSeconds))
+      if (!entry.resolved) {
+        material.opacity = 0.2 + winding * 0.62
+        if (entry.elapsed >= entry.burst.telegraphSeconds) {
+          entry.resolved = true
+          // The authority decides. Presentation has only ever drawn where.
+          if (gloamwoodEliteBurstHits(entry.burst, this.playerRoot.position.x, this.playerRoot.position.z)) {
+            this.takePlayerDamage(entry.burst.damage)
+            this.playSound('player-hit')
+          }
+          this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.5)
+        }
+        continue
+      }
+      // Flares and fades over its own length, so "gone" means it is over -
+      // the same rule the creature telegraphs follow.
+      const after = entry.elapsed - entry.burst.telegraphSeconds
+      material.opacity = Math.max(0, 0.95 * (1 - after / GLOAMWOOD_ELITE_BURST_FADE))
+      if (after >= GLOAMWOOD_ELITE_BURST_FADE) {
+        this.scene.remove(entry.mesh)
+        entry.mesh.geometry.dispose()
+        material.dispose()
+        this.eliteBursts = this.eliteBursts.filter((other) => other !== entry)
+      }
+    }
+  }
+
   private updateDust(delta: number) {
     for (const particle of this.dustParticles) {
       if (!particle.active) continue
@@ -3931,6 +4006,10 @@ class Gloamwood3DHunt {
     }
     this.evolutionsTaken += 1
     this.applyProgressionModifiers()
+    // A new body arrives whole. Twice a run, earned with biomass, and the
+    // moment it lands is the one the run is named after - finishing an
+    // evolution on eleven health is the opposite of what it is for.
+    this.playerCombat = { ...this.playerCombat, health: this.playerCombat.maxHealth }
     this.attackState = createFormalHuntBasicAttackState()
     this.attackUntil = 0
     this.characterRoot.position.set(0, 0, 0)
@@ -5252,6 +5331,9 @@ export function gloamwoodPlayerHitKnockbackDistance(
  * over 1590 units, so a second press of Tab jumped to something a hundred metres
  * away and the lock read as lost for good.
  */
+/** How long a spent burst takes to clear, so "gone" means the ground is safe. */
+const GLOAMWOOD_ELITE_BURST_FADE = 0.4
+
 export const GLOAMWOOD_LOCK_RANGE = 22
 
 /**
