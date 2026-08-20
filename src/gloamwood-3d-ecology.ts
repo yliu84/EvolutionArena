@@ -160,7 +160,17 @@ export const GLOAMWOOD_PREY: Record<GloamwoodPreyKind, GloamwoodPreySpec> = {
   shell: {
     displayName: '岩盾甲虫', gene: 'shell', maxHealth: 92, moveSpeed: 1.48, turnSpeed: 3.1,
     stopRange: 2.18, attackRange: 2.62, telegraphSeconds: 1.05, contactSeconds: 0.18,
-    strikeSeconds: 0.48, recoverSeconds: 1.08, stunSeconds: 0.18, damage: 20, knockback: 1.75, biomass: 14,
+    // 14, not 20. The shell is the wall: 92 health, a 72% frontal reduction
+    // nothing else has, and the heaviest knockback in the game. At 20 it was
+    // also the hardest hitter, which left the fang - the family whose whole
+    // identity is hitting hard and fast - doing 40% less per blow than the tank
+    // it stands next to, and took a fifth of the player's bar per landed hit.
+    //
+    // Still above the fang's 12, because its 1.05s wind-up is the most readable
+    // telegraph in the game and a blow that slow has to be worth landing. Over
+    // a full cycle it stays the lower of the two - 5.4 a second against the
+    // fang's 9.0 - which is what a tank should be.
+    strikeSeconds: 0.48, recoverSeconds: 1.08, stunSeconds: 0.18, damage: 14, knockback: 1.75, biomass: 14,
     // Only the shell family reduces frontal damage, so only it needs the window.
     commitsFacingWhileAttacking: true,
   },

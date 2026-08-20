@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import { GLOAMWOOD_3D_COMBAT } from '../src/gloamwood-3d-combat'
+import type { GloamwoodPreyKind } from '../src/gloamwood-3d-ecology'
+
 import {
   GLOAMWOOD_NEST_GUARDIAN,
   awakenGloamwoodNestGuardian,
@@ -424,5 +427,36 @@ describe('Being hit cannot silence a creature outright', () => {
     expect(hit.interrupted).toBe(true)
     const inside = damageGloamwoodNestPrey(hit.state, 'shell', 5, 'Claw', { x: 2, z: 0 }, 0)
     expect(inside.interrupted).toBe(false)
+  })
+})
+
+describe('What each family is for', () => {
+  const cycle = (kind: GloamwoodPreyKind) => {
+    const spec = GLOAMWOOD_PREY[kind]
+    return spec.telegraphSeconds + spec.strikeSeconds + spec.recoverSeconds
+  }
+
+  it('leaves the striker hitting harder over time than the tank', () => {
+    // The shell wins on health, on frontal reduction and on knockback. When it
+    // also out-damaged the fang, the fang had nothing left that was its own -
+    // and a tank that beats the striker at the striker's job is not a tank.
+    const shell = GLOAMWOOD_PREY.shell.damage / cycle('shell')
+    const fang = GLOAMWOOD_PREY.fang.damage / cycle('fang')
+    expect(shell).toBeLessThan(fang)
+  })
+
+  it('still makes the slowest wind-up the heaviest single blow', () => {
+    // A 1.05s telegraph is the most readable thing in the game. Being hit by it
+    // has to mean something, or there is no reason to respect it.
+    expect(GLOAMWOOD_PREY.shell.damage).toBeGreaterThan(GLOAMWOOD_PREY.fang.damage)
+    expect(GLOAMWOOD_PREY.shell.telegraphSeconds).toBeGreaterThan(GLOAMWOOD_PREY.fang.telegraphSeconds)
+  })
+
+  it('never lets one blow take a fifth of the player', () => {
+    // Five hits from standing was the complaint. Nothing in the ecology may
+    // spike that hard; pressure comes from the cadence, not from one number.
+    for (const kind of Object.keys(GLOAMWOOD_PREY) as GloamwoodPreyKind[]) {
+      expect(GLOAMWOOD_PREY[kind].damage).toBeLessThanOrEqual(GLOAMWOOD_3D_COMBAT.playerMaxHealth * 0.16)
+    }
   })
 })

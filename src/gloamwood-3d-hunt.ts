@@ -473,6 +473,17 @@ interface DebugState {
     z: number
     clip: string | null
     clipTime: number
+    /**
+     * How many meshes are actually in this creature's body, and where the
+     * ground put it.
+     *
+     * A creature whose name and health bar are on screen with nothing drawn
+     * under them is indistinguishable, from outside, from one standing behind a
+     * bush. These two say which: no meshes means the body never mounted, and a
+     * height far from its neighbours' means it is inside the terrain.
+     */
+    bodyMeshes: number
+    y: number
   }>
   camera: { fov: number; pitch: number; distance: number }
   world: {
@@ -2752,6 +2763,19 @@ class Gloamwood3DHunt {
     const config = this.map.bodyFor(prey)
     const template = config ? this.preyTemplates.get(config.id) : undefined
     if (!template) return
+    // Built before the fallback is torn down, never after. Clearing first and
+    // cloning second means anything that goes wrong in between - a skeleton the
+    // cloner will not follow, a template swapped out from under it - leaves a
+    // creature with no body at all: its name, its health bar and its lock ring
+    // on screen with nothing underneath them.
+    const body = cloneSkinnedHierarchy(template.scene)
+    // Marked as the template's, because it is. SkeletonUtils.clone copies the
+    // hierarchy and the skeleton but *shares* geometry and materials with every
+    // other creature wearing this body, so the teardown below must not free
+    // them - see disposePreyVisual.
+    body.traverse((node) => {
+      node.userData.sharedWithTemplate = true
+    })
     for (const child of [...visual.body.children]) {
       visual.body.remove(child)
       child.traverse((node) => {
@@ -2760,7 +2784,6 @@ class Gloamwood3DHunt {
         for (const material of Array.isArray(node.material) ? node.material : [node.material]) material.dispose()
       })
     }
-    const body = cloneSkinnedHierarchy(template.scene)
     visual.body.add(body)
     visual.materials.length = 0
     body.traverse((node) => {
@@ -2948,6 +2971,29 @@ class Gloamwood3DHunt {
     }
   }
 
+  /**
+   * Takes one creature off the map and frees what it owns - and only that.
+   *
+   * A modelled body is a clone, and SkeletonUtils.clone shares its geometry and
+   * its materials with the template every other creature of that family is also
+   * wearing. Freeing them when a single corpse ages out pulls the buffers out
+   * from under the whole family, which is how a living creature ends up with a
+   * name, a health bar and a lock ring and nothing drawn between them.
+   *
+   * The primitives, the target ring and the telegraph are built per creature
+   * and are genuinely this visual's to release.
+   */
+  private disposePreyVisual(visual: PreyVisual) {
+    this.scene.remove(visual.root)
+    visual.model?.mixer.stopAllAction()
+    visual.root.traverse((node) => {
+      if (!(node instanceof THREE.Mesh) || node.userData.sharedWithTemplate) return
+      node.geometry.dispose()
+      const materials = Array.isArray(node.material) ? node.material : [node.material]
+      for (const value of materials) value.dispose()
+    })
+  }
+
   private syncPreyVisuals(delta = 0) {
     // A corpse that has lain long enough stops being drawn. It stays in the
     // state - the respawn clock and the run's kill count both need it - it just
@@ -2959,13 +3005,7 @@ class Gloamwood3DHunt {
     )
     for (const [id, visual] of this.preyVisuals) {
       if (activeIds.has(id)) continue
-      this.scene.remove(visual.root)
-      visual.root.traverse((node) => {
-        if (!(node instanceof THREE.Mesh)) return
-        node.geometry.dispose()
-        const materials = Array.isArray(node.material) ? node.material : [node.material]
-        for (const value of materials) value.dispose()
-      })
+      this.disposePreyVisual(visual)
       this.preyVisuals.delete(id)
     }
     for (const prey of this.nestState.prey) {
@@ -4956,6 +4996,16 @@ class Gloamwood3DHunt {
         // was not connected.
         clip: this.preyVisuals.get(prey.id)?.model?.clipName ?? null,
         clipTime: round(this.preyVisuals.get(prey.id)?.model?.action?.time ?? 0),
+        bodyMeshes: (() => {
+          const visual = this.preyVisuals.get(prey.id)
+          if (!visual) return -1
+          let meshes = 0
+          visual.body.traverse((node) => {
+            if (node instanceof THREE.Mesh) meshes += 1
+          })
+          return meshes
+        })(),
+        y: round(this.preyVisuals.get(prey.id)?.root.position.y ?? 0),
         playerBearing: round(Math.atan2(-(this.playerRoot.position.z - prey.z), this.playerRoot.position.x - prey.x)),
       })),
       camera: { fov: this.camera.fov, pitch: 36, distance: round(GLOAMWOOD_3D_CAMERA_DISTANCE) },
