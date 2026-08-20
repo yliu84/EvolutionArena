@@ -165,6 +165,18 @@ export function damageGloamwoodEnemy(
   }
 }
 
+/**
+ * What a blow actually costs the player.
+ *
+ * Percentage reduction first, then flat armour, then a floor of one - so armour
+ * is never immunity however much of it is stacked, and the order is fixed here
+ * rather than left to whichever caller applies which.
+ */
+export function gloamwoodPlayerDamageTaken(rawDamage: number, reduction: number, flatArmour: number) {
+  const scaled = Math.round(Math.max(0, rawDamage) * (1 - Math.max(0, Math.min(0.95, reduction))))
+  return Math.max(1, scaled - Math.max(0, flatArmour))
+}
+
 export function damageGloamwoodPlayer(state: GloamwoodPlayerCombatState, damage: number) {
   if (!state.alive || state.invulnerabilitySeconds > 0) return state
   const health = Math.max(0, state.health - Math.max(0, damage))

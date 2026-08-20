@@ -83,6 +83,29 @@ export function createGloamwoodEvolutionState(seed: number | string): GloamwoodE
   }
 }
 
+/**
+ * What growing a stage is worth on its own, before any route is chosen.
+ *
+ * The route is the specialisation; the stage is the growth. They were the same
+ * thing, and the result was that evolving into a bigger animal made you no
+ * tougher at all: both Fang candidates carry maximumHealthBonus 0 and
+ * damageReduction 0, and one Swarm candidate carries -10 health. A player who
+ * took the Fang line was handed a new body that died exactly as fast as the old
+ * one, and one Swarm pick left them measurably worse off.
+ *
+ * Flat armour rather than a percentage, and that is the whole reason it reads.
+ * Creature damage in this game is 6, 14 and 12 - a 4% reduction on any of those
+ * rounds straight back to the number it started from, so a percentage would be
+ * a stat that does nothing. One point off every blow is 17% against the swarm
+ * that chips you down in packs, which is where runs are actually lost.
+ *
+ * It can never make the player immune: a blow still costs at least 1.
+ */
+export const GLOAMWOOD_EVOLUTION_GROWTH = {
+  maximumHealthBonus: 10,
+  flatArmour: 1,
+} as const
+
 export function openGloamwoodEvolutionOffer(
   state: GloamwoodEvolutionState,
   genes: GloamwoodGeneBank,

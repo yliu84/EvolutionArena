@@ -56,6 +56,7 @@ import {
   GLOAMWOOD_3D_COMBAT,
   createGloamwoodPlayerCombatState,
   damageGloamwoodPlayer,
+  gloamwoodPlayerDamageTaken,
   stepGloamwoodPlayerCombat,
   type GloamwoodPlayerCombatState,
 } from './gloamwood-3d-combat'
@@ -107,6 +108,7 @@ import {
 } from './gloamwood-environment-kit'
 import {
   createGloamwoodEvolutionState,
+  GLOAMWOOD_EVOLUTION_GROWTH,
   openGloamwoodEvolutionOffer,
   openGloamwoodNextEvolutionOffer,
   refreshGloamwoodEvolutionOffer,
@@ -686,13 +688,15 @@ class Gloamwood3DHunt {
    */
   private evolutionModifiers = {
     damageMultiplier: 1, moveSpeedMultiplier: 1, damageReduction: 0,
-    biomassMultiplier: 1, killHeal: 0, maximumHealthBonus: 0,
+    biomassMultiplier: 1, killHeal: 0, maximumHealthBonus: 0, flatArmour: 0,
   }
   /** How many evolutions this run has taken. The valley grants more than one. */
   private evolutionsTaken = 0
   private damageMultiplier = 1
   private moveSpeedMultiplier = 1
   private damageReduction = 0
+  /** Points taken off every blow, earned by growing rather than by route. */
+  private flatArmour = 0
   private biomassMultiplier = 1
   private killHeal = 0
   private mutationState: GloamwoodMutationState = createGloamwoodMutationState('gloamwood-first-run')
@@ -3564,7 +3568,7 @@ class Gloamwood3DHunt {
    */
   private takePlayerDamage(rawDamage: number) {
     const reflect = this.mutationEffects.reflectFraction ?? 0
-    const received = Math.max(1, Math.round(rawDamage * (1 - this.damageReduction) * (1 - reflect)))
+    const received = gloamwoodPlayerDamageTaken(rawDamage * (1 - reflect), this.damageReduction, this.flatArmour)
     if (reflect > 0) this.reflectDamageToNearestPrey(Math.round(rawDamage * reflect))
     this.playerCombat = damageGloamwoodPlayer(this.playerCombat, received)
     // Moult spends itself on the blow that would have ended the run.
@@ -3609,6 +3613,7 @@ class Gloamwood3DHunt {
     this.damageMultiplier = evolution.damageMultiplier * (mutation.damageMultiplier ?? 1)
     this.moveSpeedMultiplier = evolution.moveSpeedMultiplier * (mutation.moveSpeedMultiplier ?? 1)
     this.damageReduction = evolution.damageReduction
+    this.flatArmour = evolution.flatArmour
     this.biomassMultiplier = evolution.biomassMultiplier * (mutation.biomassMultiplier ?? 1)
     // Symbiosis trades away kill healing outright, whatever granted it.
     this.killHeal = mutation.suppressKillHeal ? 0 : evolution.killHeal
@@ -3900,7 +3905,13 @@ class Gloamwood3DHunt {
       damageReduction: 1 - (1 - held.damageReduction) * (1 - candidate.modifiers.damageReduction),
       biomassMultiplier: held.biomassMultiplier * candidate.modifiers.biomassMultiplier,
       killHeal: held.killHeal + candidate.modifiers.killHeal,
-      maximumHealthBonus: held.maximumHealthBonus + candidate.modifiers.maximumHealthBonus,
+      // Every evolution carries growth of its own on top of the route's
+      // trade-offs. Without it the Fang line handed the player a bigger body
+      // that died exactly as fast, and one Swarm pick left them worse off.
+      maximumHealthBonus: held.maximumHealthBonus
+        + candidate.modifiers.maximumHealthBonus
+        + GLOAMWOOD_EVOLUTION_GROWTH.maximumHealthBonus,
+      flatArmour: held.flatArmour + GLOAMWOOD_EVOLUTION_GROWTH.flatArmour,
     }
     this.evolutionsTaken += 1
     this.applyProgressionModifiers()
