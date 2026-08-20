@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { GLOAMWOOD_RUN_LIVES } from '../src/gloamwood-map'
+
 import { gloamwoodMutationOffersEarned, createGloamwoodMutationState, recordGloamwoodMutationMilestone } from '../src/gloamwood-3d-mutations'
 import { GLOAMWOOD_VALLEY_BRANCHES } from '../src/gloamwood-valley-branches'
 import {
@@ -14,6 +16,7 @@ import {
   recordGloamwoodValleyMilestone,
   GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS,
   gloamwoodValleyEvolutionDue,
+  gloamwoodValleyEvolutionsEarned,
 } from '../src/gloamwood-valley-progression'
 import {
   GLOAMWOOD_VALLEY,
@@ -208,28 +211,43 @@ describe('Walking into a shut gate', () => {
 })
 
 describe('Earning the run\'s evolution on a road', () => {
+  const [first, second] = GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS
+
   it('waits for real biomass rather than firing at spawn', () => {
-    expect(gloamwoodValleyEvolutionDue(0, false)).toBe(false)
-    expect(gloamwoodValleyEvolutionDue(GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS - 1, false)).toBe(false)
+    expect(gloamwoodValleyEvolutionDue(0, 0)).toBe(false)
+    expect(gloamwoodValleyEvolutionDue(first - 1, 0)).toBe(false)
   })
 
   it('fires once the player has eaten their way to it', () => {
     // The valley has no nest to clear, which is the Gloamwood's trigger, so a
     // player could reach 156 biomass still wearing the body they hatched in.
-    expect(gloamwoodValleyEvolutionDue(GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS, false)).toBe(true)
-    expect(gloamwoodValleyEvolutionDue(156, false)).toBe(true)
+    expect(gloamwoodValleyEvolutionDue(first, 0)).toBe(true)
+    expect(gloamwoodValleyEvolutionDue(156, 0)).toBe(true)
   })
 
-  it('only ever fires once', () => {
-    expect(gloamwoodValleyEvolutionDue(400, true)).toBe(false)
+  it('does not hand over the same one twice', () => {
+    expect(gloamwoodValleyEvolutionDue(first + 10, 1)).toBe(false)
   })
 
-  it('lands before the first gate, not after it', () => {
+  it('grants a second one for the rest of the road', () => {
+    // Three lives and a single evolution had the player dead before halfway.
+    // A road with three tiers on it cannot be run on one body.
+    expect(gloamwoodValleyEvolutionDue(second, 1)).toBe(true)
+    expect(gloamwoodValleyEvolutionDue(second, 2)).toBe(false)
+    expect(gloamwoodValleyEvolutionsEarned(second)).toBe(2)
+  })
+
+  it('lands the first before the first gate, not after it', () => {
     // The Tide Cleaver is a worse fight than the starting body was designed
     // against, and the Gloamwood has the player meet its boss already evolved.
-    // Roughly what a cleared Gloamwood nest pays out, so the two runs hand it
-    // over at about the same strength.
-    expect(GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS).toBeLessThan(100)
-    expect(GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS).toBeGreaterThan(40)
+    expect(first).toBeLessThan(100)
+    expect(first).toBeGreaterThan(40)
+    expect(second).toBeGreaterThan(first)
+  })
+
+  it('gives the valley more lives than the clearing, and starts with them', () => {
+    // The top-up on entering a region cannot help a player who dies three times
+    // inside the first one - which is what was happening.
+    expect(GLOAMWOOD_VALLEY_LIFE_CAP).toBeGreaterThan(GLOAMWOOD_RUN_LIVES)
   })
 })

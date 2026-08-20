@@ -8,7 +8,7 @@ import {
 } from './gloamwood-performance'
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 
-import { resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
+import { quality3DBodyStageForFamily, resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
 import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presentation'
 import { SPORE_STALKER_PRESENTATION } from './spore-stalker-character-presentation'
 import { applyDocumentLocale, getLocale, persistLocale, setLocale, t, type Locale } from './i18n'
@@ -105,6 +105,7 @@ import {
 import {
   createGloamwoodEvolutionState,
   openGloamwoodEvolutionOffer,
+  openGloamwoodNextEvolutionOffer,
   refreshGloamwoodEvolutionOffer,
   selectGloamwoodEvolutionCandidate,
   type GloamwoodEvolutionCandidate,
@@ -188,7 +189,7 @@ const GLOAMWOOD_BOSS_ARENA_RADIUS = 4.2
  */
 const GLOAMWOOD_ARENA_PLAYER_RADIUS = 7.6
 /** Lives a run starts with. Reaching zero ends it. */
-const GLOAMWOOD_RUN_LIVES = 3
+// Lives now belong to the map, which is the thing that knows how long it is.
 const GLOAMWOOD_BOSS_ARENA_CLEAR_RADIUS = 7.8
 const PLAYER_FEEDBACK_SETTINGS_KEY = 'evolution-arena-combat-feedback-v1'
 export const GLOAMWOOD_3D_CHARACTER_HEIGHTS = [1.8, 2.16, 2.55] as const
@@ -673,7 +674,7 @@ class Gloamwood3DHunt {
    * Three is deliberately forgiving. The point is that the number can reach
    * zero, not that it usually does.
    */
-  private livesRemaining = GLOAMWOOD_RUN_LIVES
+  private livesRemaining = this.map.lives
   private resultOverlay?: HTMLElement
   /**
    * Modifiers granted by the one form evolution. Mutations stack on top of
@@ -684,6 +685,8 @@ class Gloamwood3DHunt {
     damageMultiplier: 1, moveSpeedMultiplier: 1, damageReduction: 0,
     biomassMultiplier: 1, killHeal: 0, maximumHealthBonus: 0,
   }
+  /** How many evolutions this run has taken. The valley grants more than one. */
+  private evolutionsTaken = 0
   private damageMultiplier = 1
   private moveSpeedMultiplier = 1
   private damageReduction = 0
@@ -3670,9 +3673,9 @@ class Gloamwood3DHunt {
     if (
       this.runPhase === 'hunt'
       && this.evolutionState.phase !== 'choosing'
-      && gloamwoodValleyEvolutionDue(this.nestState.biomass, this.evolutionState.phase === 'selected')
+      && gloamwoodValleyEvolutionDue(this.nestState.biomass, this.evolutionsTaken)
     ) {
-      this.evolutionState = openGloamwoodEvolutionOffer(
+      this.evolutionState = openGloamwoodNextEvolutionOffer(
         this.evolutionState,
         this.nestState.genes,
         this.nestState.recentHunts,
@@ -3838,21 +3841,30 @@ class Gloamwood3DHunt {
       this.evolutionOverlay.dataset.busy = 'true'
       for (const button of this.evolutionOverlay.querySelectorAll<HTMLButtonElement>('button')) button.disabled = true
     }
+    // Compounded, not replaced. A second evolution that overwrote the first
+    // would hand the player a new body and quietly take back what the last one
+    // gave them, which reads as the upgrade having made them weaker.
+    const held = this.evolutionModifiers
     this.evolutionModifiers = {
-      damageMultiplier: candidate.modifiers.damageMultiplier,
-      moveSpeedMultiplier: candidate.modifiers.moveSpeedMultiplier,
-      damageReduction: candidate.modifiers.damageReduction,
-      biomassMultiplier: candidate.modifiers.biomassMultiplier,
-      killHeal: candidate.modifiers.killHeal,
-      maximumHealthBonus: candidate.modifiers.maximumHealthBonus,
+      damageMultiplier: held.damageMultiplier * candidate.modifiers.damageMultiplier,
+      moveSpeedMultiplier: held.moveSpeedMultiplier * candidate.modifiers.moveSpeedMultiplier,
+      damageReduction: 1 - (1 - held.damageReduction) * (1 - candidate.modifiers.damageReduction),
+      biomassMultiplier: held.biomassMultiplier * candidate.modifiers.biomassMultiplier,
+      killHeal: held.killHeal + candidate.modifiers.killHeal,
+      maximumHealthBonus: held.maximumHealthBonus + candidate.modifiers.maximumHealthBonus,
     }
+    this.evolutionsTaken += 1
     this.applyProgressionModifiers()
     this.attackState = createFormalHuntBasicAttackState()
     this.attackUntil = 0
     this.characterRoot.position.set(0, 0, 0)
     this.characterRoot.rotation.set(0, 0, 0)
     this.characterRoot.scale.setScalar(1)
-    await this.loadCharacter(1, candidate.family)
+    // The stage this evolution reaches, and the body the route actually has for
+    // it: stage 2 exists only for the Fang line, and a route with no body of its
+    // own keeps the one it has rather than borrowing another family's animal.
+    const stage = Math.min(2, this.evolutionsTaken)
+    await this.loadCharacter(quality3DBodyStageForFamily(stage, candidate.family), candidate.family)
     // The accent is a placeholder for a route with no body of its own: it marks
     // an evolution the model cannot show. A family that loaded its own form
     // already wears its identity, and bolting primitives onto it would be the
@@ -4099,7 +4111,7 @@ class Gloamwood3DHunt {
       '<div class="g3d-combat-bars">',
       `<label>${t('hud.health')} <b data-g3d-player-health>100 / 100</b><i><em data-g3d-player-bar></em></i></label>`,
       '</div>',
-      `<div class="g3d-nest-resources"><b data-g3d-remaining>${t('hud.undisturbed')}</b><span>${t('hud.lives')} <strong data-g3d-lives>${GLOAMWOOD_RUN_LIVES}</strong></span><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
+      `<div class="g3d-nest-resources"><b data-g3d-remaining>${t('hud.undisturbed')}</b><span>${t('hud.lives')} <strong data-g3d-lives>${this.map.lives}</strong></span><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
       // Mutations stack rather than replace, and a build the player cannot see
       // is a build they cannot plan around. Hidden until the first one is taken.
       '<div class="g3d-mutation-list" data-g3d-mutations hidden></div>',

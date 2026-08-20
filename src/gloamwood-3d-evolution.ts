@@ -96,6 +96,30 @@ export function openGloamwoodEvolutionOffer(
   }
 }
 
+/**
+ * Open the next offer for a run that grants more than one.
+ *
+ * `openGloamwoodEvolutionOffer` refuses once something has been selected,
+ * which is right for a run with a single evolution in it and wrong for a road
+ * with three tiers. The selection is kept - it is what the player already
+ * became - and the candidates are drawn fresh from the genes they have banked
+ * since.
+ */
+export function openGloamwoodNextEvolutionOffer(
+  state: GloamwoodEvolutionState,
+  genes: GloamwoodGeneBank,
+  recentHunts: readonly GloamwoodPreyKind[],
+): GloamwoodEvolutionState {
+  if (state.phase === 'choosing') return state
+  const offerIndex = state.offerIndex + 1
+  return {
+    ...state,
+    phase: 'choosing',
+    offerIndex,
+    candidates: generateGloamwoodEvolutionCandidates(state.seed, offerIndex, genes, recentHunts),
+  }
+}
+
 export function refreshGloamwoodEvolutionOffer(
   state: GloamwoodEvolutionState,
   genes: GloamwoodGeneBank,

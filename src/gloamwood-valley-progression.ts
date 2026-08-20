@@ -87,10 +87,24 @@ export const GLOAMWOOD_VALLEY_MILESTONES: readonly GloamwoodValleyMilestone[] = 
  * so the two runs hand it over at about the same strength. In the valley it
  * lands partway through the shallows, with the first gate still ahead.
  */
-export const GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS = 80
+/**
+ * One per region's worth of hunting.
+ *
+ * The first lands partway through the shallows with the first gate still
+ * ahead. The second lands around the walk into the second region - roughly
+ * what clearing the shallows pays out - because a road with three tiers on it
+ * cannot be run on one body. Three lives and a single evolution had the player
+ * dead before halfway, every time.
+ */
+export const GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS: readonly number[] = [80, 220]
 
-export function gloamwoodValleyEvolutionDue(biomass: number, alreadyOffered: boolean) {
-  return !alreadyOffered && biomass >= GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS
+/** How many evolutions the biomass earned so far has paid for. */
+export function gloamwoodValleyEvolutionsEarned(biomass: number) {
+  return GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS.filter((threshold) => biomass >= threshold).length
+}
+
+export function gloamwoodValleyEvolutionDue(biomass: number, taken: number) {
+  return gloamwoodValleyEvolutionsEarned(biomass) > taken
 }
 
 export const GLOAMWOOD_VALLEY_LIFE_CAP = 4

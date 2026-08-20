@@ -6,6 +6,7 @@ import {
   QUALITY_3D_GLB_ASSETS,
   QUALITY_3D_PRODUCED_FAMILIES,
   type Quality3DFormFamily,
+  quality3DBodyStageForFamily,
 } from '../src/quality-3d-glb-assets'
 import { CORAL_GECKO_PRESENTATION } from '../src/quality-3d-character-presentation'
 import {
@@ -349,6 +350,38 @@ describe('Six gene families, produced one at a time', () => {
     }
     for (const family of ['wing', 'venom', 'rift'] as const) {
       expect(resolveQuality3DGLBAsset(1, family).matchedFamily, family).toBe(false)
+    }
+  })
+})
+
+describe('Growing without becoming another animal', () => {
+  it('gives the Fang route its own stage-2 body', () => {
+    expect(quality3DBodyStageForFamily(2, 'fang')).toBe(2)
+    expect(getQuality3DGLBAsset(2, 'fang')?.formId).toBe('scarlet-hunter')
+  })
+
+  it('keeps a route with no stage-2 body in the one it has', () => {
+    // Stage 2 is authored only for the Fang line. Asked for a stage-2 Shell the
+    // resolver falls back to whatever exists at that stage, so a stone pangolin
+    // evolving a second time turned into a scarlet hunter - a different animal
+    // from a different route. Growing is not becoming something else.
+    expect(quality3DBodyStageForFamily(2, 'shell')).toBe(1)
+    expect(quality3DBodyStageForFamily(2, 'swarm')).toBe(1)
+    expect(getQuality3DGLBAsset(quality3DBodyStageForFamily(2, 'shell'), 'shell')?.formId).toBe('stone-pangolin')
+    expect(getQuality3DGLBAsset(quality3DBodyStageForFamily(2, 'swarm'), 'swarm')?.formId).toBe('spore-stalker')
+  })
+
+  it('never answers with another route\'s body', () => {
+    // A route-independent form serves everyone and is not a substitution; a
+    // form belonging to a different family is.
+    for (const family of QUALITY_3D_PRODUCED_FAMILIES) {
+      for (const asked of [1, 2, 3, 9]) {
+        const stage = quality3DBodyStageForFamily(asked, family)
+        const asset = getQuality3DGLBAsset(stage, family)
+        expect(asset, `${family} at ${asked}`).toBeDefined()
+        expect(asset?.family === undefined || asset?.family === family, `${family} at ${asked} wore ${asset?.formId}`).toBe(true)
+        expect(stage).toBeLessThanOrEqual(asked)
+      }
     }
   })
 })

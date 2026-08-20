@@ -21,7 +21,7 @@ import {
   createGloamwoodValleyRespawnState,
   stepGloamwoodValleyRespawn,
 } from './gloamwood-valley-respawn'
-import { GLOAMWOOD_VALLEY_MILESTONES } from './gloamwood-valley-progression'
+import { GLOAMWOOD_VALLEY_LIFE_CAP, GLOAMWOOD_VALLEY_MILESTONES } from './gloamwood-valley-progression'
 import {
   GLOAMWOOD_VALLEY,
   gloamwoodValleyConfine,
@@ -100,6 +100,7 @@ export function createGloamwoodValleyMap(
     // degrees, which is what the folded route was laid out against.
     cameraOffset: { x: -15.7, y: 11.8, z: -4.2 },
     hasNest: false,
+    lives: GLOAMWOOD_VALLEY_LIFE_CAP,
     createCreatures(): GloamwoodNestState {
       return {
         // Cleared, not dormant. The nest's wave machinery is the Gloamwood's

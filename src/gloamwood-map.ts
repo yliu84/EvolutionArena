@@ -34,6 +34,14 @@ export interface GloamwoodMapBounds {
   halfDepth: number
 }
 
+/**
+ * Lives a run in the Gloamwood gets: one nest, one boss, one clearing.
+ *
+ * Lived in the runtime as a global until the valley needed a different number
+ * and could not have one.
+ */
+export const GLOAMWOOD_RUN_LIVES = 3
+
 export interface GloamwoodMapContract {
   id: GloamwoodMapId
   /**
@@ -81,6 +89,16 @@ export interface GloamwoodMapContract {
    * spawn, refused to lock anything, and froze them in place.
    */
   hasNest: boolean
+  /**
+   * Lives the run starts with on this map.
+   *
+   * The Gloamwood is one nest and one boss in a clearing; the valley is 1590
+   * units of road with three regions on it, and it was designed around four.
+   * It got three, because the constant was global - and the top-up on entering
+   * a region cannot help a player who dies three times inside the first one,
+   * which is exactly what happened: dead before halfway, every time.
+   */
+  lives: number
   /**
    * The creatures the map begins with.
    *
@@ -225,6 +243,7 @@ export function createGloamwoodMap(
     spawn: { x: -6, z: 3 },
     cameraOffset: { x: 9.2, y: 11.8, z: 13.4 },
     hasNest: true,
+    lives: GLOAMWOOD_RUN_LIVES,
     resetAfterDeath,
     reachedMilestones: () => [],
     createCreatures: createGloamwoodNestState,

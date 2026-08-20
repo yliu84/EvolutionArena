@@ -324,7 +324,10 @@ describe('A death has to cost something', () => {
     // of the player's health after several deaths, because a hunt death only
     // repositioned the prey and kept every point of biomass, gene and mutation.
     expect(source).toContain('private spendLifeOrEndRun(reason: string)')
-    expect(source).toContain('const GLOAMWOOD_RUN_LIVES = 3')
+    // The budget itself moved onto the map contract, because the valley is a
+    // road with three regions on it and could not have a different number while
+    // the constant was global.
+    expect(source).toContain('private livesRemaining = this.map.lives')
     // Hunt, guardian and boss all route through it; none may end the run alone.
     const spends = source.match(/this\.spendLifeOrEndRun\(/g) ?? []
     expect(spends.length).toBeGreaterThanOrEqual(2)

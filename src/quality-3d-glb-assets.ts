@@ -151,6 +151,25 @@ export function resolveQuality3DGLBAsset(stage: number, family?: Quality3DFormFa
   return { asset: atStage[0], matchedFamily: family === undefined }
 }
 
+/**
+ * The highest stage at or below `stage` that this family has a body for.
+ *
+ * Stage 2 exists only for the Fang route. Asked for a stage-2 Shell,
+ * `resolveQuality3DGLBAsset` falls back to whatever is authored at that stage -
+ * so a stone pangolin's second evolution turned it into a scarlet hunter, a
+ * different animal from a different route.
+ *
+ * Growing is not the same as becoming something else. A route with no body yet
+ * keeps the one it has and wears the accent that marks an evolution the model
+ * cannot show; it never borrows another family's.
+ */
+export function quality3DBodyStageForFamily(stage: number, family?: Quality3DFormFamily) {
+  for (let candidate = Math.floor(stage); candidate >= 0; candidate -= 1) {
+    if (resolveQuality3DGLBAsset(candidate, family).matchedFamily) return candidate
+  }
+  return 0
+}
+
 export function getQuality3DGLBAsset(stage: number, family?: Quality3DFormFamily) {
   return resolveQuality3DGLBAsset(stage, family).asset
 }
