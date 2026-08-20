@@ -8,6 +8,7 @@ import {
   stepGloamwoodValleyNests,
 } from '../src/gloamwood-valley-nests'
 import { GLOAMWOOD_LOCK_RANGE } from '../src/gloamwood-3d-hunt'
+import { gloamwoodValleyWalkable } from '../src/gloamwood-valley-terrain'
 import { gloamwoodValleyRespawns } from '../src/gloamwood-valley-respawn'
 
 const creatures = createGloamwoodValleyCreatures(0x5a11e)
@@ -104,10 +105,22 @@ describe('Fighting through it', () => {
     }
   })
 
-  it('leaves every wave creature standing somewhere it can be fought', () => {
+  it('brings every wave in from off screen rather than into the player\'s lap', () => {
+    // "Why do they come out of nowhere instead of being seen crossing the map?"
+    // They were born 6.4 units out - close enough to simply exist, next to the
+    // player, with no arrival. The camera frames about eighteen units either
+    // side, so a wave now starts beyond the edge of the frame and runs in.
     for (const creature of result.list.filter((entry) => entry.group === `${marker.id}-wave`)) {
-      expect(Math.hypot(creature.x - marker.homeX, creature.z - marker.homeZ))
-        .toBeLessThan(GLOAMWOOD_VALLEY_NEST.spawnRadius * 2)
+      const born = Math.hypot(creature.homeX - marker.homeX, creature.homeZ - marker.homeZ)
+      expect(born, `${creature.id} was born on top of the fight`).toBeGreaterThan(18)
+    }
+  })
+
+  it('puts every wave creature somewhere it can stand', () => {
+    // Twenty-four units out crosses the river in places, and a creature in the
+    // water is one the player cannot reach and the nest cannot clear.
+    for (const creature of result.list.filter((entry) => entry.group === `${marker.id}-wave`)) {
+      expect(gloamwoodValleyWalkable(creature.homeX, creature.homeZ), creature.id).toBe(true)
     }
   })
 
@@ -199,5 +212,34 @@ describe('Saying it for as long as it is true', () => {
   it('stops saying anything once the nest is done', () => {
     const result = fightThrough()
     expect(gloamwoodValleyNestStatus(result.nests)).toBeNull()
+  })
+})
+
+describe('Where a wave comes from', () => {
+  const nests = createGloamwoodValleyNests(creatures)
+
+  it('comes from the far side of the den, never over the player\'s shoulder', () => {
+    // Standing west of the nest must not put anything behind you to the west.
+    for (const nest of nests) {
+      const from = { x: nest.x - 10, z: nest.z }
+      const frame = stepGloamwoodValleyNests([nest], creatures, 0.05, from)
+      const wave = frame.creatures.filter((creature) => creature.group === `${nest.id}-wave`)
+      expect(wave.length).toBeGreaterThan(0)
+      for (const creature of wave) {
+        // Further from the player than the nest is, i.e. on the far side.
+        expect(Math.hypot(creature.homeX - from.x, creature.homeZ - from.z))
+          .toBeGreaterThan(Math.hypot(nest.x - from.x, nest.z - from.z))
+      }
+    }
+  })
+
+  it('starts every wave outside the frame, at every nest on the map', () => {
+    for (const nest of nests) {
+      const frame = stepGloamwoodValleyNests([nest], creatures, 0.05, { x: nest.x, z: nest.z })
+      for (const creature of frame.creatures.filter((c) => c.group === `${nest.id}-wave`)) {
+        expect(Math.hypot(creature.homeX - nest.x, creature.homeZ - nest.z)).toBeGreaterThan(18)
+        expect(gloamwoodValleyWalkable(creature.homeX, creature.homeZ), creature.id).toBe(true)
+      }
+    }
   })
 })

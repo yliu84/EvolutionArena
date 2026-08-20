@@ -1,25 +1,60 @@
 import { GLOAMWOOD_PREY, type GloamwoodNestEvent, type GloamwoodPreyKind } from './gloamwood-3d-ecology'
 import { GLOAMWOOD_VALLEY_SPAWN_PLAN } from './gloamwood-valley-spawns'
 import type { GloamwoodValleyCreature } from './gloamwood-valley-creatures'
-import { gloamwoodValleyConfine } from './gloamwood-valley-terrain'
+import {
+  gloamwoodValleyConfine,
+  gloamwoodValleyCorridorAt,
+  gloamwoodValleyPointAt,
+  gloamwoodValleyProject,
+  gloamwoodValleyRoadOffset,
+} from './gloamwood-valley-terrain'
 
 /**
  * The valley's set-piece fight.
  *
  * Everywhere else on this map the player picks their fights: they see a pack
  * before it sees them and can walk round it. A nest is the one place that
- * choice is taken away - walk in and the ground you are standing on is the
- * fight, twice or three times over. That contrast is the whole reason it
- * exists, and it is why the trigger is generous and the waves come without a
- * pause long enough to leave.
+ * choice is taken away - walk in and the den empties itself at you, twice or
+ * three times over. That contrast is the whole reason it exists, and it is why
+ * the trigger is generous.
+ *
+ * What it is not, any more, is instant. Waves used to appear 6.4 units from the
+ * player, and being told "wave 2 of 2" did not answer the question a playtest
+ * actually asked: why do they come out of nowhere instead of being seen
+ * crossing the map? They now start beyond the edge of the frame and run in, so
+ * the pressure is something the player watches arrive.
+ *
+ * That does hand back the option of walking away, and it should. They are awake
+ * and they chase, so leaving means fighting them somewhere else rather than not
+ * fighting them - and a fight you can see coming and choose your ground for is
+ * a better fight than one that lands on your head.
  */
 export const GLOAMWOOD_VALLEY_NEST = {
   /** How close the player has to come. Wider than the lock, so it is never a surprise. */
   triggerRadius: 13,
   /** Breath between waves. Long enough to reposition, not to leave. */
   intermissionSeconds: 1.6,
-  /** Ring the wave stands on when it arrives. */
-  spawnRadius: 6.4,
+  /**
+   * How far out a wave comes from.
+   *
+   * It used to be 6.4 - close enough that the creatures simply existed, next to
+   * the player, with no arrival. Told what was happening, a player still asked
+   * the right question: why do they come out of nowhere instead of being seen
+   * crossing the map? A label on the HUD is not the world making sense.
+   *
+   * The camera frames about eighteen units either side, so twenty-four is just
+   * beyond the edge of the frame. A wave is born off screen and runs in, and
+   * what the player sees is creatures entering the picture and closing - which
+   * is what every other fight on this map looks like.
+   */
+  arrivalRadius: 24,
+  /**
+   * How much of the road's width a wave fans across as it comes.
+   *
+   * They arrive strung out rather than in single file, which is what lets the
+   * player see how many are coming before the first one reaches them.
+   */
+  arrivalSpread: 0.55,
 } as const
 
 export type GloamwoodValleyNestPhase = 'dormant' | 'wave' | 'intermission' | 'cleared'
@@ -122,7 +157,7 @@ export function stepGloamwoodValleyNests(
     if (state.phase === 'dormant') {
       const distance = Math.hypot(player.x - state.x, player.z - state.z)
       if (distance > GLOAMWOOD_VALLEY_NEST.triggerRadius) return state
-      spawned.push(...buildWave(state, 1))
+      spawned.push(...buildWave(state, 1, player))
       events.push({ type: 'valley-nest-entered', nestId: state.id, waves: state.waveCount })
       events.push({ type: 'valley-nest-wave', nestId: state.id, wave: 1, waves: state.waveCount })
       return { ...state, phase: 'wave' as const, wave: 1, phaseElapsed: 0 }
@@ -131,7 +166,7 @@ export function stepGloamwoodValleyNests(
     if (state.phase === 'intermission') {
       if (state.phaseElapsed < GLOAMWOOD_VALLEY_NEST.intermissionSeconds) return state
       const wave = state.wave + 1
-      spawned.push(...buildWave(state, wave))
+      spawned.push(...buildWave(state, wave, player))
       events.push({ type: 'valley-nest-wave', nestId: state.id, wave, waves: state.waveCount })
       return { ...state, phase: 'wave' as const, wave, phaseElapsed: 0 }
     }
@@ -161,14 +196,37 @@ export function stepGloamwoodValleyNests(
   return { nests: next, creatures: [...creatures, ...spawned], cleared, events }
 }
 
-function buildWave(nest: GloamwoodValleyNestState, wave: number): GloamwoodValleyCreature[] {
+function buildWave(
+  nest: GloamwoodValleyNestState,
+  wave: number,
+  player: { x: number; z: number },
+): GloamwoodValleyCreature[] {
   const kinds = waveComposition(nest.region, wave)
+  // Down the road, not across a radial ring.
+  //
+  // A ring at twenty-four units does not fit: the valley is a corridor, and
+  // confine was quietly dragging arrivals back to fourteen - through a wall, or
+  // into the river. Placed along the route instead, the distance is real and
+  // the ground is walkable by construction, and they come *along the valley*,
+  // which is also the only direction that reads as somewhere to come from.
+  const here = gloamwoodValleyProject(nest.x, nest.z)
+  const standing = gloamwoodValleyProject(player.x, player.z)
+  // From beyond the nest, away from whoever walked in. Nothing is born behind
+  // the player's shoulder.
+  const direction = here.s >= standing.s ? 1 : -1
+  const arriveAt = here.s + direction * GLOAMWOOD_VALLEY_NEST.arrivalRadius
+  const road = gloamwoodValleyRoadOffset(arriveAt)
+  const lane = gloamwoodValleyCorridorAt(
+    gloamwoodValleyPointAt(arriveAt, road).x,
+    gloamwoodValleyPointAt(arriveAt, road).z,
+  ).pathHalfWidth
   return kinds.map((kind, index) => {
-    const angle = (index / Math.max(1, kinds.length)) * Math.PI * 2 + wave * 0.6
-    const held = gloamwoodValleyConfine(
-      nest.x + Math.cos(angle) * GLOAMWOOD_VALLEY_NEST.spawnRadius,
-      nest.z + Math.sin(angle) * GLOAMWOOD_VALLEY_NEST.spawnRadius,
-    )
+    const across = kinds.length > 1
+      ? (index / (kinds.length - 1) - 0.5) * GLOAMWOOD_VALLEY_NEST.arrivalSpread * lane * 2
+      : 0
+    const point = gloamwoodValleyPointAt(arriveAt, road + across)
+    const held = gloamwoodValleyConfine(point.x, point.z)
+    const angle = Math.atan2(nest.z - held.z, nest.x - held.x)
     const spec = GLOAMWOOD_PREY[kind]
     return {
       id: `${nest.id}-w${wave}-${index}`,
