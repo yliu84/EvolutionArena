@@ -33,7 +33,10 @@ const eliteGroup = creatures.find((creature) => creature.tier === 'elite')!.grou
 describe('What comes back', () => {
   it('brings a road pack back once its time is up', () => {
     const { list, returned } = clearAndWait(packGroup, GLOAMWOOD_VALLEY_RESPAWN.delaySeconds + 3)
-    expect(returned).toContain(packGroup)
+    // Returned names creatures now, not groups: each corpse keeps its own clock.
+    for (const creature of creatures.filter((entry) => entry.group === packGroup)) {
+      expect(returned).toContain(creature.id)
+    }
     for (const creature of list.filter((entry) => entry.group === packGroup)) {
       expect(creature.phase).not.toBe('dead')
       expect(creature.health).toBe(creature.maxHealth)
@@ -45,7 +48,7 @@ describe('What comes back', () => {
     // Clearing a branch has to stay cleared, or the valley becomes a place to
     // farm rather than a place to get through.
     const { list, returned } = clearAndWait(eliteGroup, GLOAMWOOD_VALLEY_RESPAWN.delaySeconds + 30)
-    expect(returned).not.toContain(eliteGroup)
+    expect(returned).toHaveLength(0)
     expect(list.filter((entry) => entry.group === eliteGroup).every((entry) => entry.phase === 'dead')).toBe(true)
   })
 
@@ -85,5 +88,61 @@ describe('Corpses', () => {
     for (const creature of list.filter((entry) => entry.phase !== 'dead')) {
       expect(creature.corpseSeconds).toBeUndefined()
     }
+  })
+})
+
+describe('A pack the player broke but did not finish', () => {
+  const pack = creatures.filter((creature) => creature.group === packGroup)
+
+  /** Kills all but one of the pack and runs the clock with the player far off. */
+  function halfClear(seconds: number) {
+    let state = createGloamwoodValleyRespawnState()
+    let list: GloamwoodValleyCreature[] = creatures.map((creature) =>
+      creature.group === packGroup && creature.id !== pack[0].id
+        ? { ...creature, phase: 'dead' as const, health: 0 }
+        : creature)
+    let returned: string[] = []
+    for (let elapsed = 0; elapsed < seconds; elapsed += 0.05) {
+      const frame = stepGloamwoodValleyRespawn(state, list, 0.05, away)
+      state = frame.state
+      list = frame.creatures
+      returned = returned.concat(frame.returned)
+    }
+    return { list, returned }
+  }
+
+  it('heals back around the survivor', () => {
+    // One clock per pack, started only once every member was dead, meant a pack
+    // broken but not finished never came back at all. Kill two of three, walk
+    // on, and the road quietly decays into lone survivors and holes for the
+    // rest of the run.
+    const { list, returned } = halfClear(GLOAMWOOD_VALLEY_RESPAWN.delaySeconds + 3)
+    for (const creature of pack.slice(1)) expect(returned).toContain(creature.id)
+    expect(list.filter((entry) => entry.group === packGroup).every((entry) => entry.phase !== 'dead')).toBe(true)
+  })
+
+  it('leaves the survivor exactly as it was', () => {
+    // It never died, so nothing about it is reset - not its health, not where
+    // it had walked to.
+    const { list } = halfClear(GLOAMWOOD_VALLEY_RESPAWN.delaySeconds + 3)
+    const survivor = list.find((entry) => entry.id === pack[0].id)!
+    expect(survivor.phase).not.toBe('dead')
+  })
+
+  it('still refuses to do it where the player can see', () => {
+    const watching = { x: pack[0].homeX, z: pack[0].homeZ }
+    let state = createGloamwoodValleyRespawnState()
+    let list: GloamwoodValleyCreature[] = creatures.map((creature) =>
+      creature.group === packGroup ? { ...creature, phase: 'dead' as const, health: 0 } : creature)
+    let returned: string[] = []
+    for (let elapsed = 0; elapsed < GLOAMWOOD_VALLEY_RESPAWN.delaySeconds + 30; elapsed += 0.05) {
+      const frame = stepGloamwoodValleyRespawn(state, list, 0.05, watching)
+      state = frame.state
+      list = frame.creatures
+      returned = returned.concat(frame.returned)
+    }
+    // The distance rule is what rules out reinforcements arriving mid-fight,
+    // now that the pack no longer has to be wiped before any clock starts.
+    expect(returned).toHaveLength(0)
   })
 })

@@ -15,7 +15,7 @@ import type { GloamwoodValleyCreature } from './gloamwood-valley-creatures'
  * back the other way does.
  */
 export const GLOAMWOOD_VALLEY_RESPAWN = {
-  /** How long after the last of a pack dies before it can return. */
+  /** How long after a creature dies before it can return. */
   delaySeconds: 90,
   /** The player must be at least this far away for it to happen. */
   clearOfPlayer: 46,
@@ -24,7 +24,7 @@ export const GLOAMWOOD_VALLEY_RESPAWN = {
 } as const
 
 export interface GloamwoodValleyRespawnState {
-  /** Group id to the time remaining before it may return. */
+  /** Creature id to the time remaining before it may return. */
   pending: Record<string, number>
 }
 
@@ -40,7 +40,7 @@ export function gloamwoodValleyRespawns(creature: Pick<GloamwoodValleyCreature, 
 export interface GloamwoodValleyRespawnFrame {
   state: GloamwoodValleyRespawnState
   creatures: GloamwoodValleyCreature[]
-  /** Groups brought back this frame, for the session log to record. */
+  /** Creatures brought back this frame, for the session log to record. */
   returned: string[]
 }
 
@@ -54,35 +54,39 @@ export function stepGloamwoodValleyRespawn(
   player: { x: number; z: number },
 ): GloamwoodValleyRespawnFrame {
   const delta = Math.max(0, Math.min(0.05, deltaSeconds))
-  const groups = new Map<string, GloamwoodValleyCreature[]>()
-  for (const creature of creatures) {
-    const list = groups.get(creature.group) ?? []
-    list.push(creature)
-    groups.set(creature.group, list)
-  }
-
   const pending = { ...state.pending }
   const returned: string[] = []
   const revive = new Set<string>()
 
-  for (const [group, members] of groups) {
-    if (!gloamwoodValleyRespawns(members[0])) continue
-    if (members.some((member) => member.phase !== 'dead')) {
-      delete pending[group]
+  // Each corpse keeps its own clock, started where it fell.
+  //
+  // It used to be one clock per pack, and it only began once every member of
+  // that pack was dead - which meant a pack the player broke but did not finish
+  // never came back at all. Kill two of three, walk on, and those two are gone
+  // for the rest of the run: the road quietly decays into lone survivors and
+  // holes, and the mixed packs the layout was built around stop existing.
+  //
+  // Reinforcements arriving mid-fight are ruled out by the distance below
+  // rather than by waiting for the pack to be wiped. Nothing returns within
+  // forty-six units of the player, and the player cannot be fighting something
+  // that far away.
+  for (const creature of creatures) {
+    if (!gloamwoodValleyRespawns(creature)) continue
+    if (creature.phase !== 'dead') {
+      delete pending[creature.id]
       continue
     }
-    const remaining = pending[group] ?? GLOAMWOOD_VALLEY_RESPAWN.delaySeconds
-    const next = remaining - delta
-    // Distance is measured from where the pack lives, not from where it died -
-    // a pack that died chasing the player half a region away belongs to the
+    const next = (pending[creature.id] ?? GLOAMWOOD_VALLEY_RESPAWN.delaySeconds) - delta
+    // Distance is measured from where it lives, not from where it died - a
+    // creature that died chasing the player half a region away belongs to the
     // ground it was placed on.
-    const away = Math.hypot(members[0].homeX - player.x, members[0].homeZ - player.z)
+    const away = Math.hypot(creature.homeX - player.x, creature.homeZ - player.z)
     if (next <= 0 && away >= GLOAMWOOD_VALLEY_RESPAWN.clearOfPlayer) {
-      revive.add(group)
-      returned.push(group)
-      delete pending[group]
+      revive.add(creature.id)
+      returned.push(creature.id)
+      delete pending[creature.id]
     } else {
-      pending[group] = Math.max(0, next)
+      pending[creature.id] = Math.max(0, next)
     }
   }
 
@@ -90,7 +94,7 @@ export function stepGloamwoodValleyRespawn(
     if (creature.phase !== 'dead') {
       return creature.corpseSeconds === undefined ? creature : { ...creature, corpseSeconds: undefined }
     }
-    if (revive.has(creature.group)) {
+    if (revive.has(creature.id)) {
       return {
         ...creature,
         health: creature.maxHealth,
