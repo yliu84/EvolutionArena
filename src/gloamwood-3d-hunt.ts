@@ -3080,9 +3080,24 @@ class Gloamwood3DHunt {
       // family ring is the prey action ring and would sit inside the real one
       // marking ground that is not where the blow lands.
       const bossSpec = gloamwoodValleyBossSpecFor(prey as GloamwoodValleyCreature)
-      const telegraphing = prey.phase === 'telegraph' && !bossSpec
-      const telegraphProgress = telegraphing ? Math.min(1, prey.phaseElapsed / spec.telegraphSeconds) : 0
-      ;(visual.telegraph.material as THREE.MeshBasicMaterial).opacity = telegraphing ? 0.18 + telegraphProgress * 0.64 : 0
+      // The mark stays up through the blow, not just the wind-up.
+      //
+      // It used to vanish the instant the phase left 'telegraph' - and contact
+      // resolves 0.1s into the *strike*, so the circle went dark while the area
+      // was still live. Back out of it, watch it disappear, step back in, get
+      // hit: measured at four hits taken either way, which is what makes an
+      // elite read as unbeatable and its reach read as a lie. Held out for the
+      // whole committed window, the same fight costs zero hits.
+      const windingUp = prey.phase === 'telegraph' && !bossSpec
+      const striking = prey.phase === 'strike' && !bossSpec
+      const telegraphing = windingUp || striking
+      const telegraphProgress = windingUp ? Math.min(1, prey.phaseElapsed / spec.telegraphSeconds) : 1
+      // The wind-up fills; the blow flares and fades over its own length, so
+      // "gone" means the danger is actually over.
+      const strikeProgress = striking ? Math.min(1, prey.phaseElapsed / Math.max(0.001, spec.strikeSeconds)) : 0
+      ;(visual.telegraph.material as THREE.MeshBasicMaterial).opacity = striking
+        ? 0.95 * (1 - strikeProgress) ** 1.4
+        : windingUp ? 0.18 + telegraphProgress * 0.64 : 0
       // Asked of the authority rather than drawn from a constant, and asked
       // every frame: it depends on the player's body, which grows with every
       // evolution. It closes onto the true circle over the wind-up, so the edge
