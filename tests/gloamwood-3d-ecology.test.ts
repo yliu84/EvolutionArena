@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { GLOAMWOOD_3D_COMBAT } from '../src/gloamwood-3d-combat'
-import { gloamwoodPreyAttackDistance, stepPrey } from '../src/gloamwood-3d-ecology'
+import { gloamwoodPreyAttackDistance, gloamwoodPreyTelegraphRadius, stepPrey } from '../src/gloamwood-3d-ecology'
 import type { GloamwoodNestPrey, GloamwoodPreyKind } from '../src/gloamwood-3d-ecology'
 
 import {
@@ -509,5 +509,35 @@ describe('The circle the player is shown', () => {
       events = [...events, ...frame.events]
     }
     expect(events.some((event) => event.type === 'prey-attack')).toBe(false)
+  })
+})
+
+describe('The size of the mark on the ground', () => {
+  const fang = { id: 'a', kind: 'fang' as const, bodyRadius: 1.55 }
+  const player = 1.04
+
+  it('is crossed by the player body exactly when the blow lands', () => {
+    // The reach is measured centre to centre, so a disc drawn at the reach
+    // covers the player's own body too and reads as an area attack the size of
+    // a house. Taking the player's radius back off gives the circle their body
+    // edge crosses at the instant their centre crosses the real one - the same
+    // rule, drawn the way a mark on the ground is read.
+    const reach = gloamwoodPreyAttackDistance(fang, player)
+    const drawn = gloamwoodPreyTelegraphRadius(fang, player)
+    expect(drawn + player).toBeCloseTo(reach, 6)
+  })
+
+  it('stays a bite rather than a battlefield', () => {
+    // It shipped once at four times this, because the ring was built in world
+    // units and then scaled by the reach as well. A telegraph wider than the
+    // creature's own stand-off is a bug, not a design.
+    const drawn = gloamwoodPreyTelegraphRadius(fang, player)
+    expect(drawn).toBeLessThan(gloamwoodPreyStopDistance(fang, player))
+    expect(drawn).toBeGreaterThan(GLOAMWOOD_PREY.fang.attackRange * 0.9)
+  })
+
+  it('never collapses to nothing for a tiny creature and a huge player', () => {
+    const swarm = { id: 'b', kind: 'swarm' as const, bodyRadius: 0.3 }
+    expect(gloamwoodPreyTelegraphRadius(swarm, 6)).toBeGreaterThan(0)
   })
 })

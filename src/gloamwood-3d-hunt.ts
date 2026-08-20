@@ -69,7 +69,7 @@ import {
   inspectGloamwoodPlayerPreyClearance,
   inspectGloamwoodPlayerPreyActionClearance,
   inspectGloamwoodPreyPairClearance,
-  gloamwoodPreyAttackDistance,
+  gloamwoodPreyTelegraphRadius,
   gloamwoodPreyBodyRadius,
   resolveGloamwoodPlayerPreyCollision,
   type GloamwoodNestPrey,
@@ -1615,7 +1615,10 @@ class Gloamwood3DHunt {
     targetRing.visible = false
     root.add(targetRing)
     const telegraphMaterial = new THREE.MeshBasicMaterial({ color: prey.kind === 'shell' ? 0xffa640 : 0xff5b46, transparent: true, opacity: 0, depthWrite: false })
-    const telegraph = new THREE.Mesh(new THREE.RingGeometry(radius * 0.72, GLOAMWOOD_PREY[prey.kind].attackRange, 44).rotateX(-Math.PI / 2), telegraphMaterial)
+    // A unit ring. Its size is not knowable here - it depends on the player's
+    // body, which grows with every evolution - so syncPreyVisuals scales it
+    // every frame from the same function the hit test uses.
+    const telegraph = new THREE.Mesh(new THREE.RingGeometry(0.34, 1, 44).rotateX(-Math.PI / 2), telegraphMaterial)
     telegraph.position.y = 0.04
     root.add(telegraph)
     this.scene.add(root)
@@ -3025,10 +3028,11 @@ class Gloamwood3DHunt {
       const telegraphProgress = telegraphing ? Math.min(1, prey.phaseElapsed / spec.telegraphSeconds) : 0
       ;(visual.telegraph.material as THREE.MeshBasicMaterial).opacity = telegraphing ? 0.18 + telegraphProgress * 0.64 : 0
       // Asked of the authority rather than drawn from a constant, and asked
-      // every frame: the reach depends on the player's body, which grows with
-      // every evolution. It closes onto the true circle over the wind-up, so
-      // the edge is exact at the moment the blow is tested.
-      const reach = gloamwoodPreyAttackDistance(prey, gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily))
+      // every frame: it depends on the player's body, which grows with every
+      // evolution. It closes onto the true circle over the wind-up, so the edge
+      // is exact at the instant the blow is tested - the edge being the one the
+      // player's *body* crosses, which is how a mark on the ground is read.
+      const reach = gloamwoodPreyTelegraphRadius(prey, gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily))
       visual.telegraph.scale.setScalar(reach * (telegraphing ? 1.12 - telegraphProgress * 0.12 : 1))
       if (visual.model) {
         // One writer for the body. The primitive gait, strike lunge and stun

@@ -774,6 +774,33 @@ export function gloamwoodPreyAttackDistance(
   )
 }
 
+/**
+ * The circle to paint on the ground for that blow.
+ *
+ * Not the same as the reach, and the difference is the whole reason the first
+ * attempt at this looked absurd. `gloamwoodPreyAttackDistance` is measured
+ * centre to centre, and for a modelled river fang 2.59 of its 3.43 is simply
+ * the two bodies - only 0.84 is reach beyond them. A disc of 3.43 drawn round
+ * the creature therefore covers the player's own body as well, and reads as a
+ * area attack the size of a house rather than as a bite.
+ *
+ * Taking the player's radius back off gives the circle their *body edge*
+ * crosses at exactly the moment their centre crosses the real one:
+ *
+ *   body edge touches it   <=>   d - playerRadius <= reach - playerRadius
+ *                          <=>   d <= reach                (the actual test)
+ *
+ * So it is the same rule, drawn the way a player reads a mark on the ground -
+ * "if I am touching this, it reaches me" - and it comes out at 2.39 rather than
+ * 3.43.
+ */
+export function gloamwoodPreyTelegraphRadius(
+  prey: Pick<GloamwoodNestPrey, 'id' | 'kind'> & { bodyRadius?: number },
+  playerBodyRadius: number,
+) {
+  return Math.max(0.2, gloamwoodPreyAttackDistance(prey, playerBodyRadius) - Math.max(0, playerBodyRadius))
+}
+
 export function gloamwoodCombatSlotPosition(
   slot: number,
   kind: GloamwoodPreyKind,
