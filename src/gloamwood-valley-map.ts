@@ -206,7 +206,7 @@ export function createGloamwoodValleyMap(
       respawn = cycled.state
       return {
         state: { ...state, prey: cycled.creatures as GloamwoodNestPrey[] },
-        events: frame.events,
+        events: [...frame.events, ...nested.events],
       }
     },
   }

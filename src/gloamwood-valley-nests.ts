@@ -1,4 +1,4 @@
-import { GLOAMWOOD_PREY, type GloamwoodPreyKind } from './gloamwood-3d-ecology'
+import { GLOAMWOOD_PREY, type GloamwoodNestEvent, type GloamwoodPreyKind } from './gloamwood-3d-ecology'
 import { GLOAMWOOD_VALLEY_SPAWN_PLAN } from './gloamwood-valley-spawns'
 import type { GloamwoodValleyCreature } from './gloamwood-valley-creatures'
 import { gloamwoodValleyConfine } from './gloamwood-valley-terrain'
@@ -76,6 +76,16 @@ export interface GloamwoodValleyNestFrame {
   creatures: GloamwoodValleyCreature[]
   /** Nest ids cleared this frame. */
   cleared: string[]
+  /**
+   * What just happened, so the player can be told.
+   *
+   * Without these the encounter is invisible. The shallows nest sits four units
+   * from the first fork, so a player who stops there to choose a direction
+   * fights three creatures, kills them, and watches three more appear 1.6
+   * seconds later with nothing said - which reads as the respawn timer being
+   * broken, not as a set-piece. It was reported as exactly that.
+   */
+  events: GloamwoodNestEvent[]
 }
 
 export function stepGloamwoodValleyNests(
@@ -87,6 +97,7 @@ export function stepGloamwoodValleyNests(
   const delta = Math.max(0, Math.min(0.05, deltaSeconds))
   const spawned: GloamwoodValleyCreature[] = []
   const cleared: string[] = []
+  const events: GloamwoodNestEvent[] = []
 
   const next = nests.map((nest) => {
     const state = { ...nest, phaseElapsed: nest.phaseElapsed + delta }
@@ -96,6 +107,8 @@ export function stepGloamwoodValleyNests(
       const distance = Math.hypot(player.x - state.x, player.z - state.z)
       if (distance > GLOAMWOOD_VALLEY_NEST.triggerRadius) return state
       spawned.push(...buildWave(state, 1))
+      events.push({ type: 'valley-nest-entered', nestId: state.id, waves: state.waveCount })
+      events.push({ type: 'valley-nest-wave', nestId: state.id, wave: 1, waves: state.waveCount })
       return { ...state, phase: 'wave' as const, wave: 1, phaseElapsed: 0 }
     }
 
@@ -103,6 +116,7 @@ export function stepGloamwoodValleyNests(
       if (state.phaseElapsed < GLOAMWOOD_VALLEY_NEST.intermissionSeconds) return state
       const wave = state.wave + 1
       spawned.push(...buildWave(state, wave))
+      events.push({ type: 'valley-nest-wave', nestId: state.id, wave, waves: state.waveCount })
       return { ...state, phase: 'wave' as const, wave, phaseElapsed: 0 }
     }
 
@@ -122,12 +136,13 @@ export function stepGloamwoodValleyNests(
     if (alive) return state
     if (state.wave >= state.waveCount) {
       cleared.push(state.id)
+      events.push({ type: 'valley-nest-cleared', nestId: state.id })
       return { ...state, phase: 'cleared' as const, phaseElapsed: 0 }
     }
     return { ...state, phase: 'intermission' as const, phaseElapsed: 0 }
   })
 
-  return { nests: next, creatures: [...creatures, ...spawned], cleared }
+  return { nests: next, creatures: [...creatures, ...spawned], cleared, events }
 }
 
 function buildWave(nest: GloamwoodValleyNestState, wave: number): GloamwoodValleyCreature[] {

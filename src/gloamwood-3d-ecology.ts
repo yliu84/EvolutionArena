@@ -94,6 +94,13 @@ export type GloamwoodNestEvent =
   | { type: 'wave-cleared'; wave: number }
   | { type: 'nest-cleared'; biomass: number; genes: GloamwoodGeneBank }
   | { type: 'prey-attack'; preyId: string; kind: GloamwoodPreyKind; damage: number; knockback: number }
+  // The valley's set-piece speaks for itself. Separate variants rather than
+  // reusing the nest's, because the runtime answers those by paying out
+  // Gloamwood milestones and opening the evolution gate - neither of which the
+  // valley's nests may do.
+  | { type: 'valley-nest-entered'; nestId: string; waves: number }
+  | { type: 'valley-nest-wave'; nestId: string; wave: number; waves: number }
+  | { type: 'valley-nest-cleared'; nestId: string }
   /**
    * A boss crossed half health and turned.
    *

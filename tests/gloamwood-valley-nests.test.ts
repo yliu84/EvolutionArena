@@ -19,11 +19,13 @@ function fightThrough(limit = 400) {
   let list: GloamwoodValleyCreature[] = [...creatures]
   const cleared: string[] = []
   const waves: number[] = []
+  const events: ReturnType<typeof stepGloamwoodValleyNests>['events'] = []
   for (let tick = 0; tick < limit; tick += 1) {
     const frame = stepGloamwoodValleyNests(nests, list, 0.05, { x: marker.homeX, z: marker.homeZ })
     nests = frame.nests
     list = frame.creatures
     cleared.push(...frame.cleared)
+    events.push(...frame.events)
     const nest = nests.find((entry) => entry.id === marker.id)!
     if (nest.phase === 'wave' && !waves.includes(nest.wave)) waves.push(nest.wave)
     // Clear what is standing - the wave and the marker, because the marker
@@ -33,7 +35,7 @@ function fightThrough(limit = 400) {
       : creature)
     if (cleared.includes(marker.id)) break
   }
-  return { nests, list, cleared, waves }
+  return { nests, list, cleared, waves, events }
 }
 
 describe('Walking into a nest', () => {
@@ -116,5 +118,43 @@ describe('Fighting through it', () => {
       expect(frame.cleared).toHaveLength(0)
     }
     expect(nests.find((entry) => entry.id === marker.id)!.phase).toBe('cleared')
+  })
+})
+
+describe('Saying what it is', () => {
+  it('announces itself on the way in, with how many waves are coming', () => {
+    // Reported as a broken respawn timer: three creatures killed at the fork,
+    // three more 1.6 seconds later, nothing said. The shallows nest sits four
+    // units from the first fork, so this is where a player stops to choose a
+    // direction - the one fight on the map they cannot walk around has to say
+    // so out loud.
+    const frame = stepGloamwoodValleyNests(
+      createGloamwoodValleyNests(creatures), creatures, 0.05,
+      { x: marker.homeX, z: marker.homeZ },
+    )
+    const entered = frame.events.find((event) => event.type === 'valley-nest-entered')
+    expect(entered).toBeDefined()
+    expect(entered && entered.type === 'valley-nest-entered' && entered.waves).toBeGreaterThanOrEqual(2)
+  })
+
+  it('says nothing at all until the player walks in', () => {
+    const frame = stepGloamwoodValleyNests(createGloamwoodValleyNests(creatures), creatures, 0.05, away)
+    expect(frame.events).toHaveLength(0)
+  })
+
+  it('counts each wave out and reports the end', () => {
+    const result = fightThrough()
+    const waves = result.events.filter((event) => event.type === 'valley-nest-wave')
+    expect(waves.length).toBeGreaterThanOrEqual(2)
+    expect(result.events.some((event) => event.type === 'valley-nest-cleared')).toBe(true)
+    // Numbered so the player can tell "one more" from "this never ends".
+    const numbers = waves.map((event) => event.type === 'valley-nest-wave' ? event.wave : 0)
+    expect(numbers).toEqual([...numbers].sort((a, b) => a - b))
+  })
+
+  it('never announces a nest twice', () => {
+    const result = fightThrough()
+    const entered = result.events.filter((event) => event.type === 'valley-nest-entered')
+    expect(entered).toHaveLength(1)
   })
 })

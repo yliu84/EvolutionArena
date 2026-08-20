@@ -2549,6 +2549,33 @@ class Gloamwood3DHunt {
         this.playSound('hit-heavy')
         continue
       }
+      if (event.type === 'valley-nest-entered') {
+        // Announced, because it is the one fight on this map the player does
+        // not get to walk around. Unannounced it read as the respawn timer
+        // being broken: three creatures killed, three more 1.6 seconds later,
+        // nothing said.
+        this.combatMessage = t('hud.msg.valleyNestEntered', { waves: event.waves })
+        // The phase-change sting, borrowed: it is the game's existing "this
+        // just became a fight" sound, and inventing a second one for the same
+        // meaning is how a soundscape stops meaning anything.
+        this.playSound('boss-phase')
+        continue
+      }
+      if (event.type === 'valley-nest-wave') {
+        // The lock moves to whatever just arrived, as the Gloamwood's waves do.
+        this.lockedPreyId = nextGloamwoodLockTarget(
+          this.nestState.prey,
+          null,
+          { x: this.playerRoot.position.x, z: this.playerRoot.position.z },
+        )
+        if (event.wave > 1) this.combatMessage = t('hud.msg.valleyNestWave', { wave: event.wave, waves: event.waves })
+        continue
+      }
+      if (event.type === 'valley-nest-cleared') {
+        this.combatMessage = t('hud.msg.valleyNestCleared')
+        this.lockedPreyId = null
+        continue
+      }
       if (event.type !== 'prey-attack') continue
       const attacker = this.nestState.prey.find((prey) => prey.id === event.preyId)
       if (!attacker) continue
