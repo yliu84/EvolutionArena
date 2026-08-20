@@ -62,6 +62,29 @@ export const GLOAMWOOD_VALLEY_BOSS_PLAYER_FLOOR = 1.78
  */
 export const GLOAMWOOD_VALLEY_BOSS_STUN_IMMUNITY = 9
 
+/**
+ * The shortest reach in the player's chain, measured to the hurt surface.
+ *
+ * Bite is 2.55, Pounce 2.95, TailSwipe 3.1, and contact is tested surface to
+ * surface - so against a boss of radius R the player must stand at R + 2.55 to
+ * land anything at all.
+ *
+ * This is the number every pattern has to be measured against, and leaving it
+ * out is what made the first boss unwinnable. Reaches were derived from the
+ * boss's own body alone, so the Tide Cleaver's 3.5 radius produced a disc of
+ * 8.68 while the player could only reach 6.05: every position they could attack
+ * from was 2.6 units inside the blow, and its preferred standing distance of
+ * 7.38 was outside their reach entirely. Simulated against the real authority
+ * it lost from full health in every configuration - trading, dodging, and after
+ * two evolutions - never taking the boss below 45%.
+ *
+ * The Gloamwood boss, which was tuned by playing it, has exactly the
+ * relationship this restores: its slam covers 4.3 and the player reaches 4.27.
+ * Standing where you can hit it is standing where it can hit you, and the fight
+ * is one short step out and one back.
+ */
+export const GLOAMWOOD_VALLEY_BOSS_PLAYER_REACH = 2.55
+
 export type GloamwoodValleyBossShape =
   | { kind: 'disc'; radius: number }
   | { kind: 'line'; length: number; halfWidth: number }
@@ -114,21 +137,38 @@ export interface GloamwoodValleyBossSpec {
  */
 function bossReaches(bodyRadius: number) {
   const floor = bodyRadius + GLOAMWOOD_VALLEY_BOSS_PLAYER_FLOOR
+  // Where the player has to stand to land the shortest step of their chain.
+  // Every reach below is placed against this rather than against the boss's
+  // body, so a bigger boss gets a bigger *body* and not a longer arm.
+  const strikeFrom = bodyRadius + GLOAMWOOD_VALLEY_BOSS_PLAYER_REACH
   return {
     floor,
+    strikeFrom,
     // Just clear of the floor, so the boss never wedges itself against the
     // player and stops being able to reach the spacing it waits for.
     minimumRange: floor + 0.2,
-    preferredRange: floor + 2.1,
-    // Past where the player stands, so standing still is never the answer.
-    disc: floor + 3.4,
+    // Inside the player's reach. It used to stand at floor + 2.1, which for a
+    // 3.5-radius body is 7.38 against a reach of 6.05 - the boss parked itself
+    // where nothing could touch it and waited there between patterns.
+    preferredRange: Math.max(floor + 0.2, strikeFrom - 0.05),
+    // Just past where the player must stand to attack, so standing still is
+    // never the answer and stepping out is a step rather than a commute.
+    disc: strikeFrom + 0.6,
     lineLength: floor + 7.5,
     lineHalfWidth: 0.85 + bodyRadius * 0.22,
-    // Opens *inside* where the boss keeps the player. Walking in is the cheap
-    // answer and the one the shape is teaching; running past the outer edge is
-    // the expensive one.
-    ringInner: floor + 1.2,
-    ringOuter: floor + 7.6,
+    // Opens just off the boss's own body, so the safe centre is *contact*.
+    //
+    // There is very little room to work in: the collision floor is at
+    // bodyRadius + 1.78 and the player's shortest reach lands at bodyRadius +
+    // 2.55, so the entire band they can stand and fight in is 0.77 wide. A ring
+    // whose safe centre is "closer than you were" has to fit inside that.
+    //
+    // Putting the inner edge half a unit off the floor makes the answer "walk
+    // into it", and collision then finishes the job - the player cannot
+    // overshoot, because the floor is what stops them. Running past the outer
+    // edge stays the expensive alternative.
+    ringInner: floor + 0.5,
+    ringOuter: strikeFrom + 5.2,
   }
 }
 

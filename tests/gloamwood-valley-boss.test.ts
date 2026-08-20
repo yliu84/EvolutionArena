@@ -10,6 +10,7 @@ import {
   gloamwoodValleyBossSpecFor,
   stepGloamwoodValleyBoss,
   type GloamwoodValleyBossSpec,
+  GLOAMWOOD_VALLEY_BOSS_PLAYER_REACH,
 } from '../src/gloamwood-valley-boss'
 import { GLOAMWOOD_VALLEY_BOSS_BODIES, gloamwoodValleyBodyFor } from '../src/gloamwood-modelled-prey'
 import { createGloamwoodValleyCreatures } from '../src/gloamwood-valley-creatures'
@@ -70,7 +71,13 @@ describe('Every pattern has an answer', () => {
       for (const pattern of Object.values(spec.patterns)) {
         if (pattern.shape.kind !== 'ring') continue
         const floor = spec.bodyRadius + GLOAMWOOD_VALLEY_BOSS_PLAYER_FLOOR
-        expect(pattern.shape.innerRadius - floor).toBeGreaterThan(0.6)
+        // 0.45, not the 0.6 this was written with. That figure came from the
+        // old derivation, where reaches were measured off the boss's body and
+        // the ring could open anywhere. Measured against the player instead,
+        // the whole band they can stand and fight in is 0.77 wide - floor at
+        // bodyRadius + 1.78, shortest reach landing at bodyRadius + 2.55 - and
+        // a safe centre plus a walk-in has to fit inside that.
+        expect(pattern.shape.innerRadius - floor).toBeGreaterThan(0.45)
         // And it has to be worth walking in for: standing where the boss keeps
         // you must be inside the danger band.
         expect(spec.preferredRange).toBeGreaterThan(pattern.shape.innerRadius)
@@ -314,4 +321,53 @@ describe('The clip a boss plays', () => {
     )
     expect(selection.clip).toBe(config.clips.idle)
   })
+})
+
+describe('A boss has to be reachable', () => {
+  /** Where the player must stand to land the shortest step of their chain. */
+  const strikeFrom = (spec: { bodyRadius: number }) =>
+    spec.bodyRadius + GLOAMWOOD_VALLEY_BOSS_PLAYER_REACH
+
+  for (const spec of GLOAMWOOD_VALLEY_BOSS_SPECS) {
+    describe(spec.bodyId, () => {
+      it('stands somewhere the player can hit it', () => {
+        // It stood at floor + 2.1 - for a 3.5 radius body that is 7.38, against
+        // a reach of 6.05. The boss parked itself where nothing could touch it
+        // and waited there between patterns.
+        expect(spec.preferredRange).toBeLessThanOrEqual(strikeFrom(spec))
+      })
+
+      it('keeps its own spacing reachable too', () => {
+        expect(spec.minimumRange).toBeLessThan(spec.preferredRange + 0.001)
+      })
+
+      it('makes stepping out of a circle a step, not a commute', () => {
+        // Reaches were derived from the boss's body alone, so a bigger boss got
+        // a longer arm rather than a bigger body: the Tide Cleaver's disc
+        // covered 8.68 while the player reached 6.05, and every position they
+        // could attack from was 2.6 units inside the blow. Simulated against
+        // the real authority it lost from full health in every configuration.
+        for (const pattern of Object.values(spec.patterns)) {
+          if (pattern.shape.kind !== 'disc') continue
+          const out = pattern.shape.radius - strikeFrom(spec)
+          expect(out, `${pattern.id} does not reach where the player stands`).toBeGreaterThan(0)
+          // A step the player can make inside the wind-up at 6.2 units a second.
+          expect(out, `${pattern.id} is a commute, not a step`)
+            .toBeLessThan(pattern.telegraphSeconds * 6.2 * 0.5)
+        }
+      })
+
+      it('leaves a ring a safe centre the player can actually stand in', () => {
+        for (const pattern of Object.values(spec.patterns)) {
+          if (pattern.shape.kind !== 'ring') continue
+          const floor = spec.bodyRadius + GLOAMWOOD_VALLEY_BOSS_PLAYER_FLOOR
+          // Reachable: inside is past the collision floor and short of where
+          // they were standing, so walking in is a real answer.
+          expect(pattern.shape.innerRadius).toBeGreaterThan(floor)
+          expect(pattern.shape.innerRadius).toBeLessThan(strikeFrom(spec))
+          expect(pattern.shape.outerRadius).toBeGreaterThan(strikeFrom(spec))
+        }
+      })
+    })
+  }
 })
