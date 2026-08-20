@@ -125,7 +125,7 @@ import {
   stepGloamwoodBoss,
   type GloamwoodBossState,
 } from './gloamwood-3d-boss'
-import { classifyGloamwoodRunPace } from './gloamwood-3d-run'
+import { classifyGloamwoodRunPace, gloamwoodRunPaceVisible } from './gloamwood-3d-run'
 import { deriveGloamwoodOnboardingStep, type GloamwoodOnboardingStep } from './gloamwood-3d-onboarding'
 import { GloamwoodAudioBus, type GloamwoodSoundEvent } from './gloamwood-3d-audio'
 import {
@@ -164,7 +164,12 @@ import {
 import { gloamwoodBossFxFrame } from './gloamwood-boss-fx'
 import { createGloamwoodBossFxScene, type GloamwoodBossFxEntry } from './gloamwood-boss-fx-scene'
 import { gloamwoodValleyCorpseGone } from './gloamwood-valley-respawn'
-import { GLOAMWOOD_VALLEY_LIFE_CAP, gloamwoodValleyEvolutionDue } from './gloamwood-valley-progression'
+import {
+  GLOAMWOOD_VALLEY_LIFE_CAP,
+  GLOAMWOOD_VALLEY_MILESTONES,
+  gloamwoodValleyEvolutionDue,
+  gloamwoodValleyNextEvolution,
+} from './gloamwood-valley-progression'
 import { gloamwoodValleyCorridorAt, gloamwoodValleyRegionAt } from './gloamwood-valley-terrain'
 import {
   gloamwoodPreyClipForPhase,
@@ -4272,14 +4277,31 @@ class Gloamwood3DHunt {
     this.resultOverlay.innerHTML = [
       '<div class="g3d-result-panel">',
       `<span>${victory ? t('result.victory') : t('result.defeat')}</span>`,
-      `<h1>${victory ? t('result.victoryLead') : t('result.defeatLead')}</h1>`,
+      // The lead names what beat you. On the valley it named the Gloamwood's
+      // warden, a creature on the other map.
+      `<h1>${victory
+        ? t(this.map.hasNest ? 'result.victoryLead' : 'result.valleyVictoryLead')
+        : t(this.map.hasNest ? 'result.defeatLead' : 'result.valleyDefeatLead')}</h1>`,
       `<p>${reason}</p>`,
-      `<aside data-pace="${pace.pace}"><strong>${pace.label}</strong><span>${pace.detail}</span></aside>`,
+      ...(gloamwoodRunPaceVisible(window.location.search)
+        ? [`<aside data-pace="${pace.pace}"><strong>${pace.label}</strong><span>${pace.detail}</span></aside>`]
+        : []),
       '<dl>',
       `<div><dt>${t('result.time')}</dt><dd>${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, '0')}</dd></div>`,
       `<div><dt>${t('result.prey')}</dt><dd>${this.nestState.kills}</dd></div>`,
       `<div><dt>${t('result.evolution')}</dt><dd>${selected?.name ?? t('result.noEvolution')}</dd></div>`,
-      `<div><dt>Boss</dt><dd>${this.bossState.health}/${this.bossState.maxHealth}</dd></div>`,
+      // The bill has to be about the run that happened. On the valley the boss
+      // row reported the Gloamwood warden - 420/420, every time, for a creature
+      // the player never met - while the things they actually earned went
+      // unmentioned: how far up the road they got, what the biomass bought,
+      // how much of the milestone track they opened.
+      ...(this.map.hasNest
+        ? [`<div><dt>Boss</dt><dd>${this.bossState.health}/${this.bossState.maxHealth}</dd></div>`]
+        : [
+          `<div><dt>${t('result.reached')}</dt><dd>${escapeGloamwoodHtml(this.currentRegionName())}</dd></div>`,
+          `<div><dt>${t('hud.biomass')}</dt><dd>${this.nestState.biomass}</dd></div>`,
+          `<div><dt>${t('hud.mutationTrack')}</dt><dd>${GLOAMWOOD_VALLEY_MILESTONES.filter((milestone) => this.mutationState.reached.includes(milestone.id)).length}/${GLOAMWOOD_VALLEY_MILESTONES.length}</dd></div>`,
+        ]),
       '</dl>',
       `<button data-run-restart>${t('result.restart')}</button>`,
       '</div>',
@@ -4334,7 +4356,7 @@ class Gloamwood3DHunt {
       '<div class="g3d-combat-bars">',
       `<label>${t('hud.health')} <b data-g3d-player-health>100 / 100</b><i><em data-g3d-player-bar></em></i></label>`,
       '</div>',
-      `<div class="g3d-nest-resources"><b data-g3d-remaining>${t('hud.undisturbed')}</b><span>${t('hud.lives')} <strong data-g3d-lives>${this.map.lives}</strong></span><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
+      `<div class="g3d-nest-resources"><b data-g3d-remaining>${t('hud.undisturbed')}</b><span>${t('hud.lives')} <strong data-g3d-lives>${this.map.lives}</strong></span><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span data-g3d-mutation-progress-cell hidden>${t('hud.mutationTrack')} <strong data-g3d-mutation-progress>0/0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
       // Mutations stack rather than replace, and a build the player cannot see
       // is a build they cannot plan around. Hidden until the first one is taken.
       '<div class="g3d-mutation-list" data-g3d-mutations hidden></div>',
@@ -5029,7 +5051,27 @@ class Gloamwood3DHunt {
       ? `${this.bossPatternName(this.bossState.pattern)} · ${this.bossState.state === 'telegraph' ? t('enemy.telegraph') : this.bossState.state === 'attack' ? t('enemy.strike') : t('enemy.watch')}`
       : !this.map.hasNest ? t('hud.fieldRemaining', { count: this.livePrey().length, kills: this.nestState.kills })
         : this.nestState.phase === 'dormant' ? t('hud.undisturbed') : this.nestState.phase === 'intermission' ? t('hud.incoming') : this.nestState.phase === 'cleared' ? t('hud.clearedKills', { kills: this.nestState.kills }) : t('hud.waveRemaining', { count: this.livePrey().length }))
-    setText('[data-g3d-biomass]', `${this.nestState.biomass}`)
+    // Biomass against the thing it is buying. On its own it read as a score,
+    // and a player watched it reach 156 before asking whether evolution was
+    // broken - the number failing to say what it was for.
+    const nextEvolution = this.map.hasNest
+      ? null
+      : gloamwoodValleyNextEvolution(this.nestState.biomass, this.evolutionsTaken)
+    setText('[data-g3d-biomass]', nextEvolution
+      ? `${this.nestState.biomass} / ${nextEvolution.target}`
+      : `${this.nestState.biomass}`)
+    // And the milestone track, which existed entirely out of sight: seven of
+    // them on this map, and a run that ends in the shallows collects none.
+    const progressCell = this.hud.querySelector<HTMLElement>('[data-g3d-mutation-progress-cell]')
+    if (progressCell) {
+      const total = this.map.hasNest ? 0 : GLOAMWOOD_VALLEY_MILESTONES.length
+      progressCell.hidden = total === 0
+      if (total > 0) {
+        const reached = GLOAMWOOD_VALLEY_MILESTONES
+          .filter((milestone) => this.mutationState.reached.includes(milestone.id)).length
+        setText('[data-g3d-mutation-progress]', `${reached}/${total}`)
+      }
+    }
     setText('[data-g3d-fang]', `${this.nestState.genes.fang}`)
     setText('[data-g3d-shell]', `${this.nestState.genes.shell}`)
     setText('[data-g3d-swarm]', `${this.nestState.genes.swarm}`)

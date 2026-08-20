@@ -15,6 +15,7 @@ import {
   holdGloamwoodValleyAtGate,
   recordGloamwoodValleyMilestone,
   GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS,
+  gloamwoodValleyNextEvolution,
   gloamwoodValleyEvolutionDue,
   gloamwoodValleyEvolutionsEarned,
 } from '../src/gloamwood-valley-progression'
@@ -249,5 +250,38 @@ describe('Earning the run\'s evolution on a road', () => {
     // The top-up on entering a region cannot help a player who dies three times
     // inside the first one - which is what was happening.
     expect(GLOAMWOOD_VALLEY_LIFE_CAP).toBeGreaterThan(GLOAMWOOD_RUN_LIVES)
+  })
+})
+
+describe('What the biomass is buying', () => {
+  it('names a target while one is still ahead', () => {
+    // A bare number read as a score: a player watched it reach 156 and asked
+    // whether evolution was broken, which is the number failing to say what it
+    // was for. Against a target, every kill visibly buys something.
+    const next = gloamwoodValleyNextEvolution(20, 0)
+    expect(next?.target).toBe(GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS[0])
+    expect(next?.remaining).toBe(GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS[0] - 20)
+    expect(next?.ordinal).toBe(1)
+  })
+
+  it('moves to the next target once one is taken', () => {
+    expect(gloamwoodValleyNextEvolution(120, 1)?.target).toBe(GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS[1])
+  })
+
+  it('never advertises a threshold already crossed', () => {
+    // Biomass past the first while the offer is still open: the countdown has
+    // to point at the second, not at one the player has already paid for.
+    expect(gloamwoodValleyNextEvolution(100, 0)?.target).toBe(GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS[1])
+  })
+
+  it('says nothing once there is nothing left to buy', () => {
+    expect(gloamwoodValleyNextEvolution(9999, 2)).toBeNull()
+  })
+
+  it('counts down rather than up', () => {
+    const early = gloamwoodValleyNextEvolution(10, 0)!
+    const late = gloamwoodValleyNextEvolution(70, 0)!
+    expect(late.remaining).toBeLessThan(early.remaining)
+    expect(late.remaining).toBeGreaterThan(0)
   })
 })

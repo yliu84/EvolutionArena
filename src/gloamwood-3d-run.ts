@@ -11,6 +11,23 @@ export interface GloamwoodRunPaceResult {
   detail: string
 }
 
+/**
+ * Whether the pacing readout is for this audience.
+ *
+ * It is a development instrument, not player copy: "this run does not count
+ * toward the 8-13 minute acceptance" is a note to the producer about a gate,
+ * and a tester who reads it learns nothing about the game. Goal 5 needs three
+ * English-speaking testers with no instructions, and they were being shown an
+ * untranslated internal acceptance note on the death screen.
+ *
+ * Asked for by URL rather than gated on DEV, because the producer reviews the
+ * deployed build too - a switch that only exists in dev silently does nothing
+ * where the review actually happens.
+ */
+export function gloamwoodRunPaceVisible(search: string) {
+  return new URLSearchParams(search).get('pace') === '1'
+}
+
 export function classifyGloamwoodRunPace(elapsedSeconds: number, debugSkip = false): GloamwoodRunPaceResult {
   if (debugSkip) {
     return { pace: 'debug', label: '调试局', detail: '使用了跳关入口，本局不计入 8–13 分钟节奏验收' }

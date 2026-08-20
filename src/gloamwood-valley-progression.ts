@@ -107,6 +107,26 @@ export function gloamwoodValleyEvolutionDue(biomass: number, taken: number) {
   return gloamwoodValleyEvolutionsEarned(biomass) > taken
 }
 
+/**
+ * The next evolution the biomass is buying, and how far off it is.
+ *
+ * Biomass was a bare number on the HUD with nothing to compare it against, so
+ * it read as a score rather than as progress - a player reached 156 and asked
+ * whether evolution was broken, which is the number failing to say what it is
+ * for. Given a target it becomes a countdown, and every kill on the way is
+ * visibly buying something.
+ *
+ * Counts from whichever is further along - what has been earned, or what has
+ * been taken - so a pending offer does not advertise a threshold already
+ * crossed.
+ */
+export function gloamwoodValleyNextEvolution(biomass: number, taken: number) {
+  const index = Math.max(taken, gloamwoodValleyEvolutionsEarned(biomass))
+  const target = GLOAMWOOD_VALLEY_EVOLUTION_BIOMASS[index]
+  if (target === undefined) return null
+  return { ordinal: index + 1, target, remaining: Math.max(0, target - biomass) }
+}
+
 export const GLOAMWOOD_VALLEY_LIFE_CAP = 4
 
 export interface GloamwoodValleyProgression {
