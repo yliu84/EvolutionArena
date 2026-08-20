@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import { GLOAMWOOD_3D_COMBAT } from '../src/gloamwood-3d-combat'
-import { gloamwoodPreyAttackDistance, gloamwoodPreyTelegraphRadius, stepPrey } from '../src/gloamwood-3d-ecology'
+import {
+  GLOAMWOOD_SHELL_FRONT_ARC,
+  gloamwoodFlankApproachAngle,
+  gloamwoodPreyAttackDistance,
+  gloamwoodPreyGuardsItsFront,
+  gloamwoodPreyTelegraphRadius,
+  stepPrey,
+} from '../src/gloamwood-3d-ecology'
 import type { GloamwoodNestPrey, GloamwoodPreyKind } from '../src/gloamwood-3d-ecology'
 
 import {
@@ -539,5 +546,41 @@ describe('The size of the mark on the ground', () => {
   it('never collapses to nothing for a tiny creature and a huge player', () => {
     const swarm = { id: 'b', kind: 'swarm' as const, bodyRadius: 0.3 }
     expect(gloamwoodPreyTelegraphRadius(swarm, 6)).toBeGreaterThan(0)
+  })
+})
+
+describe('Where the attack order walks you', () => {
+  const arc = GLOAMWOOD_SHELL_FRONT_ARC
+
+  it('leaves a bearing alone when it is already off the armoured front', () => {
+    const flank = Math.PI * 0.7
+    expect(gloamwoodFlankApproachAngle(0, flank, arc)).toBeCloseTo(flank, 6)
+  })
+
+  it('moves a head-on approach to the nearest edge of the arc, and no further', () => {
+    // Not to the rear. The player picked a side; the game only declines to walk
+    // them into the wall.
+    const nudged = gloamwoodFlankApproachAngle(0, 0.1, arc)
+    expect(Math.abs(nudged)).toBeGreaterThan(arc)
+    expect(Math.abs(nudged)).toBeLessThan(arc + 0.3)
+    expect(nudged).toBeGreaterThan(0)
+    expect(gloamwoodFlankApproachAngle(0, -0.1, arc)).toBeLessThan(0)
+  })
+
+  it('lands somewhere the gate agrees is not the front', () => {
+    // The two have to share the arc, which is why it is one exported constant.
+    for (const facing of [0, 1.2, -2.4, 3.0]) {
+      for (const approach of [-0.3, 0, 0.2, 1.0]) {
+        const angle = gloamwoodFlankApproachAngle(facing, facing + approach, arc)
+        const error = Math.abs(Math.atan2(Math.sin(angle - facing), Math.cos(angle - facing)))
+        expect(error).toBeGreaterThan(arc)
+      }
+    }
+  })
+
+  it('only walks around the family that guards its front', () => {
+    expect(gloamwoodPreyGuardsItsFront('shell')).toBe(true)
+    expect(gloamwoodPreyGuardsItsFront('fang')).toBe(false)
+    expect(gloamwoodPreyGuardsItsFront('swarm')).toBe(false)
   })
 })

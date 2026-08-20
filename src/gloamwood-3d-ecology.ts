@@ -344,6 +344,41 @@ export interface GloamwoodPreyHitResult {
   killedKind: GloamwoodPreyKind | null
 }
 
+/**
+ * Half the arc over which the shell family sheds a blow.
+ *
+ * Named and exported because two things have to agree about it: the gate that
+ * decides a hit, and the approach that walks the player to where they will
+ * throw one. They did not - the attack order closed along whatever bearing the
+ * player already had, which is head-on, which is the one arc a beetle is built
+ * against. The assist was walking them into 72% damage reduction and they read
+ * it as "my attack does 6 now".
+ */
+export const GLOAMWOOD_SHELL_FRONT_ARC = Math.PI * 0.42
+
+/**
+ * The bearing to close on a target from, given the one the player is on.
+ *
+ * Their bearing is left alone unless it is the arc the target is armoured
+ * against, and then it moves to the nearest edge of it and no further. The
+ * player still chooses the side; the game just stops choosing the wall.
+ */
+export function gloamwoodFlankApproachAngle(
+  targetFacing: number,
+  approachAngle: number,
+  blockedArc: number,
+  clearance = 0.14,
+) {
+  const error = shortestAngle(targetFacing, approachAngle)
+  if (Math.abs(error) > blockedArc) return approachAngle
+  return targetFacing + (blockedArc + clearance) * (error >= 0 ? 1 : -1)
+}
+
+/** True when this creature's front is worth walking around. */
+export function gloamwoodPreyGuardsItsFront(kind: GloamwoodPreyKind) {
+  return kind === 'shell'
+}
+
 export function damageGloamwoodPreyList(
   prey: readonly GloamwoodNestPrey[],
   preyId: string,
@@ -362,7 +397,7 @@ export function damageGloamwoodPreyList(
   const spec = GLOAMWOOD_PREY[target.kind]
   const attackerFacing = Math.atan2(-(attacker.z - target.z), attacker.x - target.x)
   const frontalError = Math.abs(shortestAngle(target.facingRadians, attackerFacing))
-  const shellFront = target.kind === 'shell' && frontalError <= Math.PI * 0.42
+  const shellFront = target.kind === 'shell' && frontalError <= GLOAMWOOD_SHELL_FRONT_ARC
   const multiplier = shellFront ? 0.28 : target.kind === 'shell' ? 1.35 : target.kind === 'fang' && action === 'Claw' ? 1.2 : target.kind === 'swarm' && action === 'TailSwipe' ? 1.3 : 1
   const familyDamage = Math.max(1, Math.round(Math.max(0, rawDamage) * multiplier))
   const shielded = gloamwoodEliteAbsorb(target.elite, familyDamage)

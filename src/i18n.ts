@@ -163,6 +163,10 @@ const STRINGS = {
   'hud.msg.nestCleared': { en: 'Nest cleared', zh: '窝点已清理' },
   'hud.msg.noTarget': { en: 'No target to lock', zh: '当前没有可锁定目标' },
   'hud.msg.backToHunt': { en: 'Back into the hunt', zh: '重新投入狩猎' },
+  'hud.msg.blockedFront': {
+    en: 'Blocked by its plates · strike from the side',
+    zh: '正面被甲壳弹开 · 绕到侧面或背后',
+  },
   'hud.msg.missNoLock': { en: 'Missed · nothing locked', zh: '挥空 · 没有锁定目标' },
   'hud.msg.missRange': { en: 'Missed · target out of reach', zh: '挥空 · 目标超出攻击距离' },
   'hud.msg.missAngle': { en: 'Missed · more than 8° off aim', zh: '挥空 · 接触角度超过 8°' },

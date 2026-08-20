@@ -106,11 +106,18 @@ export function stepGloamwoodValleyNests(
       return { ...state, phase: 'wave' as const, wave, phaseElapsed: 0 }
     }
 
-    // A wave is over when nothing it spawned is still standing. The marker
-    // itself is not counted: it is the thing the player walked into, not part
-    // of the fight, and leaving it in would make a nest unclearable.
+    // A wave is over when nothing it spawned is still standing - and the
+    // marker counts.
+    //
+    // It did not, on the reasoning that it is the thing the player walked into
+    // rather than part of the fight. That was wrong in the way that matters:
+    // the marker is a real creature that fights back, so excluding it meant
+    // waves arrived on top of a beetle the player was still working through.
+    // "The first beetle isn't even dead and another one shows up." It is part
+    // of the fight because it is fighting.
     const alive = creatures.some(
-      (creature) => creature.group === `${state.id}-wave` && creature.phase !== 'dead',
+      (creature) => (creature.group === `${state.id}-wave` || creature.id === state.id)
+        && creature.phase !== 'dead',
     )
     if (alive) return state
     if (state.wave >= state.waveCount) {
@@ -136,7 +143,10 @@ function buildWave(nest: GloamwoodValleyNestState, wave: number): GloamwoodValle
       id: `${nest.id}-w${wave}-${index}`,
       kind,
       role: 'aggressive',
-      tier: 'pack',
+      // Not 'pack'. Only road packs respawn, and a wave tagged as one put the
+      // whole nest - every wave of it, together - back on a ninety second
+      // clock the moment the player walked away from a fight they had won.
+      tier: 'nest',
       group: `${nest.id}-wave`,
       branch: null,
       region: nest.region,

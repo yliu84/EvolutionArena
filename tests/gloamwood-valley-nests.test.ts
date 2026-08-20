@@ -7,6 +7,7 @@ import {
   stepGloamwoodValleyNests,
 } from '../src/gloamwood-valley-nests'
 import { GLOAMWOOD_LOCK_RANGE } from '../src/gloamwood-3d-hunt'
+import { gloamwoodValleyRespawns } from '../src/gloamwood-valley-respawn'
 
 const creatures = createGloamwoodValleyCreatures(0x5a11e)
 const marker = creatures.find((creature) => creature.tier === 'nest')!
@@ -25,8 +26,9 @@ function fightThrough(limit = 400) {
     cleared.push(...frame.cleared)
     const nest = nests.find((entry) => entry.id === marker.id)!
     if (nest.phase === 'wave' && !waves.includes(nest.wave)) waves.push(nest.wave)
-    // Clear the wave that is standing.
-    list = list.map((creature) => creature.group === `${marker.id}-wave`
+    // Clear what is standing - the wave and the marker, because the marker
+    // fights too and the nest now waits for it.
+    list = list.map((creature) => creature.group === `${marker.id}-wave` || creature.id === marker.id
       ? { ...creature, phase: 'dead' as const, health: 0 }
       : creature)
     if (cleared.includes(marker.id)) break
@@ -66,12 +68,37 @@ describe('Fighting through it', () => {
     expect(result.cleared).toContain(marker.id)
   })
 
-  it('does not count its own marker as part of the fight', () => {
-    // The marker is what the player walked into, not a wave. Counting it would
-    // leave the nest unclearable while it still stood.
-    const still = result.list.find((creature) => creature.id === marker.id)!
-    expect(still.phase).not.toBe('dead')
-    expect(result.cleared).toContain(marker.id)
+  it('counts its own marker as part of the fight', () => {
+    // Playtest: "the first beetle isn't even dead and another one shows up."
+    // The marker was excluded on the reasoning that it is the thing the player
+    // walked into rather than a wave - but it is a live creature that fights
+    // back, so waves arrived on top of a beetle still being worked through.
+    let nests = createGloamwoodValleyNests(creatures)
+    let list: GloamwoodValleyCreature[] = [...creatures]
+    // Walk in, then kill only the wave and leave the marker standing.
+    for (let tick = 0; tick < 200; tick += 1) {
+      const frame = stepGloamwoodValleyNests(nests, list, 0.05, { x: marker.homeX, z: marker.homeZ })
+      nests = frame.nests
+      list = frame.creatures.map((creature) => creature.group === `${marker.id}-wave`
+        ? { ...creature, phase: 'dead' as const, health: 0 }
+        : creature)
+    }
+    const nest = nests.find((entry) => entry.id === marker.id)!
+    // It waits. No second wave stacks on top of the creature still standing.
+    expect(nest.wave).toBe(1)
+    expect(nest.phase).toBe('wave')
+    expect(list.filter((creature) => creature.group === `${marker.id}-wave`)).toHaveLength(
+      list.filter((creature) => creature.id.startsWith(`${marker.id}-w1-`)).length,
+    )
+  })
+
+  it('sends nothing back to be farmed', () => {
+    // A wave tagged as a road pack put the whole nest - every wave of it,
+    // together - back on the respawn clock the moment the player walked away
+    // from a fight they had won.
+    for (const creature of result.list.filter((entry) => entry.group === `${marker.id}-wave`)) {
+      expect(gloamwoodValleyRespawns(creature)).toBe(false)
+    }
   })
 
   it('leaves every wave creature standing somewhere it can be fought', () => {

@@ -71,6 +71,9 @@ import {
   inspectGloamwoodPreyPairClearance,
   gloamwoodPreyTelegraphRadius,
   gloamwoodPreyBodyRadius,
+  gloamwoodPreyGuardsItsFront,
+  gloamwoodFlankApproachAngle,
+  GLOAMWOOD_SHELL_FRONT_ARC,
   resolveGloamwoodPlayerPreyCollision,
   type GloamwoodNestPrey,
   type GloamwoodNestState,
@@ -2044,14 +2047,20 @@ class Gloamwood3DHunt {
     return prey && prey.phase !== 'dead' ? prey.id : null
   }
 
-  /** Where whatever is locked stands, and how wide it is. */
+  /** Where whatever is locked stands, how wide it is, and which way it faces. */
   private lockedTargetGeometry() {
     if (this.bossActive() && this.bossLocked) {
-      return { x: this.bossState.x, z: this.bossState.z, radius: GLOAMWOOD_BOSS.bodyRadius }
+      return {
+        x: this.bossState.x, z: this.bossState.z, radius: GLOAMWOOD_BOSS.bodyRadius,
+        facingRadians: this.bossState.facingRadians, guardsFront: false,
+      }
     }
     const prey = this.lockedPrey()
     if (!prey || prey.phase === 'dead') return null
-    return { x: prey.x, z: prey.z, radius: gloamwoodPreyBodyRadius(prey) }
+    return {
+      x: prey.x, z: prey.z, radius: gloamwoodPreyBodyRadius(prey),
+      facingRadians: prey.facingRadians, guardsFront: gloamwoodPreyGuardsItsFront(prey.kind),
+    }
   }
 
   /**
@@ -2084,12 +2093,20 @@ class Gloamwood3DHunt {
     const reach = this.primaryAttackReach()
     // Reach is measured to the hurt surface, so the stop line follows the same rule.
     if (centreDistance - target.radius > reach - 0.35) {
-      // Approach only closes distance; bearing is whatever the player chose.
-      this.target.set(
-        target.x - dx / centreDistance * (target.radius + reach - 0.5),
-        0,
-        target.z - dz / centreDistance * (target.radius + reach - 0.5),
-      )
+      const stand = target.radius + reach - 0.5
+      // Approach only closes distance, and the bearing is whatever the player
+      // chose - unless that bearing is the arc the target is armoured against,
+      // in which case it moves to the nearest edge of it and no further.
+      //
+      // Head-on is where an unsteered approach always ends up, and head-on is
+      // the one place a beetle sheds 72% of the blow while taking 35% extra
+      // from anywhere else. The assist was walking the player into the worst
+      // angle in the game and they read it as their attack getting weaker.
+      const approachAngle = Math.atan2(dz, -dx)
+      const angle = target.guardsFront
+        ? gloamwoodFlankApproachAngle(target.facingRadians, approachAngle, GLOAMWOOD_SHELL_FRONT_ARC)
+        : approachAngle
+      this.target.set(target.x + Math.cos(angle) * stand, 0, target.z - Math.sin(angle) * stand)
       return
     }
     this.target.copy(this.playerRoot.position)
@@ -2335,6 +2352,11 @@ class Gloamwood3DHunt {
       damage.effectiveDamage,
       damage.killed ? 'kill' : damage.blocked ? 'blocked' : damage.weakness ? 'weakness' : 'hit',
     )
+    // A blue-grey 6 does not teach anything. The shell family sheds 72% of a
+    // frontal blow and takes 35% *extra* from anywhere else, which is the
+    // sharpest decision in the game - and a player who has not been told simply
+    // reads it as "my attack is weak now" and grinds through fifteen hits.
+    if (damage.blocked && !damage.killed) this.combatMessage = t('hud.msg.blockedFront')
     if (damage.killed) {
       this.combatMessage = target.id === GLOAMWOOD_NEST_GUARDIAN.id
         ? t('hud.msg.guardianDown', { name: t('creature.guardian') })

@@ -111,12 +111,18 @@ describe('Evolution choice card', () => {
 describe('Auto-engage and target bar', () => {
   const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
 
-  it('closes along the current bearing rather than pathing to the nearest face', () => {
-    // Walking to the closest reachable point would deliver the player onto the
-    // Carapace family's armoured front, defeating the flank the guide teaches.
+  it('closes along the current bearing, except into an armoured front', () => {
+    // Keeping the player's bearing was meant to protect the flank the guide
+    // teaches. It does not: an unsteered approach *is* head-on, because the
+    // creature turns to face whoever is coming, so the assist delivered the
+    // player onto the Carapace front every time - 72% shed, and it reads as
+    // the player's own attack having gone weak.
     expect(source).toContain('private updateAutoEngage()')
-    expect(source).toContain('target.x - dx / centreDistance')
-    expect(source).toContain('target.z - dz / centreDistance')
+    expect(source).toContain('const approachAngle = Math.atan2(dz, -dx)')
+    expect(source).toContain('gloamwoodFlankApproachAngle(target.facingRadians, approachAngle')
+    // Only ever nudged to the edge of the armoured arc - the side stays the
+    // player's, and anything without an armoured front is untouched.
+    expect(source).toContain('target.guardsFront')
   })
 
   it('lets steering drop the automation while keeping the lock', () => {
