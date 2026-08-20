@@ -163,6 +163,8 @@ const STRINGS = {
   'hud.msg.nestCleared': { en: 'Nest cleared', zh: '窝点已清理' },
   'hud.msg.noTarget': { en: 'No target to lock', zh: '当前没有可锁定目标' },
   'hud.msg.backToHunt': { en: 'Back into the hunt', zh: '重新投入狩猎' },
+  'hud.nestWave': { en: 'Nest · wave {wave} of {waves}', zh: '巢穴 · 第 {wave} 波 / 共 {waves} 波' },
+  'hud.nestBreath': { en: 'Nest · next wave incoming', zh: '巢穴 · 下一波正在来' },
   'hud.msg.valleyNestEntered': {
     en: 'Nest roused · {waves} waves, no way around',
     zh: '惊动巢穴 · {waves} 波，绕不开',

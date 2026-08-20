@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import { GLOAMWOOD_AGGRO } from '../src/gloamwood-creature-aggro'
+import { GLOAMWOOD_VALLEY_DEATH_SETBACK } from '../src/gloamwood-valley-progression'
+
 import { gloamwoodPreyBodyRadius } from '../src/gloamwood-3d-ecology'
 import { createGloamwoodValleyMap } from '../src/gloamwood-valley-map'
 import type { GloamwoodValleyCreature } from '../src/gloamwood-valley-creatures'
@@ -61,16 +64,38 @@ describe('Dying in the valley', () => {
     }
   })
 
-  it('puts the player back at the entrance of the region they died in', () => {
-    // Regions are the valley's checkpoints, and walking 1500 units back is a
-    // punishment nobody asked for.
+  it('puts the player back on the road, short of where they fell', () => {
     for (const region of GLOAMWOOD_VALLEY.regions) {
       const middle = (region.from + region.to) / 2
       const { playerAt } = dieAt(middle)
       const back = gloamwoodValleyProject(playerAt.x, playerAt.z)
-      expect(back.s).toBeGreaterThanOrEqual(Math.min(region.from, GLOAMWOOD_VALLEY.spawnS) - 1)
       expect(back.s).toBeLessThan(middle)
       expect(gloamwoodValleyWalkable(playerAt.x, playerAt.z)).toBe(true)
     }
+  })
+
+  it('keeps the setback short enough to be a walk, not a penalty', () => {
+    // The region gate was the right answer while the road refilled behind the
+    // player: walking it again was the run. Now that a cleared region stays
+    // cleared, the same walk is a time tax with no gameplay in it - a playtest
+    // died at the first boss and had to cross three hundred units of corpses to
+    // try again.
+    for (const region of GLOAMWOOD_VALLEY.regions) {
+      const middle = (region.from + region.to) / 2
+      const back = gloamwoodValleyProject(dieAt(middle).playerAt.x, dieAt(middle).playerAt.z)
+      expect(middle - back.s).toBeLessThanOrEqual(GLOAMWOOD_VALLEY_DEATH_SETBACK + 2)
+    }
+  })
+
+  it('sets back further than anything can notice from', () => {
+    // Where they fell is where the thing that killed them lives. Everything has
+    // gone home and forgotten them, and this is out of reach of all of it.
+    expect(GLOAMWOOD_VALLEY_DEATH_SETBACK).toBeGreaterThan(GLOAMWOOD_AGGRO.noticeRadius)
+  })
+
+  it('never sets back past the start of the road', () => {
+    const back = gloamwoodValleyProject(dieAt(GLOAMWOOD_VALLEY.spawnS + 2).playerAt.x, dieAt(GLOAMWOOD_VALLEY.spawnS + 2).playerAt.z)
+    expect(back.s).toBeGreaterThanOrEqual(GLOAMWOOD_VALLEY.spawnS - 1)
+    expect(gloamwoodValleyWalkable(dieAt(GLOAMWOOD_VALLEY.spawnS + 2).playerAt.x, dieAt(GLOAMWOOD_VALLEY.spawnS + 2).playerAt.z)).toBe(true)
   })
 })

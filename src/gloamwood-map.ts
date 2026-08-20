@@ -115,6 +115,14 @@ export interface GloamwoodMapContract {
    */
   modelledCreatures: boolean
   /**
+   * What the map wants said on the status line right now, or null.
+   *
+   * The valley's set-piece needs somewhere persistent to live: its events fire
+   * once each and a combat message is overwritten by the next kill, so "wave 2
+   * of 2" was true for about a second and then gone.
+   */
+  status?(): { key: string; params?: Record<string, string | number> } | null
+  /**
    * The creatures the map begins with.
    *
    * The Gloamwood begins empty and its nest spawns waves when the player walks

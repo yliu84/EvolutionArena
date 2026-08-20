@@ -5149,7 +5149,11 @@ class Gloamwood3DHunt {
     setText('[data-g3d-player-health]', `${this.playerCombat.health} / ${this.playerCombat.maxHealth}`)
     setText('[data-g3d-lives]', String(Math.max(0, this.livesRemaining)))
     this.updateMutationList()
-    setText('[data-g3d-remaining]', this.runPhase === 'boss'
+    // The map speaks first. Its set-piece is the one thing on screen the player
+    // cannot walk away from, and it needs saying for as long as it is true.
+    const mapStatus = this.map.status?.()
+    setText('[data-g3d-remaining]', mapStatus ? t(mapStatus.key as never, mapStatus.params)
+      : this.runPhase === 'boss'
       ? `${this.bossPatternName(this.bossState.pattern)} · ${this.bossState.state === 'telegraph' ? t('enemy.telegraph') : this.bossState.state === 'attack' ? t('enemy.strike') : t('enemy.watch')}`
       : !this.map.hasNest ? t('hud.fieldRemaining', { count: this.livePrey().length, kills: this.nestState.kills })
         : this.nestState.phase === 'dormant' ? t('hud.undisturbed') : this.nestState.phase === 'intermission' ? t('hud.incoming') : this.nestState.phase === 'cleared' ? t('hud.clearedKills', { kills: this.nestState.kills }) : t('hud.waveRemaining', { count: this.livePrey().length }))

@@ -88,6 +88,22 @@ export interface GloamwoodValleyNestFrame {
   events: GloamwoodNestEvent[]
 }
 
+/**
+ * The line to keep on screen while a nest is running.
+ *
+ * The events announce it once each, and a combat message is gone the moment the
+ * next kill or miss writes over it - so a player at the first fork, where the
+ * shallows nest sits four units off the road, cleared a wave and watched
+ * another arrive with nothing on screen explaining it. Twice now.
+ *
+ * A wave count is only useful while the wave is happening.
+ */
+export function gloamwoodValleyNestStatus(nests: readonly GloamwoodValleyNestState[]) {
+  const running = nests.find((nest) => nest.phase === 'wave' || nest.phase === 'intermission')
+  if (!running) return null
+  return { wave: running.wave, waves: running.waveCount, resting: running.phase === 'intermission' }
+}
+
 export function stepGloamwoodValleyNests(
   nests: readonly GloamwoodValleyNestState[],
   creatures: readonly GloamwoodValleyCreature[],

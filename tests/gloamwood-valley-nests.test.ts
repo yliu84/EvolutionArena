@@ -4,6 +4,7 @@ import { createGloamwoodValleyCreatures, type GloamwoodValleyCreature } from '..
 import {
   GLOAMWOOD_VALLEY_NEST,
   createGloamwoodValleyNests,
+  gloamwoodValleyNestStatus,
   stepGloamwoodValleyNests,
 } from '../src/gloamwood-valley-nests'
 import { GLOAMWOOD_LOCK_RANGE } from '../src/gloamwood-3d-hunt'
@@ -156,5 +157,47 @@ describe('Saying what it is', () => {
     const result = fightThrough()
     const entered = result.events.filter((event) => event.type === 'valley-nest-entered')
     expect(entered).toHaveLength(1)
+  })
+})
+
+describe('Saying it for as long as it is true', () => {
+  it('says nothing while no nest is running', () => {
+    expect(gloamwoodValleyNestStatus(createGloamwoodValleyNests(creatures))).toBeNull()
+  })
+
+  it('carries the wave count while the wave is happening', () => {
+    // The events announce it once each, and a combat message is gone the moment
+    // the next kill writes over it - so a player at the first fork cleared a
+    // wave and watched another arrive with nothing on screen explaining it.
+    const frame = stepGloamwoodValleyNests(
+      createGloamwoodValleyNests(creatures), creatures, 0.05,
+      { x: marker.homeX, z: marker.homeZ },
+    )
+    const status = gloamwoodValleyNestStatus(frame.nests)
+    expect(status?.wave).toBe(1)
+    expect(status?.waves).toBeGreaterThanOrEqual(2)
+    expect(status?.resting).toBe(false)
+  })
+
+  it('says the next wave is coming during the breath between them', () => {
+    // 1.6 seconds with nothing on screen is exactly where "why did they respawn
+    // instantly" comes from.
+    let nests = createGloamwoodValleyNests(creatures)
+    let list: GloamwoodValleyCreature[] = [...creatures]
+    let resting = false
+    for (let tick = 0; tick < 200 && !resting; tick += 1) {
+      const frame = stepGloamwoodValleyNests(nests, list, 0.05, { x: marker.homeX, z: marker.homeZ })
+      nests = frame.nests
+      list = frame.creatures.map((creature) => creature.group === `${marker.id}-wave` || creature.id === marker.id
+        ? { ...creature, phase: 'dead' as const, health: 0 }
+        : creature)
+      resting = gloamwoodValleyNestStatus(nests)?.resting === true
+    }
+    expect(resting).toBe(true)
+  })
+
+  it('stops saying anything once the nest is done', () => {
+    const result = fightThrough()
+    expect(gloamwoodValleyNestStatus(result.nests)).toBeNull()
   })
 })

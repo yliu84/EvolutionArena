@@ -14,6 +14,7 @@ import {
 } from './gloamwood-valley-creatures'
 import {
   createGloamwoodValleyNests,
+  gloamwoodValleyNestStatus,
   stepGloamwoodValleyNests,
   type GloamwoodValleyNestState,
 } from './gloamwood-valley-nests'
@@ -21,7 +22,11 @@ import {
   createGloamwoodValleyRespawnState,
   stepGloamwoodValleyRespawn,
 } from './gloamwood-valley-respawn'
-import { GLOAMWOOD_VALLEY_LIFE_CAP, GLOAMWOOD_VALLEY_MILESTONES } from './gloamwood-valley-progression'
+import {
+  GLOAMWOOD_VALLEY_DEATH_SETBACK,
+  GLOAMWOOD_VALLEY_LIFE_CAP,
+  GLOAMWOOD_VALLEY_MILESTONES,
+} from './gloamwood-valley-progression'
 import {
   GLOAMWOOD_VALLEY,
   gloamwoodValleyConfine,
@@ -102,6 +107,14 @@ export function createGloamwoodValleyMap(
     hasNest: false,
     lives: GLOAMWOOD_VALLEY_LIFE_CAP,
     modelledCreatures: true,
+    status() {
+      const running = gloamwoodValleyNestStatus(nests)
+      if (!running) return null
+      return {
+        key: running.resting ? 'hud.nestBreath' : 'hud.nestWave',
+        params: { wave: running.wave, waves: running.waves },
+      }
+    },
     createCreatures(): GloamwoodNestState {
       return {
         // Cleared, not dormant. The nest's wave machinery is the Gloamwood's
@@ -171,14 +184,21 @@ export function createGloamwoodValleyMap(
           outOfReachSeconds: 0,
         }
       })
-      // Back to the entrance of the region they died in, not to the start of
-      // the run. The regions are the valley's checkpoints - that is what the
-      // life budget was designed around, and walking 1500 units back is a
-      // punishment nobody asked for.
+      // Just short of the furthest they got, not back at the region gate.
+      //
+      // The gate was the right answer while the road refilled behind them:
+      // walking it again was the run. Now that a cleared region stays cleared,
+      // the same walk is a time tax with no gameplay in it - a playtest died at
+      // the first boss and had to cross three hundred units of corpses to try
+      // again. Progress made is progress kept.
+      //
+      // Set back rather than left exactly where they fell, because where they
+      // fell is where the thing that killed them lives. Everything has gone
+      // home and forgotten them by now, and this is further than any of them
+      // can notice from.
       const died = gloamwoodValleyProject(diedAt.x, diedAt.z)
-      const region = GLOAMWOOD_VALLEY.regions.find((entry) => died.s >= entry.from && died.s <= entry.to)
-      const entered = Math.max(GLOAMWOOD_VALLEY.spawnS, region?.from ?? GLOAMWOOD_VALLEY.spawnS)
-      const point = gloamwoodValleyPointAt(entered, gloamwoodValleyRoadOffset(entered))
+      const back = Math.max(GLOAMWOOD_VALLEY.spawnS, died.s - GLOAMWOOD_VALLEY_DEATH_SETBACK)
+      const point = gloamwoodValleyPointAt(back, gloamwoodValleyRoadOffset(back))
       return { state: { ...state, prey: prey as GloamwoodNestPrey[] }, playerAt: gloamwoodValleyConfine(point.x, point.z) }
     },
     stepCreatures(

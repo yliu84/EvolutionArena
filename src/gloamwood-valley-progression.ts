@@ -127,6 +127,15 @@ export function gloamwoodValleyNextEvolution(biomass: number, taken: number) {
   return { ordinal: index + 1, target, remaining: Math.max(0, target - biomass) }
 }
 
+/**
+ * How far back along the road a death puts the player.
+ *
+ * Far enough to be out of the fight - further than the eleven units a creature
+ * notices from - and short enough that coming back is a walk rather than a
+ * penalty. About three seconds at the player's pace.
+ */
+export const GLOAMWOOD_VALLEY_DEATH_SETBACK = 22
+
 export const GLOAMWOOD_VALLEY_LIFE_CAP = 4
 
 export interface GloamwoodValleyProgression {
