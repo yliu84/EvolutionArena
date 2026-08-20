@@ -108,7 +108,7 @@ import {
 } from './gloamwood-environment-kit'
 import {
   createGloamwoodEvolutionState,
-  GLOAMWOOD_EVOLUTION_GROWTH,
+  gloamwoodEvolutionGrowthFor,
   openGloamwoodEvolutionOffer,
   openGloamwoodNextEvolutionOffer,
   refreshGloamwoodEvolutionOffer,
@@ -3899,19 +3899,20 @@ class Gloamwood3DHunt {
     // would hand the player a new body and quietly take back what the last one
     // gave them, which reads as the upgrade having made them weaker.
     const held = this.evolutionModifiers
+    // Growth fills what this route left alone - attack for the line that took
+    // armour, armour for the line that took teeth - so it never just widens the
+    // gap a route was already winning, and never refunds a trade it made.
+    const growth = gloamwoodEvolutionGrowthFor(candidate.modifiers)
     this.evolutionModifiers = {
-      damageMultiplier: held.damageMultiplier * candidate.modifiers.damageMultiplier,
+      damageMultiplier: held.damageMultiplier * candidate.modifiers.damageMultiplier * growth.damageMultiplier,
       moveSpeedMultiplier: held.moveSpeedMultiplier * candidate.modifiers.moveSpeedMultiplier,
       damageReduction: 1 - (1 - held.damageReduction) * (1 - candidate.modifiers.damageReduction),
       biomassMultiplier: held.biomassMultiplier * candidate.modifiers.biomassMultiplier,
       killHeal: held.killHeal + candidate.modifiers.killHeal,
-      // Every evolution carries growth of its own on top of the route's
-      // trade-offs. Without it the Fang line handed the player a bigger body
-      // that died exactly as fast, and one Swarm pick left them worse off.
       maximumHealthBonus: held.maximumHealthBonus
         + candidate.modifiers.maximumHealthBonus
-        + GLOAMWOOD_EVOLUTION_GROWTH.maximumHealthBonus,
-      flatArmour: held.flatArmour + GLOAMWOOD_EVOLUTION_GROWTH.flatArmour,
+        + growth.maximumHealthBonus,
+      flatArmour: held.flatArmour + growth.flatArmour,
     }
     this.evolutionsTaken += 1
     this.applyProgressionModifiers()

@@ -84,27 +84,57 @@ export function createGloamwoodEvolutionState(seed: number | string): GloamwoodE
 }
 
 /**
- * What growing a stage is worth on its own, before any route is chosen.
+ * What growing a stage is worth, on the axes the route left alone.
  *
- * The route is the specialisation; the stage is the growth. They were the same
- * thing, and the result was that evolving into a bigger animal made you no
- * tougher at all: both Fang candidates carry maximumHealthBonus 0 and
- * damageReduction 0, and one Swarm candidate carries -10 health. A player who
- * took the Fang line was handed a new body that died exactly as fast as the old
- * one, and one Swarm pick left them measurably worse off.
+ * The route is the specialisation. The stage is the growth. They were the same
+ * thing, and only the route was paying: both Fang candidates carry
+ * maximumHealthBonus 0 and damageReduction 0, so taking that line handed the
+ * player a bigger body that died exactly as fast as the old one.
+ *
+ * Granting all three to everyone fixed that and broke something else - the
+ * Carapace line already arrives with +30 health and 12% reduction, and topping
+ * it up again just widens the gap it was already winning. So growth fills the
+ * gaps rather than adding to the peaks: attack for the route that took armour,
+ * armour for the route that took teeth.
  *
  * Flat armour rather than a percentage, and that is the whole reason it reads.
- * Creature damage in this game is 6, 14 and 12 - a 4% reduction on any of those
- * rounds straight back to the number it started from, so a percentage would be
- * a stat that does nothing. One point off every blow is 17% against the swarm
- * that chips you down in packs, which is where runs are actually lost.
+ * Creature damage here is 6, 14 and 12 - a 4% reduction on any of those rounds
+ * straight back to the number it started from, so a percentage would be a stat
+ * that does nothing. One point off every blow is 17% against the swarm that
+ * chips the player down in packs, which is where runs are actually lost.
  *
- * It can never make the player immune: a blow still costs at least 1.
+ * The three are deliberately worth about the same: ten health on a hundred,
+ * one point off a blow that averages ten, and a tenth more damage.
  */
 export const GLOAMWOOD_EVOLUTION_GROWTH = {
   maximumHealthBonus: 10,
   flatArmour: 1,
+  damageMultiplier: 1.1,
 } as const
+
+export interface GloamwoodEvolutionGrowth {
+  maximumHealthBonus: number
+  flatArmour: number
+  damageMultiplier: number
+}
+
+/**
+ * The growth this particular pick earns.
+ *
+ * An axis the route boosts is already paid for. An axis the route *sacrifices*
+ * is not refunded either - the Swarm line trades ten maximum health for speed,
+ * and handing it straight back would erase the choice the player just made.
+ * What is topped up is only what the route is silent about.
+ */
+export function gloamwoodEvolutionGrowthFor(
+  modifiers: Pick<GloamwoodEvolutionCandidate['modifiers'], 'damageMultiplier' | 'maximumHealthBonus' | 'damageReduction'>,
+): GloamwoodEvolutionGrowth {
+  return {
+    maximumHealthBonus: modifiers.maximumHealthBonus === 0 ? GLOAMWOOD_EVOLUTION_GROWTH.maximumHealthBonus : 0,
+    flatArmour: modifiers.damageReduction === 0 ? GLOAMWOOD_EVOLUTION_GROWTH.flatArmour : 0,
+    damageMultiplier: modifiers.damageMultiplier === 1 ? GLOAMWOOD_EVOLUTION_GROWTH.damageMultiplier : 1,
+  }
+}
 
 export function openGloamwoodEvolutionOffer(
   state: GloamwoodEvolutionState,

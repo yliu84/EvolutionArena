@@ -9,6 +9,7 @@ import {
   refreshGloamwoodEvolutionOffer,
   selectGloamwoodEvolutionCandidate,
   GLOAMWOOD_EVOLUTION_GROWTH,
+  gloamwoodEvolutionGrowthFor,
 } from '../src/gloamwood-3d-evolution'
 
 describe('Gloamwood weighted evolution gate', () => {
@@ -59,28 +60,54 @@ describe('Gloamwood weighted evolution gate', () => {
 })
 
 describe('What growing is worth on its own', () => {
-  it('makes every evolution tougher, whatever route it is', () => {
+  const attacker = { damageMultiplier: 1.24, maximumHealthBonus: 0, damageReduction: 0 }
+  const tank = { damageMultiplier: 1, maximumHealthBonus: 30, damageReduction: 0.12 }
+  const trader = { damageMultiplier: 1, maximumHealthBonus: -10, damageReduction: 0 }
+
+  it('gives the attack route the health and armour it does not have', () => {
     // Both Fang candidates carry maximumHealthBonus 0 and damageReduction 0, so
-    // taking that line handed the player a bigger body that died exactly as
-    // fast as the old one. The route is the specialisation; the stage is the
-    // growth, and they were the same thing.
-    expect(GLOAMWOOD_EVOLUTION_GROWTH.maximumHealthBonus).toBeGreaterThan(0)
-    expect(GLOAMWOOD_EVOLUTION_GROWTH.flatArmour).toBeGreaterThan(0)
+    // taking that line handed over a bigger body that died exactly as fast.
+    const growth = gloamwoodEvolutionGrowthFor(attacker)
+    expect(growth.maximumHealthBonus).toBeGreaterThan(0)
+    expect(growth.flatArmour).toBeGreaterThan(0)
+    expect(growth.damageMultiplier).toBe(1)
   })
 
-  it('covers the route that costs health, rather than leaving it a downgrade', () => {
-    // One Swarm candidate trades 10 maximum health for speed. Growth has to at
-    // least meet it, or evolving can measurably leave the player worse off.
-    // Read off the pool through the generator, since the pool itself is private.
-    const seen = new Set<number>()
+  it('gives the armoured route the teeth it does not have', () => {
+    // The Carapace line already arrives with +30 health and 12% reduction.
+    // Topping that up again only widens the gap it was already winning.
+    const growth = gloamwoodEvolutionGrowthFor(tank)
+    expect(growth.damageMultiplier).toBeGreaterThan(1)
+    expect(growth.maximumHealthBonus).toBe(0)
+    expect(growth.flatArmour).toBe(0)
+  })
+
+  it('does not refund an axis the route deliberately traded away', () => {
+    // The Swarm line sells ten maximum health for speed. Handing it straight
+    // back would erase the choice the player just made.
+    const growth = gloamwoodEvolutionGrowthFor(trader)
+    expect(growth.maximumHealthBonus).toBe(0)
+    // What it is silent about is still topped up.
+    expect(growth.flatArmour).toBeGreaterThan(0)
+    expect(growth.damageMultiplier).toBeGreaterThan(1)
+  })
+
+  it('always grows something, whatever is picked', () => {
+    // A pick that grew nothing at all is the defect this exists to answer.
     for (let offer = 0; offer < 24; offer += 1) {
       for (const candidate of generateGloamwoodEvolutionCandidates(7, offer, { fang: 3, shell: 3, swarm: 3 }, [])) {
-        seen.add(candidate.modifiers.maximumHealthBonus)
+        const growth = gloamwoodEvolutionGrowthFor(candidate.modifiers)
+        const grew = growth.maximumHealthBonus > 0 || growth.flatArmour > 0 || growth.damageMultiplier > 1
+        expect(grew, candidate.id).toBe(true)
       }
     }
-    const worst = Math.min(...seen)
-    expect(worst).toBeLessThan(0)
-    expect(GLOAMWOOD_EVOLUTION_GROWTH.maximumHealthBonus + worst).toBeGreaterThanOrEqual(0)
+  })
+
+  it('keeps the three worth about the same', () => {
+    // Ten health on a hundred, one point off a blow that averages ten, a tenth
+    // more damage. If they drift apart the growth starts steering the pick.
+    expect(GLOAMWOOD_EVOLUTION_GROWTH.maximumHealthBonus).toBe(10)
+    expect(GLOAMWOOD_EVOLUTION_GROWTH.damageMultiplier).toBeCloseTo(1.1, 6)
   })
 })
 
