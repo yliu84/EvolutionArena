@@ -890,7 +890,11 @@ class Gloamwood3DHunt {
     // switch that silently does nothing on the deployed site, which is where
     // this actually gets reviewed - `bossGate` and `evolutionGate` both shipped
     // that way and were dead on arrival.
-    if (new URLSearchParams(window.location.search).get('preyModels') === '1') {
+    // The map decides. The valley's creatures *are* its models - without them
+    // it is a road with geometry blocks standing where the fights are, which is
+    // what a tester saw on a bare link. The flag stays for the Gloamwood, whose
+    // accepted look is the primitives.
+    if (this.map.modelledCreatures || new URLSearchParams(window.location.search).get('preyModels') === '1') {
       // Reported rather than voided. A `void` on a failing load swallows the
       // reason and leaves creatures wearing their primitives, which is
       // indistinguishable from the feature being switched off.

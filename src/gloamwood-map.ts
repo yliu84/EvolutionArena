@@ -100,6 +100,21 @@ export interface GloamwoodMapContract {
    */
   lives: number
   /**
+   * Whether this map's creatures are modelled animals rather than primitives.
+   *
+   * The valley is made of them: its packs, its elites and its three region
+   * bosses are all authored bodies, sized so that what blocks the player is the
+   * creature they can see. It does not work without them - a tester opening the
+   * link got a road with no animals on it, geometry blocks standing where the
+   * fights are.
+   *
+   * They loaded behind `?preyModels=1`, which was right while they were being
+   * validated on the Gloamwood and wrong the moment a whole map depended on
+   * them. The Gloamwood keeps the flag, because primitives are the look that
+   * was accepted there.
+   */
+  modelledCreatures: boolean
+  /**
    * The creatures the map begins with.
    *
    * The Gloamwood begins empty and its nest spawns waves when the player walks
@@ -244,6 +259,7 @@ export function createGloamwoodMap(
     cameraOffset: { x: 9.2, y: 11.8, z: 13.4 },
     hasNest: true,
     lives: GLOAMWOOD_RUN_LIVES,
+    modelledCreatures: false,
     resetAfterDeath,
     reachedMilestones: () => [],
     createCreatures: createGloamwoodNestState,

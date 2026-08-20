@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { GLOAMWOOD_VALLEY_MILESTONES } from '../src/gloamwood-valley-progression'
+import { GLOAMWOOD_VALLEY_LIFE_CAP, GLOAMWOOD_VALLEY_MILESTONES } from '../src/gloamwood-valley-progression'
 import { createGloamwoodValleyMap } from '../src/gloamwood-valley-map'
 import type { GloamwoodValleyCreature } from '../src/gloamwood-valley-creatures'
 import {
@@ -86,5 +86,32 @@ describe('Pacing', () => {
       )) seen.add(milestone)
     }
     expect(seen.size).toBe(5)
+  })
+})
+
+describe('What the map says it is made of', () => {
+  const valley = createGloamwoodValleyMap(0x5a11e, async () => {}, undefined)
+
+  it('declares the valley creatures modelled, because it is made of them', () => {
+    // They loaded behind ?preyModels=1, which was right while they were being
+    // validated on the Gloamwood and wrong the moment a whole map depended on
+    // them: a tester opening a bare link got a road with no animals on it,
+    // geometry blocks standing where the fights are.
+    expect(valley.modelledCreatures).toBe(true)
+  })
+
+  it('carries its own life budget rather than the one the Gloamwood uses', () => {
+    // 1590 units of road with three regions on it was designed around four.
+    expect(valley.lives).toBe(GLOAMWOOD_VALLEY_LIFE_CAP)
+  })
+
+  it('has a body for every creature it places except the swarm', () => {
+    // Which is what makes the declaration above true rather than aspirational -
+    // and it names the one gap rather than hiding it. The Swarm family has no
+    // valley model yet, so fourteen creatures still wear code-built primitives
+    // whatever the flag says. Everything else - packs, grazers, elites and all
+    // three region bosses - is an authored body.
+    const missing = valley.createCreatures().prey.filter((prey) => !valley.bodyFor(prey))
+    expect(new Set(missing.map((prey) => prey.kind))).toEqual(new Set(['swarm']))
   })
 })
