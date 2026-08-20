@@ -44,5 +44,9 @@ export function isGloamwood3DEntry(search = window.location.search) {
  * combat loop and a second HUD beside the ones the hunt already has.
  */
 export function gloamwoodMapFromEntry(search = window.location.search) {
-  return new URLSearchParams(search).get('map') === 'valley' ? 'valley' : 'gloamwood'
+  // The river valley is now the completed playtest route. The compact
+  // Gloamwood nest remains useful as a focused combat lab, but it must be
+  // requested explicitly; a new player should never land in a retired sample
+  // and mistake it for the game.
+  return new URLSearchParams(search).get('map') === 'gloamwood' ? 'gloamwood' : 'valley'
 }

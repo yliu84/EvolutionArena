@@ -1449,6 +1449,11 @@ body.is-gloamwood-3d * {
   .g3d-combat-bars b { font-size: 7px; }
   .g3d-combat-bars i { height: 4px; }
   .g3d-nest-resources { flex-wrap: nowrap; gap: 3px 5px; margin-top: 4px; padding: 3px 4px; overflow: hidden; font-size: 7px; white-space: nowrap; }
+  /* Keep the combat HUD to the information needed mid-fight. Gene totals and
+     the milestone count remain one tap away in More info instead of squeezing
+     the health and target feedback off a phone landscape screen. */
+  .g3d-nest-resources [data-g3d-gene-cell],
+  .g3d-nest-resources [data-g3d-mutation-progress-cell] { display: none; }
   .gloamwood-3d-hud [data-g3d-controls],
   .gloamwood-3d-hud [data-g3d-state] { display: none; }
   .g3d-hud-actions { gap: 4px; width: 100%; }
@@ -1480,6 +1485,8 @@ body.is-gloamwood-3d * {
   .gloamwood-3d-hud[data-mobile-expanded="true"] { width: min(270px, calc(100% - 16px)); }
   .gloamwood-3d-hud[data-mobile-expanded="true"] header span { display: block; }
   .gloamwood-3d-hud[data-mobile-expanded="true"] [data-g3d-controls] { display: block; }
+  .gloamwood-3d-hud[data-mobile-expanded="true"] .g3d-nest-resources [data-g3d-gene-cell],
+  .gloamwood-3d-hud[data-mobile-expanded="true"] .g3d-nest-resources [data-g3d-mutation-progress-cell]:not([hidden]) { display: inline; }
   .gloamwood-onboarding {
     width: min(252px, calc(100% - 238px));
     padding: 6px 8px;

@@ -7,6 +7,7 @@ import {
   readJavaScriptHeapMegabytes,
 } from './gloamwood-performance'
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
+import { gloamwoodMapFromEntry } from './entry-routing'
 
 import { quality3DBodyStageForFamily, resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
 import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presentation'
@@ -599,7 +600,7 @@ class Gloamwood3DHunt {
    * player, the combat, the mutations, the HUD and the session log are the same
    * on either one.
    */
-  private readonly map: GloamwoodMapContract = new URLSearchParams(window.location.search).get('map') === 'valley'
+  private readonly map: GloamwoodMapContract = gloamwoodMapFromEntry() === 'valley'
     ? createGloamwoodValleyMap(
       Number(new URLSearchParams(window.location.search).get('mapSeed') ?? 0) || 0x5a11e,
       async () => { await this.buildValleyScenery() },
@@ -811,6 +812,13 @@ class Gloamwood3DHunt {
    */
   private readonly damageNumbers: { element: HTMLElement; world: THREE.Vector3; life: number; duration: number; drift: number }[] = []
   private onboardingAttackStarted = false
+  /**
+   * A short quiet opening lets a new player read the one small guide and find
+   * the controls before a nearby pack can make its first choice for them.
+   * Striking still wakes a creature immediately, so this never trivialises a
+   * fight or creates a free opening hit.
+   */
+  private valleyOpeningSafetySeconds = 18
   private feedbackSettings: CombatFeedbackSettings = { ...DEFAULT_COMBAT_FEEDBACK_SETTINGS }
   private readonly audio: GloamwoodAudioBus
   private readonly performanceSampler = new GloamwoodPerformanceSampler()
@@ -953,7 +961,8 @@ class Gloamwood3DHunt {
     if (debugGatesAllowed && debugParams.get('bossGate') === '1') {
       this.openEvolutionGateForDebug()
       const choice = THREE.MathUtils.clamp(Number(debugParams.get('evolutionChoice')) || 0, 0, 2)
-      await this.chooseEvolution(choice, 'boss')
+      await this.chooseEvolution(choice, this.map.id === 'valley' ? 'none' : 'boss')
+      if (this.map.id === 'valley') this.standAtValleyBoss(Number(debugParams.get('bossIndex')) || 0)
     } else if (debugGatesAllowed && debugParams.get('evolutionGate') === '1') {
       this.openEvolutionGateForDebug()
     }
@@ -2525,6 +2534,24 @@ class Gloamwood3DHunt {
     return multiplier
   }
 
+  /** Whether the short, non-hostile opening guide is still in effect. */
+  private valleyOpeningSafetyActive(delta: number) {
+    if (this.map.hasNest || this.onboardingAttackStarted) return false
+    const moved = Math.hypot(
+      this.playerRoot.position.x - this.map.spawn.x,
+      this.playerRoot.position.z - this.map.spawn.z,
+    )
+    // Once the player intentionally takes the road, normal awareness is more
+    // useful than protection. The grace time covers reading the compact guide
+    // at spawn, not travelling through an encounter without risk.
+    if (moved >= 14 || this.valleyOpeningSafetySeconds <= 0) {
+      this.valleyOpeningSafetySeconds = 0
+      return false
+    }
+    this.valleyOpeningSafetySeconds = Math.max(0, this.valleyOpeningSafetySeconds - delta)
+    return true
+  }
+
   private updateEnemy(delta: number) {
     if (this.bossActive()) {
       this.updateBoss(delta)
@@ -2540,7 +2567,7 @@ class Gloamwood3DHunt {
       // an aggressive creature from a passive one.
       slowAuraRadius: this.mutationEffects.slowAuraRadius,
       slowAuraFactor: this.mutationEffects.slowAuraFactor,
-    }, this.struckThisFrame)
+    }, this.struckThisFrame, { allowNotice: !this.valleyOpeningSafetyActive(delta) })
     this.struckThisFrame.length = 0
     // stepGloamwoodNest already holds prey at their action ring, and it does so
     // knowing where each one stood a frame ago - which is how it tells a prey
@@ -2812,6 +2839,11 @@ class Gloamwood3DHunt {
       anisotropy: Math.min(8, this.renderer.capabilities.getMaxAnisotropy()),
     })
     this.scene.add(valley.root)
+    // The scenery owns its own scatter. Registering its colliders here means a
+    // rock or trunk that the player sees is the same rock or trunk the movement
+    // resolver feels; no duplicate hand-placed collision map can drift away
+    // from the dressed valley.
+    this.obstacles.push(...valley.colliders)
     // Everything that stands on the valley now reads the surface that is drawn
     // rather than the function it was generated from.
     this.valleyGroundHeight = valley.heightAt
@@ -4472,7 +4504,7 @@ class Gloamwood3DHunt {
       `<b class="g3d-status-line" data-g3d-remaining>${t('hud.undisturbed')}</b>`,
       '</div>',
       '<div class="g3d-hud-right">',
-      `<div class="g3d-nest-resources"><span>${t('hud.lives')} <strong data-g3d-lives>${this.map.lives}</strong></span><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span data-g3d-mutation-progress-cell hidden>${t('hud.mutationTrack')} <strong data-g3d-mutation-progress>0/0</strong></span><span>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
+      `<div class="g3d-nest-resources"><span>${t('hud.lives')} <strong data-g3d-lives>${this.map.lives}</strong></span><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span data-g3d-mutation-progress-cell hidden>${t('hud.mutationTrack')} <strong data-g3d-mutation-progress>0/0</strong></span><span data-g3d-gene-cell>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span data-g3d-gene-cell>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span data-g3d-gene-cell>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
       // Mutations stack rather than replace, and a build the player cannot see
       // is a build they cannot plan around. Hidden until the first one is taken.
       '<div class="g3d-mutation-list" data-g3d-mutations hidden></div>',
@@ -4557,22 +4589,7 @@ class Gloamwood3DHunt {
         // Puts the player in front of a region boss. Reaching the third one on
         // foot is twelve hundred units of road, and every check of a pattern
         // would begin with that walk.
-        standAtBoss: (index = 0) => {
-          const bosses = this.nestState.prey
-            .filter((prey) => (prey as GloamwoodValleyCreature).tier === 'boss')
-            .sort((a, b) => (a as GloamwoodValleyCreature).spawnS - (b as GloamwoodValleyCreature).spawnS)
-          const boss = bosses[Math.max(0, Math.min(bosses.length - 1, index))]
-          if (!boss) return null
-          const spec = gloamwoodValleyBossSpecFor(boss as GloamwoodValleyCreature)
-          // On the camera's far side of the boss. The camera sits behind the
-          // player along -X, so standing at +X puts the boss between the two
-          // and its body fills the screen instead of the fight.
-          const stand = this.map.confine(boss.x - (spec?.preferredRange ?? 6), boss.z)
-          this.playerRoot.position.set(stand.x, this.map.height(stand.x, stand.z), stand.z)
-          this.target.set(stand.x, 0, stand.z)
-          this.snapCameraNextFrame = true
-          return { id: boss.id, boss: spec?.bodyId ?? null, x: boss.x, z: boss.z }
-        },
+        standAtBoss: (index = 0) => this.standAtValleyBoss(index),
         damageBoss: (damage: number) => {
           if (!this.bossActive()) return
           const result = damageGloamwoodBoss(this.bossState, damage)
@@ -5239,15 +5256,12 @@ class Gloamwood3DHunt {
 
   private updateOnboardingHud() {
     if (!this.onboardingHud) return
-    // The guide describes the Gloamwood's structure - a nest, waves, a
-    // guardian, an evolution, a boss. On a map with none of those it walks the
-    // player through an encounter that never arrives, which is worse than no
-    // guide at all. The valley needs one of its own before it gets one.
-    if (!this.map.hasNest) {
+    const step = this.map.hasNest ? this.onboardingStep() : this.valleyOnboardingStep()
+    if (!step) {
       this.onboardingHud.hidden = true
       return
     }
-    const step = this.onboardingStep()
+    this.onboardingHud.hidden = false
     const setText = (selector: string, value: string) => {
       const element = this.onboardingHud?.querySelector<HTMLElement>(selector)
       if (element && element.textContent !== value) element.textContent = value
@@ -5263,9 +5277,53 @@ class Gloamwood3DHunt {
     if (progress) progress.style.width = `${Math.max(1, step.step) / step.totalSteps * 100}%`
   }
 
+  /** A two-beat guide for the open valley, without a tutorial card stack. */
+  private valleyOnboardingStep(): GloamwoodOnboardingStep | null {
+    if (this.onboardingAttackStarted || this.nestState.kills > 0) return null
+    const locked = this.lockedPrey()
+    if (locked) {
+      return {
+        phase: 'attack', step: 2, totalSteps: 2,
+        eyebrow: t('valley.guide.eyebrow'), title: t('valley.guide.lockTitle'),
+        instruction: t('valley.guide.lockInstruction', { attack: formatGloamwoodInputCode(this.inputBindings.attack) }),
+        reason: t('guide.attack.reason'), progress: t('valley.guide.lockProgress'), tone: 'combat',
+      }
+    }
+    return {
+      phase: 'move', step: 1, totalSteps: 2,
+      eyebrow: t('valley.guide.eyebrow'), title: t('valley.guide.title'),
+      instruction: t('valley.guide.instruction', { move: gloamwoodMovementBindingLabel(this.inputBindings) }),
+      reason: t('valley.guide.reason'), progress: t('valley.guide.progress'), tone: 'guide',
+    }
+  }
+
+  /** Teleports a reviewer to a real valley boss, never to the legacy arena. */
+  private standAtValleyBoss(index = 0) {
+    if (this.map.hasNest) return null
+    const bosses = this.nestState.prey
+      .filter((prey) => (prey as GloamwoodValleyCreature).tier === 'boss')
+      .sort((a, b) => (a as GloamwoodValleyCreature).spawnS - (b as GloamwoodValleyCreature).spawnS)
+    const boss = bosses[Math.max(0, Math.min(bosses.length - 1, index))]
+    if (!boss) return null
+    const spec = gloamwoodValleyBossSpecFor(boss as GloamwoodValleyCreature)
+    // Stand at the playable range, on the camera's far side of the body. This
+    // frames the fight and guarantees the same range rule a real approach uses.
+    const stand = this.map.confine(boss.x - (spec?.preferredRange ?? 6), boss.z)
+    this.playerRoot.position.set(stand.x, this.map.height(stand.x, stand.z), stand.z)
+    this.target.set(stand.x, 0, stand.z)
+    this.lockedPreyId = boss.id
+    this.bossLocked = false
+    this.playerCombat = { ...this.playerCombat, health: this.playerCombat.maxHealth, invulnerabilitySeconds: 0.8 }
+    this.combatMessage = t('hud.msg.bossTest')
+    this.snapCameraNextFrame = true
+    return { id: boss.id, boss: spec?.bodyId ?? null, x: boss.x, z: boss.z }
+  }
+
 
   private preyName(prey: GloamwoodNestPrey) {
     if (prey.id === GLOAMWOOD_NEST_GUARDIAN.id) return t('creature.guardian')
+    const valleyBoss = gloamwoodValleyBossSpecFor(prey as GloamwoodValleyCreature)
+    if (valleyBoss) return t(`valley.boss.${valleyBoss.bodyId}` as 'valley.boss.tide-cleaver')
     return prey.kind === 'fang' ? t('creature.fang') : prey.kind === 'shell' ? t('creature.shell') : t('creature.swarm')
   }
 
@@ -5372,7 +5430,8 @@ class Gloamwood3DHunt {
         deaths: this.runDeaths,
       },
       onboarding: (() => {
-        const step = this.onboardingStep()
+        const step = this.map.hasNest ? this.onboardingStep() : this.valleyOnboardingStep()
+        if (!step) return { phase: 'complete' as const, step: 2, totalSteps: 2, title: '' }
         return { phase: step.phase, step: step.step, totalSteps: step.totalSteps, title: step.title }
       })(),
       settings: { paused: this.paused, ...this.feedbackSettings },
@@ -5665,4 +5724,3 @@ function distanceToSegment(px: number, pz: number, ax: number, az: number, bx: n
   const t = lengthSquared > 0 ? THREE.MathUtils.clamp(((px - ax) * abX + (pz - az) * abZ) / lengthSquared, 0, 1) : 0
   return Math.hypot(px - (ax + abX * t), pz - (az + abZ * t))
 }
-

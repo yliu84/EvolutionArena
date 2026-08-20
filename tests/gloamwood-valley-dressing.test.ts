@@ -15,6 +15,7 @@ import {
 import {
   GLOAMWOOD_VALLEY_DRESSING,
   GLOAMWOOD_VALLEY_TREE_KINDS,
+  gloamwoodValleyCollisionObstacles,
   gloamwoodValleyAtmosphereAt,
   gloamwoodValleyTreeVariantId,
   gloamwoodValleyWallClearance,
@@ -23,6 +24,16 @@ import {
 } from '../src/gloamwood-valley-dressing'
 
 describe('Dressing a valley with only plants and rocks', () => {
+  it('gives visible floor trees and boulders honest physical footprints', () => {
+    const props = scatterGloamwoodValley(0x5a11e, 6200)
+    const colliders = gloamwoodValleyCollisionObstacles(props)
+    expect(colliders.length).toBeGreaterThan(80)
+    for (const collider of colliders) {
+      expect(collider.radius).toBeGreaterThan(0)
+      expect(gloamwoodValleyDominantSurface(collider.x, collider.z)).not.toBe('road')
+    }
+  })
+
   it('makes the three regions read as three places, not one repeated', () => {
     // The kit is seven plants, three rocks and a mushroom. With no props to
     // vary, the variation has to come from distribution.

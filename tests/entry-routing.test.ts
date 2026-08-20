@@ -40,11 +40,11 @@ describe('Which map a run is played on', () => {
     expect(gloamwoodMapFromEntry('?map=gloamwood')).toBe('gloamwood')
   })
 
-  it('leaves the front door on the map the game shipped with', () => {
-    // A bare URL has to keep opening the accepted build. The valley is a map
-    // now rather than a review tool, but it is not the one a stranger handed
-    // the playtest link should land on without asking for it.
-    expect(gloamwoodMapFromEntry('')).toBe('gloamwood')
+  it('opens the river valley from the front door', () => {
+    // The valley is the complete player route. The compact nest map remains
+    // available for focused combat checks, but a stranger must not be sent to
+    // it by a bare production link.
+    expect(gloamwoodMapFromEntry('')).toBe('valley')
     expect(isGloamwood3DEntry('')).toBe(true)
   })
 

@@ -1,4 +1,5 @@
 import {
+  GLOAMWOOD_COMBAT_SPACING,
   GLOAMWOOD_PREY,
   gloamwoodPreyBodyRadius,
   stepPrey,
@@ -99,7 +100,11 @@ export function createGloamwoodValleyCreatures(seed: number, runSeed = 'valley-r
     runSeed,
     spawns.filter((spawn) => spawn.tier === 'elite').map((spawn) => spawn.id),
   )
-  return spawns.map((spawn, index) => fromSpawn(spawn, index, runSeed, affixes[spawn.id]))
+  // Spawns are placed by group, then grazers and bosses are appended. A local
+  // group check cannot see a grazer that happened to share a bank with a pack,
+  // so resolve the complete field before the first frame. Home positions move
+  // with the body or an unwoken creature would walk back into the overlap.
+  return separate(spawns.map((spawn, index) => fromSpawn(spawn, index, runSeed, affixes[spawn.id])), true)
 }
 
 function fromSpawn(
@@ -169,12 +174,15 @@ export function stepGloamwoodValleyCreatures(
   creatures: readonly GloamwoodValleyCreature[],
   deltaSeconds: number,
   player: GloamwoodPlayerPresence,
-  input: { struck?: readonly string[]; lured?: readonly string[] } = {},
+  input: { struck?: readonly string[]; lured?: readonly string[]; allowNotice?: boolean } = {},
 ): GloamwoodValleyCreatureFrame {
   const delta = Math.max(0, Math.min(0.05, deltaSeconds))
   const aggro = updateGloamwoodAggro(
     creatures.map((creature) => ({ ...creature, dead: creature.phase === 'dead' })),
-    { playerX: player.x, playerZ: player.z, delta, struck: input.struck, lured: input.lured },
+    {
+      playerX: player.x, playerZ: player.z, delta,
+      struck: input.struck, lured: input.lured, allowNotice: input.allowNotice,
+    },
   )
   const awakeById = new Map(aggro.creatures.map((entry) => [entry.id, entry]))
   const events: GloamwoodNestEvent[] = []
@@ -298,21 +306,32 @@ function chooseWanderTarget(creature: GloamwoodValleyCreature) {
 }
 
 /** Keeps living creatures out of each other, so a pack does not stack up. */
-function separate(creatures: GloamwoodValleyCreature[]): GloamwoodValleyCreature[] {
+function separate(creatures: GloamwoodValleyCreature[], settleHomes = false): GloamwoodValleyCreature[] {
   const next = creatures.map((creature) => ({ ...creature }))
-  for (let pass = 0; pass < 3; pass += 1) {
+  // Several pairs can share the same narrow clearing. Three passes made the
+  // first pair look fixed while the last pair still began almost inside each
+  // other, then the player saw a collision solve as soon as the map loaded.
+  for (let pass = 0; pass < 10; pass += 1) {
     for (let a = 0; a < next.length; a += 1) {
       if (next[a].phase === 'dead') continue
       for (let b = a + 1; b < next.length; b += 1) {
         if (next[b].phase === 'dead') continue
-        const minimum = gloamwoodPreyBodyRadius(next[a]) + gloamwoodPreyBodyRadius(next[b])
+        // A visible gap is part of combat space, not a cosmetic luxury: without
+        // it a creature can be physically separate yet still erase the wind-up
+        // and strike room of the creature beside it.
+        const minimum = gloamwoodPreyBodyRadius(next[a])
+          + gloamwoodPreyBodyRadius(next[b])
+          + GLOAMWOOD_COMBAT_SPACING.pairGap
         const dx = next[b].x - next[a].x
         const dz = next[b].z - next[a].z
         const distance = Math.hypot(dx, dz)
-        if (distance >= minimum || distance < 0.0001) continue
+        if (distance >= minimum) continue
+        // Deterministic fallback for the rare exact overlap. Skipping it left
+        // two bodies permanently stacked because their normal has no direction.
+        const angle = distance < 0.0001 ? ((a * 0.61803398875 + b * 0.38196601125) % 1) * Math.PI * 2 : 0
         const push = (minimum - distance) / 2
-        const nx = dx / distance
-        const nz = dz / distance
+        const nx = distance < 0.0001 ? Math.cos(angle) : dx / distance
+        const nz = distance < 0.0001 ? Math.sin(angle) : dz / distance
         const left = gloamwoodValleyConfine(next[a].x - nx * push, next[a].z - nz * push)
         const right = gloamwoodValleyConfine(next[b].x + nx * push, next[b].z + nz * push)
         next[a].x = left.x
@@ -320,6 +339,14 @@ function separate(creatures: GloamwoodValleyCreature[]): GloamwoodValleyCreature
         next[b].x = right.x
         next[b].z = right.z
       }
+    }
+  }
+  if (settleHomes) {
+    for (const creature of next) {
+      creature.homeX = creature.x
+      creature.homeZ = creature.z
+      creature.wanderX = creature.x
+      creature.wanderZ = creature.z
     }
   }
   return next

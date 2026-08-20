@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { GLOAMWOOD_PREY } from '../src/gloamwood-3d-ecology'
+import { GLOAMWOOD_PREY, inspectGloamwoodPreyPairClearance } from '../src/gloamwood-3d-ecology'
 import { GLOAMWOOD_AGGRO } from '../src/gloamwood-creature-aggro'
 import { GLOAMWOOD_ELITE } from '../src/gloamwood-elite'
 import {
@@ -117,6 +117,18 @@ describe('Grazing', () => {
       return Math.hypot(now.x - grazer.homeX, now.z - grazer.homeZ) > 0.4
     })
     expect(moved.length).toBeGreaterThan(grazers.length * 0.5)
+  })
+
+  it('keeps an action gap while grazers wander', () => {
+    // A body gap alone is not enough: two creatures can stop intersecting and
+    // still leave no readable wind-up or strike space between their models.
+    const after = run(creatures, away, 5).creatures
+    expect(inspectGloamwoodPreyPairClearance(after)).toBeGreaterThanOrEqual(-0.001)
+  })
+
+  it('keeps that gap around the real river-valley spawn point', () => {
+    const after = run(creatures, { x: 78.83, z: 11.22, alive: true, bodyRadius: 1.56 }, 5).creatures
+    expect(inspectGloamwoodPreyPairClearance(after)).toBeGreaterThanOrEqual(-0.001)
   })
 
   it('never goes far, so it can still be walked past on purpose', () => {

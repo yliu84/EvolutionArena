@@ -2573,3 +2573,12 @@ function terrainHeight(x, z) { ... }   // 纯函数，没有高度图
 - 明确不做 / 后置：下载后的剪影验收、Blender、运行时接入。其余第二批概念仍库存。不替代浅滩裂牙或溯流刀甲作业包。
 - 验收 / 证据：左右侧视 1536×1024，互为水平镜像；作业包已写入仓库。
 - 下一道门：用户把 Meshy 带贴图 GLB 放进 `docs/concepts/valley/spotted-fordbug/source/`，先对照契约做剪影验收（四足、斑点圆壳、粗触角、闭合壳体），通过后再开 Blender。
+# 2026-08-20 · Goal 6A — River valley first-minutes repair
+
+- Player-facing route: bare 3D entry now resolves to Gloamwood Valley. The compact Gloamwood nest is explicit via `?map=gloamwood`, preventing no-query playtests from landing in a retired sample.
+- First experience: replaced the hidden/incorrect nest tutorial with a two-beat river-valley guide. Aggressive notice is suppressed only during the short 18-second / 14-metre reading window; a direct strike still wakes the creature, so safety does not become free damage.
+- World authority: visible floor tree trunks and loose boulders export the same deterministic scatter data into the player-collision resolver. Decorative plants remain passable and cliffs retain terrain confinement.
+- Encounter spacing: valley creation and live separation now use body radius plus shared combat `pairGap`, including cross-group pairs and deterministic exact-overlap recovery.
+- Review: `?debug=1&bossGate=1&bossIndex=0..2` evolves the valley player, then stands at the actual river-valley Boss and locks it; it no longer starts the retired Gloamwood arena Boss.
+- Mobile: compact landscape HUD retains health/status/lives/Biomass and moves Genes/milestone totals behind `More info`.
+- Evidence: targeted regressions passed; production build passed with the existing >500 kB legacy-chunk warning. See `docs/GOAL-6A-ACCEPTANCE.md` for the final browser and physical-device checklist.

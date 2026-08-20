@@ -24,10 +24,12 @@ import {
 } from './gloamwood-camera-occlusion'
 import {
   gloamwoodValleyAtmosphereAt,
+  gloamwoodValleyCollisionObstacles,
   gloamwoodValleyTintAt,
   gloamwoodValleyTreeVariantId,
   scatterGloamwoodValley,
   type GloamwoodValleyProp,
+  type GloamwoodValleyCollisionObstacle,
 } from './gloamwood-valley-dressing'
 import {
   gloamwoodValleyCellDrawn,
@@ -105,6 +107,8 @@ export interface GloamwoodValleyScene {
   sun: THREE.DirectionalLight
   ambient: THREE.HemisphereLight
   stats: GloamwoodValleySceneStats
+  /** Collision footprints derived from the exact props the player sees. */
+  colliders: readonly GloamwoodValleyCollisionObstacle[]
   /** Cells drawn from the camera's position, and the fog that goes with it. */
   update(camera: { x: number; z: number; s: number }, elapsed: number, fog: THREE.FogExp2, drawAll?: boolean): void
   /** Fades whatever stands between the lens and the player. */
@@ -163,6 +167,7 @@ export async function buildGloamwoodValleyScene(options: {
   let lastConsidered = 0
   let lastNearest = Infinity
   const props = scatterGloamwoodValley(options.seed, options.propBudget ?? 6200)
+  const colliders = gloamwoodValleyCollisionObstacles(props)
   const cells = groupGloamwoodValleyProps(props).map((cell) => {
     const group = new THREE.Group()
     group.name = `ValleyCell-${cell.cell.column}:${cell.cell.row}`
@@ -206,6 +211,7 @@ export async function buildGloamwoodValleyScene(options: {
     ambient,
     heightAt: ground.heightAt,
     stats,
+    colliders,
     update(camera, elapsed, fog, drawAll = false) {
       foliageTime.value = elapsed
       water.time.value = elapsed

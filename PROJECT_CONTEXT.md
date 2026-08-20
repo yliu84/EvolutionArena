@@ -1,6 +1,6 @@
 # Evolution Arena Lite — Project Context
 
-Last updated: 2026-08-18
+Last updated: 2026-08-20
 Repository: `https://github.com/yliu84/EvolutionArena.git`  
 Project path: `/Users/yangliu/Documents/EvolutionArenaLite`  
 Branch: `main`  
@@ -37,6 +37,21 @@ npm run validate:gltf -- public/assets/quality-3d/models/coral-gecko-rigged-v4.g
 ## Current accepted milestone
 
 The coral-crested gecko is the first completed mother-monster production reference.
+
+## Active player route — Goal 6A
+
+The **bare live entry now opens Gloamwood Valley**, the river-valley vertical slice. The compact Gloamwood nest remains reachable only with `?map=gloamwood` for focused legacy combat checks.
+
+Goal 6A is the current acceptance pass for a player’s first minutes, not a map-art rewrite:
+
+- river-valley start has a two-step, low-coverage guide and an 18-second / 14-metre calm-reading window; a strike still wakes its target immediately;
+- valley tree trunks and loose boulders now share their physical footprints with the rendered scatter; cliffs and vegetation remain visual/terrain-confined rather than becoming frustrating invisible walls;
+- all valley starting creatures receive body plus combat-action clearance, including cross-group pairs, before their first frame;
+- `?debug=1&bossGate=1&bossIndex=0..2` chooses a real evolution, then places the reviewer at the corresponding river-valley region Boss (not the retired Gloamwood arena);
+- compact phone landscape HUD exposes only live combat data; Genes and milestone totals stay behind `More info`.
+
+Official local acceptance entry: `http://127.0.0.1:<vite-port>/?debug=1&evolutionSeed=goal6a&mapSeed=goal6a`.
+For the first Boss: append `&bossGate=1&bossIndex=0`. Do not use a `?maplab=5` or `?quality3d=1` URL for this acceptance.
 
 Runtime identifiers:
 
@@ -196,6 +211,7 @@ Read these when their area is in scope:
 - `docs/COMMERCIAL-VERTICAL-SLICE-ROADMAP.md` — five gated Goals from first encounter through commercial-quality validation.
 - `docs/GOAL-4-ACCEPTANCE.md` — requirement-by-requirement Goal 4 evidence and the remaining natural-run / 844×390 acceptance procedure.
 - `docs/GOAL-5-ACCEPTANCE.md` — active commercial-quality gate, current evidence and remaining release/usability requirements.
+- `docs/GOAL-6A-ACCEPTANCE.md` — current first-minutes, river-valley entry and mobile-HUD acceptance procedure.
 - `docs/EvolutionArena-Project-Docs-v0.1/README.md` — documentation map and current product direction.
 - `docs/EvolutionArena-Project-Docs-v0.1/docs/art/19-CHARACTER-QUALITY-BASELINE.md` — accepted mother-monster quality contract.
 - `docs/EvolutionArena-Project-Docs-v0.1/docs/art/20-CREATURE-PRODUCTION-STANDARD-V2.md` — mandatory current standard for every new creature, evolution form and Boss; includes version/upgrade policy.

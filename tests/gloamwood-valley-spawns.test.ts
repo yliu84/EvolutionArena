@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { gloamwoodPreyBodyRadius } from '../src/gloamwood-3d-ecology'
+import { GLOAMWOOD_COMBAT_SPACING, gloamwoodPreyBodyRadius } from '../src/gloamwood-3d-ecology'
 import { GLOAMWOOD_AGGRO } from '../src/gloamwood-creature-aggro'
 import { createGloamwoodValleyCreatures } from '../src/gloamwood-valley-creatures'
 import { GLOAMWOOD_VALLEY_BRANCHES } from '../src/gloamwood-valley-branches'
@@ -160,6 +160,21 @@ describe('Reproducibility', () => {
 })
 
 describe('Room to stand', () => {
+  it('never opens the field with any two living bodies overlapping', () => {
+    // Packs used to be checked only inside their own group. A grazer or a
+    // neighbouring encounter could still begin inside another visible body.
+    const creatures = createGloamwoodValleyCreatures(0x5a11e)
+    for (let a = 0; a < creatures.length; a += 1) {
+      for (let b = a + 1; b < creatures.length; b += 1) {
+        const needed = gloamwoodPreyBodyRadius(creatures[a])
+          + gloamwoodPreyBodyRadius(creatures[b])
+          + GLOAMWOOD_COMBAT_SPACING.pairGap
+        const gap = Math.hypot(creatures[a].x - creatures[b].x, creatures[a].z - creatures[b].z)
+        expect(gap, `${creatures[a].id} and ${creatures[b].id} overlap`).toBeGreaterThanOrEqual(needed - 0.001)
+      }
+    }
+  })
+
   it('never places two of a pack inside each other', () => {
     // The bodies grew after the packs were laid out, and this went unnoticed
     // until a playtest: members spawned overlapping, the separation pass shoved

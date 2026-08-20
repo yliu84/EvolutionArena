@@ -44,6 +44,14 @@ describe('Noticing the player', () => {
     expect(result.events).toHaveLength(0)
   })
 
+  it('keeps an aggressive creature calm during the opening read period', () => {
+    const result = updateGloamwoodAggro([creature('a', 'aggressive', 0.5)], {
+      playerX: 0, playerZ: 0, delta: 0.05, allowNotice: false,
+    })
+    expect(result.creatures[0].awake).toBe(false)
+    expect(result.events).toHaveLength(0)
+  })
+
   it('wakes anything the player hits, whatever it was doing', () => {
     const result = updateGloamwoodAggro([creature('a', 'passive', 40)], {
       playerX: 0, playerZ: 0, delta: 0.05, struck: ['a'],

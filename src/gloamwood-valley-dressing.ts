@@ -12,6 +12,7 @@ import {
   gloamwoodValleyDominantSurface,
   gloamwoodValleyHalfWidth,
   gloamwoodValleyPointAt,
+  gloamwoodValleyWalkable,
   type GloamwoodValleyRegionId,
 } from './gloamwood-valley-terrain'
 
@@ -178,6 +179,38 @@ export interface GloamwoodValleyProp {
   tint: number
   /** Branch it belongs to, or null on the main route. */
   branch: string | null
+}
+
+/** Physical footprints for the visible, standable props in the river valley. */
+export interface GloamwoodValleyCollisionObstacle {
+  id: string
+  kind: 'tree' | 'rock'
+  x: number
+  z: number
+  radius: number
+}
+
+/**
+ * Derives collision from the same scatter that draws the map.
+ *
+ * Only floor trees and loose boulders block movement. Cliffs already live
+ * beyond the terrain confine, and turning every bit of undergrowth into a wall
+ * would make the beautiful dense banks frustrating to move through.
+ */
+export function gloamwoodValleyCollisionObstacles(props: readonly GloamwoodValleyProp[]): GloamwoodValleyCollisionObstacle[] {
+  return props.flatMap<GloamwoodValleyCollisionObstacle>((prop, index) => {
+    if (!gloamwoodValleyWalkable(prop.x, prop.z)) return []
+    if (prop.kind === 'tree') {
+      const variant = GLOAMWOOD_TREE_VARIANTS.find((entry) => entry.id === gloamwoodValleyTreeVariantId(prop.variant))
+      const radius = Math.max(0.45, (variant?.height ?? 8) * prop.scale * (variant?.trunkRatio ?? 0.07))
+      return [{ id: `valley-tree-${index}`, kind: 'tree' as const, x: prop.x, z: prop.z, radius }]
+    }
+    if (prop.kind === 'boulder') {
+      const radius = Math.max(0.35, (GLOAMWOOD_ROCK_VARIANTS[prop.variant]?.diameter ?? 2) * prop.scale * 0.5)
+      return [{ id: `valley-rock-${index}`, kind: 'rock' as const, x: prop.x, z: prop.z, radius }]
+    }
+    return []
+  })
 }
 
 /**

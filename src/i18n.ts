@@ -34,6 +34,25 @@ const STRINGS = {
   },
   'guide.move.progress': { en: 'Move a little to begin the hunt', zh: '移动一小段开始狩猎' },
 
+  'valley.guide.eyebrow': { en: 'RIVER VALLEY · FIRST HUNT', zh: '幽影河谷 · 首次狩猎' },
+  'valley.guide.title': { en: 'Take a breath, then take the road', zh: '先熟悉身体，再沿河谷前进' },
+  'valley.guide.instruction': {
+    en: 'Move with {move}. The nearby pack stays calm until you choose to strike.',
+    zh: '使用{move}移动。附近的敌群会保持安静，直到你主动出手。',
+  },
+  'valley.guide.reason': {
+    en: 'Follow the road, lock a target, then hold Attack for the one-button combo.',
+    zh: '沿主路前进，锁定目标，再按住攻击发动一键连招。',
+  },
+  'valley.guide.progress': { en: 'Move · lock · attack', zh: '移动 · 锁定 · 攻击' },
+  'valley.guide.lockTitle': { en: 'Choose your first target', zh: '选择第一个目标' },
+  'valley.guide.lockInstruction': {
+    en: 'Your target is locked. Hold {attack} when you are ready; steering always takes priority.',
+    zh: '目标已锁定。准备好后按住{attack}；任何方向操作都可立即接管。',
+  },
+  'valley.guide.lockProgress': { en: 'Target locked · choose your angle', zh: '目标已锁定 · 选择进攻角度' },
+  'hud.msg.bossTest': { en: 'Region Boss sighted', zh: '已抵达区域Boss' },
+
   'guide.approach.title': { en: 'Follow the trail to the Corrupted Brood Nest', zh: '沿猎路接近腐根孵育巢' },
   'guide.approach.instruction': {
     en: 'Keep following the dirt path. Entering the nest triggers the first wave.',
@@ -339,6 +358,9 @@ const STRINGS = {
   'valley.region.shallows': { en: 'the Shallows', zh: '浅滩' },
   'valley.region.gorge': { en: 'the Gorge', zh: '峡谷' },
   'valley.region.headwater': { en: 'the Headwater', zh: '源头' },
+  'valley.boss.tide-cleaver': { en: 'Tide Cleaver', zh: '潮汐裂钳' },
+  'valley.boss.cliff-maw': { en: 'Cliff Maw', zh: '崖口巨颚' },
+  'valley.boss.source-root': { en: 'Source Root', zh: '源根古兽' },
   'death.title': { en: 'You were killed', zh: '你被击倒了' },
   'death.livesLeft': { en: '{count} revives left', zh: '还有 {count} 次复活机会' },
   'death.revive': { en: 'Revive', zh: '复活' },

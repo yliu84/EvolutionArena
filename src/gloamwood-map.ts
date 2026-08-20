@@ -144,6 +144,7 @@ export interface GloamwoodMapContract {
     delta: number,
     player: GloamwoodPlayerPresence,
     struck: readonly string[],
+    options?: { allowNotice?: boolean },
   ): { state: GloamwoodNestState; events: GloamwoodNestEvent[] }
   /**
    * Where everything goes when the player dies and spends a life.

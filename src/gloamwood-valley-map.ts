@@ -206,6 +206,7 @@ export function createGloamwoodValleyMap(
       delta: number,
       player: GloamwoodPlayerPresence,
       struck: readonly string[],
+      options: { allowNotice?: boolean } = {},
     ): { state: GloamwoodNestState; events: GloamwoodNestEvent[] } {
       // The extra fields a valley creature carries - role, tier, home, wander -
       // are not in the prey type but survive every copy the pipeline makes,
@@ -214,7 +215,7 @@ export function createGloamwoodValleyMap(
         state.prey as GloamwoodValleyCreature[],
         delta,
         player,
-        { struck },
+        { struck, allowNotice: options.allowNotice },
       )
       // Corpses age out and cleared road packs come back, on their own clock
       // and only well away from the player.

@@ -56,6 +56,12 @@ export interface GloamwoodAggroInput {
   struck?: readonly string[]
   /** Creatures a lure is pulling. Only passive ones can be pulled. */
   lured?: readonly string[]
+  /**
+   * Keeps an opening area calm without disabling the rest of creature life.
+   * A struck creature still wakes immediately: this is a short reading and
+   * orientation grace period, never a way to attack safely.
+   */
+  allowNotice?: boolean
 }
 
 export type GloamwoodWakeCause = 'noticed' | 'struck' | 'alarm' | 'lured'
@@ -102,7 +108,7 @@ export function updateGloamwoodAggro(
       else wake(creature, 'lured')
       continue
     }
-    if (creature.role === 'aggressive' && distance <= GLOAMWOOD_AGGRO.noticeRadius) {
+    if (input.allowNotice !== false && creature.role === 'aggressive' && distance <= GLOAMWOOD_AGGRO.noticeRadius) {
       wake(creature, 'noticed')
       continue
     }
