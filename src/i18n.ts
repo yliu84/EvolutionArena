@@ -179,6 +179,7 @@ const STRINGS = {
     en: 'It split · two more are up',
     zh: '它分裂了 · 又起来两只',
   },
+  'hud.msg.ate': { en: 'Fed · +{health}', zh: '进食 · +{health}' },
   'hud.msg.eliteBurst': {
     en: 'It is bursting · get out of the ring',
     zh: '它要爆了 · 退出圈外',

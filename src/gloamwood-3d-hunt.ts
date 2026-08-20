@@ -147,6 +147,13 @@ import {
 import { assetUrl } from './asset-url'
 import { ELITE_AFFIXES } from './elite-affixes'
 import {
+  createGloamwoodMeatDrop,
+  gloamwoodMeatDropPosition,
+  gloamwoodMeatOpacity,
+  stepGloamwoodMeat,
+  type GloamwoodMeatDrop,
+} from './gloamwood-meat'
+import {
   gloamwoodEliteBroodHealth,
   gloamwoodEliteBroodPositions,
   gloamwoodEliteBurstHits,
@@ -482,6 +489,8 @@ interface DebugState {
   keysHeld: string[]
   frozenBy: string | null
   preyModels: number
+  /** Meat lying on the ground, so a kill that fed nobody is visible. */
+  meatDrops: number
   preyModelError: string | null
   prey: Array<{
     id: string
@@ -717,6 +726,16 @@ class Gloamwood3DHunt {
    * did precisely nothing. Its whole design is a parting shot you have to step
    * away from, and it was a bigger health bar.
    */
+  /**
+   * Meat left by kills, waiting to be walked over.
+   *
+   * The valley had no way to recover health between fights: whatever the road
+   * cost, the boss fight started with. A playtest arrived at the first gate on
+   * a third of a bar, which no amount of boss tuning would have saved.
+   */
+  private meatDrops: GloamwoodMeatDrop[] = []
+  private meatVisuals = new Map<string, THREE.Mesh>()
+  private meatSequence = 0
   private eliteBursts: Array<{
     burst: GloamwoodEliteBurst
     elapsed: number
@@ -1967,6 +1986,7 @@ class Gloamwood3DHunt {
       this.mixer?.update(delta)
       this.applySecondaryMotion()
     }
+    this.updateMeat(delta)
     this.updateEliteBursts(delta)
     this.updateValleyProgression()
     this.updateSessionLog()
@@ -2392,6 +2412,7 @@ class Gloamwood3DHunt {
     // sharpest decision in the game - and a player who has not been told simply
     // reads it as "my attack is weak now" and grinds through fifteen hits.
     if (damage.blocked && !damage.killed) this.combatMessage = t('hud.msg.blockedFront')
+    if (damage.killed) this.dropMeat(target)
     if (damage.burst) this.spawnEliteBurst(damage.burst)
     if (damage.splits) this.spawnEliteBrood(target)
     if (damage.killed) {
@@ -3300,6 +3321,87 @@ class Gloamwood3DHunt {
     this.scene.add(mesh)
     this.eliteBursts.push({ burst, elapsed: 0, resolved: false, mesh })
     this.combatMessage = t('hud.msg.eliteBurst')
+  }
+
+  /** Leaves a meal where a creature fell. */
+  private dropMeat(target: GloamwoodNestPrey) {
+    // Only where a run can be worn down over distance. The Gloamwood is one
+    // nest in a clearing and its pacing was accepted without this.
+    if (this.map.hasNest) return
+    this.meatSequence += 1
+    // Toward the player, not onto the corpse: a creature dies at its attack
+    // distance, which is further than the player can reach from where they are
+    // standing. Measured in engine, three kills left three meals on the ground
+    // and the player went from 55 health to 31 with two of them in sight.
+    const at = gloamwoodMeatDropPosition(target, this.playerRoot.position)
+    const drop = createGloamwoodMeatDrop(`meat-${this.meatSequence}`, target.kind, at.x, at.z)
+    this.meatDrops.push(drop)
+    const mesh = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.34, 0),
+      new THREE.MeshStandardMaterial({
+        color: 0xb8443a, roughness: 0.62, metalness: 0,
+        emissive: 0x2e0b08, emissiveIntensity: 0.5,
+        transparent: true, opacity: 1,
+      }),
+    )
+    mesh.scale.set(1.25, 0.72, 1)
+    mesh.castShadow = true
+    mesh.position.set(drop.x, this.map.height(drop.x, drop.z) + 0.26, drop.z)
+    mesh.rotation.y = this.meatSequence * 1.1
+    this.scene.add(mesh)
+    this.meatVisuals.set(drop.id, mesh)
+  }
+
+  private updateMeat(delta: number) {
+    if (this.meatDrops.length === 0) return
+    const frame = stepGloamwoodMeat(this.meatDrops, delta, {
+      x: this.playerRoot.position.x,
+      z: this.playerRoot.position.z,
+      health: this.playerCombat.health,
+      maxHealth: this.playerCombat.maxHealth,
+      bodyRadius: gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily),
+    })
+    this.meatDrops = frame.drops
+    for (const eaten of frame.eaten) {
+      const mesh = this.meatVisuals.get(eaten.id)
+      if (mesh) {
+        this.scene.remove(mesh)
+        mesh.geometry.dispose()
+        ;(mesh.material as THREE.Material).dispose()
+        this.meatVisuals.delete(eaten.id)
+      }
+      this.spawnDamageNumber(
+        new THREE.Vector3(eaten.x, gloamwoodCharacterWorldHeight(1) * 0.9, eaten.z),
+        eaten.heal,
+        'kill',
+      )
+    }
+    if (frame.healed > 0) {
+      this.playerCombat = {
+        ...this.playerCombat,
+        health: Math.min(this.playerCombat.maxHealth, this.playerCombat.health + frame.healed),
+      }
+      this.playSound('evolution-select')
+      this.combatMessage = t('hud.msg.ate', { health: frame.healed })
+    }
+    // Anything the authority dropped this frame - eaten or expired - leaves the
+    // scene with it, so a mesh can never outlive the thing it is drawing.
+    const alive = new Set(this.meatDrops.map((drop) => drop.id))
+    for (const [id, mesh] of this.meatVisuals) {
+      if (!alive.has(id)) {
+        this.scene.remove(mesh)
+        mesh.geometry.dispose()
+        ;(mesh.material as THREE.Material).dispose()
+        this.meatVisuals.delete(id)
+        continue
+      }
+      const drop = this.meatDrops.find((entry) => entry.id === id)!
+      const material = mesh.material as THREE.MeshStandardMaterial
+      material.opacity = gloamwoodMeatOpacity(drop)
+      // A slow bob, so a piece lying in grass still reads as a thing to take.
+      mesh.position.y = this.map.height(drop.x, drop.z) + 0.26 + Math.sin(drop.age * 3.1) * 0.06
+      mesh.rotation.y += delta * 0.9
+    }
   }
 
   private updateEliteBursts(delta: number) {
@@ -5291,6 +5393,7 @@ class Gloamwood3DHunt {
         : this.runPhase === 'victory' || this.runPhase === 'defeat' ? this.runPhase
         : null,
       preyModels: this.preyTemplates.size,
+      meatDrops: this.meatDrops.length,
       preyModelError: this.preyModelError ?? null,
       prey: this.nestState.prey.map((prey) => ({
         id: prey.id,

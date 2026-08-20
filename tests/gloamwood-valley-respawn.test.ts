@@ -146,3 +146,55 @@ describe('A pack the player broke but did not finish', () => {
     expect(returned).toHaveLength(0)
   })
 })
+
+describe('The road the player is still on', () => {
+  const pack = creatures.filter((creature) => creature.group === packGroup)
+  const region = pack[0].region
+
+  function clearAndWaitInRegion(playerRegion: string | null, seconds: number) {
+    let state = createGloamwoodValleyRespawnState()
+    let list: GloamwoodValleyCreature[] = creatures.map((creature) =>
+      creature.group === packGroup ? { ...creature, phase: 'dead' as const, health: 0 } : creature)
+    let returned: string[] = []
+    for (let elapsed = 0; elapsed < seconds; elapsed += 0.05) {
+      const frame = stepGloamwoodValleyRespawn(state, list, 0.05, away, playerRegion)
+      state = frame.state
+      list = frame.creatures
+      returned = returned.concat(frame.returned)
+    }
+    return returned
+  }
+
+  it('does not refill in front of a player who is still working through it', () => {
+    // Playtest: died at the first gate, respawned at the region entrance,
+    // walked back through everything already killed, arrived with no health,
+    // died again. Ninety seconds is shorter than the walk, so the run could not
+    // make progress at all.
+    expect(clearAndWaitInRegion(region, GLOAMWOOD_VALLEY_RESPAWN.delaySeconds + 30)).toHaveLength(0)
+  })
+
+  it('refills once the player has moved on', () => {
+    // The purpose survives: the route folds and carries two loop branches, so
+    // doubling back a region later still finds a living road.
+    const returned = clearAndWaitInRegion('headwater', GLOAMWOOD_VALLEY_RESPAWN.delaySeconds + 3)
+    for (const creature of pack) expect(returned).toContain(creature.id)
+  })
+
+  it('holds the clock rather than resetting it', () => {
+    // Waiting in the region and then leaving must not restart the whole delay,
+    // or a player who lingers is punished for it.
+    let state = createGloamwoodValleyRespawnState()
+    let list: GloamwoodValleyCreature[] = creatures.map((creature) =>
+      creature.group === packGroup ? { ...creature, phase: 'dead' as const, health: 0 } : creature)
+    let returned: string[] = []
+    for (let elapsed = 0; elapsed < 200; elapsed += 0.05) {
+      // In the region for the first half, gone for the second.
+      const where = elapsed < 100 ? region : 'headwater'
+      const frame = stepGloamwoodValleyRespawn(state, list, 0.05, away, where)
+      state = frame.state
+      list = frame.creatures
+      returned = returned.concat(frame.returned)
+    }
+    expect(returned.length).toBeGreaterThan(0)
+  })
+})

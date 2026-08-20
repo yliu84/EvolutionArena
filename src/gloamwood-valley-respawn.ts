@@ -13,6 +13,17 @@ import type { GloamwoodValleyCreature } from './gloamwood-valley-creatures'
  * Nothing returns while the player is close enough to watch. A creature that
  * appears in view has no explanation; one that is simply there when you come
  * back the other way does.
+ *
+ * And nothing returns in the region the player is still working through. That
+ * is the difference between a road that stays alive behind you and a treadmill:
+ * a playtest died at the first gate, respawned at the region entrance, walked
+ * back through everything it had already killed, arrived with no health, and
+ * died again. Ninety seconds is shorter than the walk, so the run could not
+ * make progress at all.
+ *
+ * The purpose survives intact - the route folds and carries two loop branches,
+ * so doubling back a region later still finds a living road. What it no longer
+ * does is undo the run in front of the player.
  */
 export const GLOAMWOOD_VALLEY_RESPAWN = {
   /** How long after a creature dies before it can return. */
@@ -52,6 +63,8 @@ export function stepGloamwoodValleyRespawn(
   creatures: readonly GloamwoodValleyCreature[],
   deltaSeconds: number,
   player: { x: number; z: number },
+  /** Where the player is now. Nothing in it comes back while they are in it. */
+  playerRegion: string | null = null,
 ): GloamwoodValleyRespawnFrame {
   const delta = Math.max(0, Math.min(0.05, deltaSeconds))
   const pending = { ...state.pending }
@@ -74,6 +87,12 @@ export function stepGloamwoodValleyRespawn(
     if (!gloamwoodValleyRespawns(creature)) continue
     if (creature.phase !== 'dead') {
       delete pending[creature.id]
+      continue
+    }
+    // Held, not counted down. The clock resumes the moment the player moves on,
+    // so leaving a region and coming back still finds it repopulating.
+    if (playerRegion !== null && creature.region === playerRegion) {
+      pending[creature.id] = pending[creature.id] ?? GLOAMWOOD_VALLEY_RESPAWN.delaySeconds
       continue
     }
     const next = (pending[creature.id] ?? GLOAMWOOD_VALLEY_RESPAWN.delaySeconds) - delta

@@ -203,7 +203,12 @@ export function createGloamwoodValleyMap(
       const nested = stepGloamwoodValleyNests(nests, frame.creatures, delta, player)
       nests = nested.nests
       for (const id of nested.cleared) clearedNests.add(id)
-      const cycled = stepGloamwoodValleyRespawn(respawn, nested.creatures, delta, player)
+      const standing = gloamwoodValleyProject(player.x, player.z)
+      const inRegion = GLOAMWOOD_VALLEY.regions
+        .find((entry) => standing.s >= entry.from && standing.s <= entry.to)
+      const cycled = stepGloamwoodValleyRespawn(
+        respawn, nested.creatures, delta, player, inRegion?.id ?? null,
+      )
       respawn = cycled.state
       return {
         state: { ...state, prey: cycled.creatures as GloamwoodNestPrey[] },
