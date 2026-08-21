@@ -1,4 +1,5 @@
 import type { FeedbackVolume } from './player-hit-feedback'
+import { assetUrl } from './asset-url'
 
 export type GloamwoodSoundEvent =
   | 'footstep'
@@ -285,7 +286,7 @@ export class GloamwoodAudioBus {
   private ensureAmbient() {
     const context = this.context
     if (!context || !this.musicGain || this.ambientMedia || typeof Audio === 'undefined') return
-    const media = new Audio(RIVER_VALLEY_AMBIENT.filename)
+    const media = new Audio(assetUrl(RIVER_VALLEY_AMBIENT.filename))
     media.loop = true
     media.preload = 'auto'
     const source = context.createMediaElementSource(media)
@@ -337,7 +338,7 @@ export class GloamwoodAudioBus {
   private prefetchExternalBytes(url: string) {
     const existing = this.externalBytes.get(url)
     if (existing) return existing
-    const request = fetch(url)
+    const request = fetch(assetUrl(url))
       .then((response) => response.ok ? response.arrayBuffer() : undefined)
       .catch(() => undefined)
     this.externalBytes.set(url, request)

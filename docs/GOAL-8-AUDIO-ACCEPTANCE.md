@@ -43,6 +43,11 @@ are CC0 bite crunches and player damage uses a CC0 creature-hurt cue. The
 previous Mixkit and drum-like Kenney impact trials are retained on disk but
 inactive.
 
+**Public Pages path:** music and sound URLs resolve through the shared
+`assetUrl()` boundary. This preserves ordinary localhost paths while correctly
+prefixing GitHub Pages project deployments with `/EvolutionArena/`; audio files
+must never be fetched from the domain-root `/assets/` path.
+
 **Strict timing rule:** a routine combat cue is scheduled only while the audio
 context is already `running` and the page is visible. A suspended lifecycle
 state triggers a resume attempt but drops the old cue instead of replaying it

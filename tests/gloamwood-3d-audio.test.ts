@@ -72,4 +72,11 @@ describe('Gloamwood procedural sound profiles', () => {
     expect(MAX_GLOAMWOOD_EXTERNAL_SOURCES).toBe(10)
     expect(getGloamwoodExternalAudioAssets('boss-intro')).toEqual([])
   })
+
+  it('resolves public audio through the deployment base instead of the domain root', async () => {
+    const source = await import('node:fs/promises').then(({ readFile }) => readFile(new URL('../src/gloamwood-3d-audio.ts', import.meta.url), 'utf8'))
+    expect(source).toContain("import { assetUrl } from './asset-url'")
+    expect(source).toContain('new Audio(assetUrl(RIVER_VALLEY_AMBIENT.filename))')
+    expect(source).toContain('fetch(assetUrl(url))')
+  })
 })
