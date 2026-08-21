@@ -34,11 +34,12 @@ export interface GloamwoodSoundProfile {
 }
 
 export const RIVER_VALLEY_AMBIENT = {
-  provenance: 'congusbongus, Cathedral in the forest (ambient loop), CC0; downloaded from OpenGameArt.',
-  sourceUrl: 'https://opengameart.org/content/cathedral-in-the-forest-ambient-loop',
+  provenance: 'nene, Beautiful Forest [Orchestra], CC0; downloaded from OpenGameArt.',
+  sourceUrl: 'https://opengameart.org/content/beautiful-forest-orchestra',
   filename: '/assets/audio/goal8/river-valley-forest-music.ogg',
-  // Music stays behind movement and combat; user volume applies at the master bus.
-  musicGain: 0.035,
+  // The orchestral arrangement remains a backdrop: the Settings volume and the
+  // combat ducking apply after this intentionally quiet baseline.
+  musicGain: 0.05,
   fadeInSeconds: 2.4,
 } as const
 

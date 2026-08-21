@@ -344,10 +344,12 @@ until their locally captured reports and tester answers exist.
 ## Current implementation milestone — Goal 8 audio candidate
 
 River Valley now has a review-ready external-audio trial. The former procedural
-attack-noise layer was rejected during listening and removed. congusbongus'
-CC0 `Cathedral in the forest` now supplies the single 136.974-second forest
-music bed, fading in over 2.4 seconds after trusted playback begins; the old
-TinyWorlds natural-atmosphere loop is retained inactive rather than layered.
+attack-noise layer was rejected during listening and removed. nene's CC0
+`Beautiful Forest [Orchestra]` now supplies the single forest music bed,
+fading in over 2.4 seconds after trusted playback begins at a deliberately
+restrained 0.05 music gain; the former congusbongus pad-and-bell loop and the
+old TinyWorlds natural-atmosphere loop are retained only as provenance, never
+layered.
 CC0 grass/landing Foley covers movement; CC0
 natural air swishes cover the three swings; CC0 bite crunches and creature-hurt
 clips cover confirmed contact and incoming damage. The cinematic/martial-arts

@@ -3074,3 +3074,11 @@ function terrainHeight(x, z) { ... }   // 纯函数，没有高度图
 - 验收 / 证据：严格同步和森林配乐修订后，聚焦 3 文件 / 32 项、全量 105 文件 / 971 项（`npx vitest run --testTimeout=15000`）均通过，生产构建通过，仅保留既有 legacy bundle >500 kB 提示。浏览器桌面连段只记录玩家 `attack-* → hit-* → kill`；动作结束后短音源回到 0，之后敌人造成的伤害明确记录为 `enemy-hit-player`，不会再伪装成玩家重击。新森林曲在首次可信操作前不启动；1440×900 等过 2.4 秒淡入后 `contextState=running`、`ambientActive=true`，约 120 FPS（8.3 ms average / 8.9 ms p95）；模拟 844×390 也经可信手势恢复环境床和九个 buffer。桌面/手机横屏控制台均为 0 error / 0 warning。自动化只验证事件路由、恢复和性能，主观试听仍由项目所有者把关。
 - 明确不做：不改数值、判定、进化、地图、模型、Goal 7 候选特效或单键普攻边界；仍待项目所有者主观试听验收。
 - 下一道门：项目所有者按 `docs/GOAL-8-AUDIO-ACCEPTANCE.md` 主观试听环境层、挥空/命中/击杀、受击和 Boss 音量层级后决定是否验收或要求混音微调。
+
+## 2026-08-21 · River Valley 背景音乐试听修订
+
+- 类型：音频表现层；不改战斗权威、地图、模型或控制。
+- 用户试听后否决 congusbongus 的 CC0 `Cathedral in the forest`：持续 pad 和铃声单调且压抑。它不再进入运行时 payload。
+- 现使用 nene 的 CC0 `Beautiful Forest [Orchestra]`（16-bit / 44.1 kHz stereo Vorbis OGG）。它以现有首次可信操作门和 2.4 秒淡入加载，没有新增节拍层或战斗控制。
+- 初始 0.025 试听太小，按用户反馈调为 nominal gain 0.05；默认 60% master 下为 0.03，Boss/战斗 ducking 仍会压低音乐。
+- 准确出处和 SHA-256 在 `public/assets/audio/goal8/SOURCES.md`。项目所有者已完成本地试听确认；全量测试在此前机器资源饱和时仅出现既有地图/植被性能用例超时，发布工作流继续作为完整测试门。

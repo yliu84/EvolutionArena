@@ -6,11 +6,26 @@ damage, hit confirmation, kills or progression.
 ## Active River Valley background music
 
 - File: `river-valley-forest-music.ogg`
+- Work / author: **Beautiful Forest [Orchestra]** by nene
+- Source: <https://opengameart.org/content/beautiful-forest-orchestra>
+- Licence: CC0. 16-bit, 44.1 kHz stereo Vorbis OGG. This replaces the former
+  pad-and-bell bed because it gives the River Valley a gentle melodic arc
+  without a persistent drum or pulse. The runtime remains an ordinary native
+  HTML media loop, with the existing 2.4-second fade-in.
+- SHA-256: `affee8ea651ac18b5def59388049406c95e271ef2fc223097605a17527175644`
+- Mix: music gain is restrained but audible at `0.05` before the user's saved
+  master-volume preference and combat ducking apply. At the default 60% master
+  setting this yields an effective music gain of `0.03`; it is still ducked
+  during important combat and encounter cues.
+
+## Retired River Valley background-music trial
+
 - Work / author: **Cathedral in the forest (ambient loop)** by congusbongus
 - Source: <https://opengameart.org/content/cathedral-in-the-forest-ambient-loop>
-- Licence: CC0. The source describes it as a seamless ambient loop with pads
-  and bells. Runtime duration: 136.974 seconds, 44.1 kHz stereo OGG.
-- SHA-256: `b9e05a1fcd5869b63193515e2a9c1bd578906a78e628e307f19527d387262593`
+- Licence: CC0. It was previously shipped as the active bed (SHA-256
+  `b9e05a1fcd5869b63193515e2a9c1bd578906a78e628e307f19527d387262593`) and
+  is no longer in the runtime payload after the owner found its sustained pad
+  too monotonous and oppressive.
 
 ## Retained, inactive River Valley atmosphere trial
 

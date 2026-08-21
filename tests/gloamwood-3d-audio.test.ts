@@ -57,9 +57,10 @@ describe('Gloamwood procedural sound profiles', () => {
 
   it('uses a restrained forest music loop and creature-combat palette instead of cinematic whooshes or drum-like impacts', () => {
     expect(RIVER_VALLEY_AMBIENT.provenance).toContain('CC0')
-    expect(RIVER_VALLEY_AMBIENT.sourceUrl).toContain('opengameart.org')
+    expect(RIVER_VALLEY_AMBIENT.provenance).toContain('Beautiful Forest')
+    expect(RIVER_VALLEY_AMBIENT.sourceUrl).toContain('beautiful-forest-orchestra')
     expect(RIVER_VALLEY_AMBIENT.filename).toMatch(/river-valley-forest-music\.ogg$/)
-    expect(RIVER_VALLEY_AMBIENT.musicGain).toBeLessThan(0.1)
+    expect(RIVER_VALLEY_AMBIENT.musicGain).toBe(0.05)
     expect(RIVER_VALLEY_AMBIENT.fadeInSeconds).toBeGreaterThanOrEqual(2)
     expect(getGloamwoodExternalAudioAssets('attack-bite')[0]?.url).toMatch(/attack-bite-swish-01\.m4a$/)
     expect(getGloamwoodExternalAudioAssets('attack-pounce')[0]?.url).toMatch(/attack-pounce-swish-01\.m4a$/)
