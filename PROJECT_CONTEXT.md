@@ -404,6 +404,18 @@ no music before trusted input; after the 2.4-second fade, 1440×900 reported
 about 120 FPS. Simulated 844×390 restored the same state after its trusted
 gesture.
 
+The first explicit cooling pass keeps gameplay authority and map content
+unchanged. Retina desktop output is capped at 1.35 render pixels per CSS pixel,
+coarse-pointer output at 1.15, and the directional shadow map is 1536² rather
+than 2048². Settings, evolution, mutation and terminal overlays render their
+backdrop once then stop the continuous WebGL loop; a resume or selection starts
+it again. Local 1291×755 browser evidence recorded 63.2 FPS / 19.7 ms p95 at
+1.35 pixel ratio, 130 draw calls, 1.098M triangles and 105.7 MB JS heap; the
+frame counter remained unchanged for 1.2 seconds while Settings was open and
+resumed afterward. The current full suite is 106 files / 980 tests and the
+production build passes. This is a measurable desktop reduction, not yet a
+replacement for the outstanding real midrange-mobile 30-FPS test.
+
 **Open design question, raised by the user on 2026-08-17 after their own playthrough**: the run is two minutes long and contains exactly one decision, so the three evolution routes read as skins. `docs/design/MUTATION-LOOP-PROPOSAL-V1.md` proposes the answer - splitting evolution into a cheap mutation layer that changes rules rather than percentages, and the existing expensive form layer - and argues for building the mutation layer first because it is the only change that tests whether players want a second run without spending any art. Proposal only; not implemented.
 
 `docs/design/OPEN-MAP-RUN-STRUCTURE-V1.md` proposes the run structure the open map needs, and exists because depth has to be real before it can gate anything. Its core move: mutations unlock on depth rather than on biomass, because biomass is unbounded on an open map and gating on it means whoever grinds gets stronger without limit. It builds on the eight MapLab 4 nest archetypes already authored in art and data, whose core health ladder of 18 to 30 is already a difficulty curve, and whose existing `heal` reward keeps healing an earned reward rather than a scattered pickup that would undo the life budget. Proposal only; not implemented.

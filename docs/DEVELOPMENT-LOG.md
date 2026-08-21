@@ -3082,3 +3082,12 @@ function terrainHeight(x, z) { ... }   // 纯函数，没有高度图
 - 现使用 nene 的 CC0 `Beautiful Forest [Orchestra]`（16-bit / 44.1 kHz stereo Vorbis OGG）。它以现有首次可信操作门和 2.4 秒淡入加载，没有新增节拍层或战斗控制。
 - 初始 0.025 试听太小，按用户反馈调为 nominal gain 0.05；默认 60% master 下为 0.03，Boss/战斗 ducking 仍会压低音乐。
 - 准确出处和 SHA-256 在 `public/assets/audio/goal8/SOURCES.md`。项目所有者已完成本地试听确认；全量测试在此前机器资源饱和时仅出现既有地图/植被性能用例超时，发布工作流继续作为完整测试门。
+
+## 2026-08-21 · River Valley 持续渲染降温
+
+- 类型：性能表现层；不改战斗数值、判定、进化、地图、模型或音频时序。
+- 发现：48 GB 开发机没有内存压力；风扇由持续 WebGL 渲染叠加 Chrome GPU、Codex 和 WindowServer 造成。游戏 Chrome 页面约 840 MB / 33% CPU，GPU 进程约 262 MB / 24% CPU，因此优先减少每帧 GPU 工作而不是错误地清理游戏状态。
+- 做了什么：Retina 桌面像素比从 1.65 降至 1.35，粗指针设备上限为 1.15；方向光 shadow map 从 2048² 降为 1536²。Settings、进化选择、变异选择和结算只保留一帧背景渲染，不再在冻结状态持续跑 `requestAnimationFrame`；Resume/选择后恢复循环。
+- 浏览器证据：1291×755 本地 River Valley 为 63.2 FPS / P95 19.7 ms / 130 calls / 1.098M tris / 105.7 MB JS heap，画布为 1742×1019（@1.35）。暂停前后 1.2 秒 frame counter 均为 999，继续后升至 1114；无 console error/warning。
+- 验收：性能相关 3 文件 / 29 项、全量 106 文件 / 980 项和生产构建均通过；仅保留既有 legacy bundle >500 kB 提示。
+- 后续：此次降低连续负载，不替代中端手机实机 30 FPS 验收；若仍有热量/掉帧，再做按设备动态质量档和实体/阴影预算测量。

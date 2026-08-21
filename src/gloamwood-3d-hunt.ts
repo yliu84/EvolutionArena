@@ -6,6 +6,11 @@ import {
   GloamwoodPerformanceSampler,
   readJavaScriptHeapMegabytes,
 } from './gloamwood-performance'
+import {
+  GLOAMWOOD_RENDER_QUALITY,
+  resolveGloamwoodRenderPixelRatio,
+  shouldGloamwoodRenderContinuously,
+} from './gloamwood-render-quality'
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import { gloamwoodMapFromEntry } from './entry-routing'
 
@@ -1082,7 +1087,6 @@ class Gloamwood3DHunt {
     this.mutationState = createGloamwoodMutationState(params.get('evolutionSeed') ?? 'gloamwood-first-run')
     this.scene.background = new THREE.Color(0x12251d)
     this.scene.fog = new THREE.FogExp2(0x1b3329, 0.026)
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.38
@@ -1187,6 +1191,7 @@ class Gloamwood3DHunt {
   dispose() {
     this.disposed = true
     cancelAnimationFrame(this.animationFrame)
+    this.animationFrame = 0
     window.removeEventListener('resize', this.resize)
     window.removeEventListener('keydown', this.keyDown)
     window.removeEventListener('keyup', this.keyUp)
@@ -1260,7 +1265,9 @@ class Gloamwood3DHunt {
     const sun = new THREE.DirectionalLight(0xffd18b, 4.6)
     sun.position.set(-12, 22, 10)
     sun.castShadow = true
-    sun.shadow.mapSize.set(2048, 2048)
+    // This is still a detailed directional shadow, but costs 44% fewer shadow
+    // texels than the old 2048 map every rendered frame.
+    sun.shadow.mapSize.set(GLOAMWOOD_RENDER_QUALITY.shadowMapSize, GLOAMWOOD_RENDER_QUALITY.shadowMapSize)
     sun.shadow.camera.left = -30
     sun.shadow.camera.right = 30
     sun.shadow.camera.top = 24
@@ -2607,6 +2614,8 @@ class Gloamwood3DHunt {
   private readonly resize = () => {
     const width = Math.max(1, this.container.clientWidth)
     const height = Math.max(1, this.container.clientHeight)
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false
+    this.renderer.setPixelRatio(resolveGloamwoodRenderPixelRatio(window.devicePixelRatio || 1, coarsePointer))
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
     this.renderer.setSize(width, height, false)
@@ -2701,6 +2710,24 @@ class Gloamwood3DHunt {
     return this.getDebugState()
   }
 
+  private shouldRenderContinuously() {
+    return shouldGloamwoodRenderContinuously({
+      paused: this.paused,
+      evolutionChoosing: this.evolutionState.phase === 'choosing',
+      mutationOffering: this.mutationState.offering,
+      terminal: this.runPhase === 'victory' || this.runPhase === 'defeat',
+    })
+  }
+
+  private requestNextFrame(resetClock = false) {
+    if (this.disposed || this.animationFrame !== 0) return
+    if (resetClock) this.lastFrameAt = performance.now()
+    this.animationFrame = requestAnimationFrame(() => {
+      this.animationFrame = 0
+      this.tick()
+    })
+  }
+
   private tick = (forcedDelta?: number) => {
     if (this.disposed) return
     // Wrapped, not passed directly. The browser hands an rAF callback a
@@ -2709,7 +2736,7 @@ class Gloamwood3DHunt {
     // one, and the loop stopped scheduling after the first. The game ran
     // exactly one frame and then froze, on both maps, with nothing in the
     // console: input still arrived, nothing ever read it.
-    if (forcedDelta === undefined) this.animationFrame = requestAnimationFrame(() => this.tick())
+    if (forcedDelta === undefined && this.shouldRenderContinuously()) this.requestNextFrame()
     const now = forcedDelta === undefined ? performance.now() : this.lastFrameAt + forcedDelta * 1000
     const frameMilliseconds = Math.max(0, now - this.lastFrameAt)
     this.frameCount += 1
@@ -5633,6 +5660,7 @@ class Gloamwood3DHunt {
     const queued = this.afterMutationChoice
     this.afterMutationChoice = undefined
     queued?.()
+    this.requestNextFrame(true)
   }
 
   /** Starving Metabolism sheds maximum health on a clock rather than on hits. */
@@ -5659,6 +5687,7 @@ class Gloamwood3DHunt {
     const candidate = this.evolutionState.candidates[index]
     if (!candidate || this.evolutionState.phase !== 'choosing') return
     this.evolutionState = selectGloamwoodEvolutionCandidate(this.evolutionState, candidate.id)
+    this.requestNextFrame(true)
     this.playSound('evolution-select')
     if (this.evolutionOverlay) {
       this.evolutionOverlay.dataset.busy = 'true'
@@ -6675,7 +6704,10 @@ class Gloamwood3DHunt {
     this.touchMoveX = 0
     this.touchMoveZ = 0
     if (open) this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-settings-resume]')?.focus()
-    else this.renderer.domElement.focus()
+    else {
+      this.renderer.domElement.focus()
+      this.requestNextFrame(true)
+    }
   }
 
   private cycleFeedbackSetting(setting: string) {
