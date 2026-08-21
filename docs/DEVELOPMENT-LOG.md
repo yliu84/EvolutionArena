@@ -650,6 +650,7 @@
 - 河谷隘口一首领形象已定案为概念 C 檐盾 / **溯流刀甲**（`tide-cleaver`）。Meshy 由用户自行图生（禁止文生），作业包在 `docs/concepts/valley/tide-cleaver/source/SOURCE.md`。主图是加厚钳片的 3/4，不是原 C。概念 A/B 与原 C 细薄钳片均不作上传源。源 GLB 未落地前不开 Blender。这是项目第一只建模首领，不替代 Goal 5 验收，也不替代群生一级的 Meshy 作业。
 - 河谷裂牙猎物形象已定案为 **浅滩裂牙**（`ford-fang`）。Meshy 由用户自行图生（禁止文生），作业包在 `docs/concepts/valley/ford-fang/source/SOURCE.md`。主图是 3/4，额外槽用右视，左视是右视的水平翻转。这是可选的河谷猎物模型，不是立刻把「小怪沿用」作废。源 GLB 未落地前不开 Blender。
 - 河谷温和猎物形象已定案为 **彩石瓢甲**（`spotted-fordbug`）。Meshy 由用户自行图生（禁止文生），作业包在 `docs/concepts/valley/spotted-fordbug/source/SOURCE.md`。主图是 3/4，额外槽用右视，左视是右视的水平翻转。恰好四足，禁止六足和开翅。源 GLB 未落地前不开 Blender。
+- 硬壳共生、孢子晕、蜕壳、饥饿代谢、猎食再生的世界特效是加亮技能粒子。硬壳受击是较薄、略透明的立体六边甲片围在躯干外并崩碎壳，不是平面贴图，也不是身前能量盾。孢子晕是常驻贴地的浅橄榄薄雾，跟着玩家走，压得很淡，不挡脚、敌人或地面预警，不是技能圈也不是周期性闪光。薄雾表现半径略大于减速判定 4.2，方便读出范围。饥饿代谢是肋侧沙漏脉：击杀拿双倍生物质时从腹向上燃琥珀，每 30 秒掉最大生命时变冷、灰烬下落，不是飞光点，也不是猎食再生的吸入。蜕壳是盖在躯干上方的浅拱菱形龟壳，浅角质色、顶稍实沿更透，接缝是细的甲沟，左右从中缝裂开、不落地、不卡住头。撕裂爪是命中体表的三道猎爪能量斩（两头收尖、白芯橙红、短拉长），略放大并加亮以便在战斗镜头里读出来。棘尾横扫是贴地冲击带、向外崩石和矮扬尘，环跟着当前体型外扩一圈。表现不改判定、范围或回血。身体永久附件仍须作者资产。
 - 进化三选一的配图是三条**路线氛围图**，不是六个候选的形态照；同族两个选项共用一张图。卡片只保留名称、数值和猎食权重，因果句由标题承担。
 - 本文件是改动账本。每次下一步改进都要追加，不删旧账。
 # 2026-08-14 · 怪物窝点战斗闭环
@@ -2628,3 +2629,448 @@ function terrainHeight(x, z) { ... }   // 纯函数，没有高度图
 - Next gate: Goal 7 tests build expression before content expansion—visible
   mutation cause/effect, tactical route differences, and recorded 18–22 minute
   external playtests—not additional skins, maps or skills.
+
+# 2026-08-20 · Goal 7 — body mutation expression and external-playtest readiness
+
+- Player-facing result: the existing mutation pool no longer relies on a card
+  plus hidden numbers. Rending Claws makes confirmed double-slash hits heavier;
+  Carapace Symbiosis has mitigation and a short reflect flash; Spined Tail
+  Sweep reaches farther and authoritatively displaces nearby enemies after a
+  connected sweep; Feeding Regeneration heals only on confirmed kills; and
+  Sporehaze becomes visible only while a living enemy is actually slowed.
+  Permanent body modules are deliberately deferred until an authored asset
+  passes multi-angle review.
+- Authority: all five effects stay on existing movement, target lock and the
+  single primary-attack chain. No skill button, map asset, environment edit or
+  new creature model was added. Area tail control adds no damage, genes,
+  biomass or kill credit.
+- Measurement: the local session report now records selection and confirmed
+  mutation effects. `docs/GOAL-7-EXTERNAL-PLAYTEST.md` defines a privacy-safe
+  15–20 minute no-explanation protocol and gates for comprehension and rule
+  integrity; it uploads nothing and identifies no tester.
+- Evidence: full Vitest passed (104 files / 954 tests), production build and
+  `git diff --check` passed. River Valley loaded with all five debug mutation
+  contracts at desktop 1440×900 and phone landscape 844×390 without console
+  errors. The existing legacy-bundle-size warning remains.
+- Remaining evidence: three real external no-explanation runs are still needed
+  before claiming player comprehension; readiness is complete, the human
+  evidence is intentionally not fabricated.
+
+# 2026-08-20 · Goal 7 follow-up — in-game Evolution Lab
+
+- Playtest usability: every `?debug=1` entry now opens a compact in-game
+  Evolution Lab. Reviewers switch Origin, Fang I/II, Shell I and Swarm I, then
+  inspect one mutation at a time without grinding through the run.
+- Boundary: the menu is debug-only and reloads the same River Valley with the
+  same real model/effect startup path. It is not a production progression menu,
+  does not grant a new combat input and does not change map content.
+- Correction: both the toe needles and the follow-up forearm rods were rejected
+  during close-view review and removed. They are not acceptable creature parts
+  merely because they follow a bone. Until an authored, multi-angle-approved
+  module exists, Goal 7 keeps only the confirmed combat feedback and authority.
+
+# 2026-08-20 · Goal 7 follow-up — painterly combat feedback pass
+
+- Playtest correction: the first feedback pass was mechanically correct but
+  read as exposed development geometry: hard planes, thin rings and isolated
+  flashes did not meet the requested visual bar.
+- Replacement: confirmed attacks now use reusable canvas-authored brush-stroke
+  sprites, short shard sparks, soft glows and terrain-facing broken-wave decals.
+  Rending Claws gets paired warm/coral slash trails; Spined Tail Sweep gets a
+  brief gold ground wave and outward debris; Carapace, Feeding and Sporehaze
+  use distinct jade/green particle families. These are presentation-only and
+  still begin only after their corresponding authority event.
+- Reviewer support: the debug-only Evolution Lab gained `Preview current
+  effect`. It lengthens only its own harmless preview so a reviewer can inspect
+  the current mutation without needing a convenient enemy or changing health,
+  range, damage, Genes, Biomass or the one-button combat chain.
+- Guardrail: no temporary cone, sphere, rod or other primitive is attached to
+  the creature body. Visible permanent anatomy remains an authored-asset gate;
+  the new effects are short-lived camera-facing/ground-facing presentation.
+- Evidence: full Vitest passed (104 files / 954 tests), production build and
+  `git diff --check` passed. The debug Lab preview was inspected at River
+  Valley desktop 1440×900 for paired claws, tail wave and carapace feedback;
+  it was also checked at 844×390 landscape with no horizontal overflow and no
+  browser console errors or warnings. The existing Vite legacy-bundle warning
+  remains unchanged.
+
+## 2026-08-20 · 五条变异特效改为图形化分层爆发
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：进化实验室里的硬壳共生、孢子晕、猎食再生、蜕壳、饥饿代谢，在世界里各自有能读出规则的短爆发，而不再是一张发黑的写实贴图胀大。
+- 做了什么：
+  - 新增 `src/gloamwood-mutation-fx.ts`：真透明画布剪影（甲片环、空心孢子环、左右蜕壳、琥珀 chevron、向内吞噬）。
+  - 运行时不再预加载那五张 ImageGen PNG；棘尾横扫仍用 `shell-tail-sweep-runtime-v1.png`。
+  - 受击/击杀/光环/复活事件仍只在权威结算之后播表现。
+- 为什么：旧贴图在固定战斗镜头下约占 13% 屏高，黑色底板 + Normal 混合会糊成同一团光晕，也读不出减伤、减速、回血、复活或代谢。
+- 明确不做 / 后置：不开技能栏、蓝条或独立技能按键。撕裂爪与棘尾横扫不在本轮改。永久身体附件仍须作者资产。
+- 验收 / 证据：Vitest 105 files / 959 tests 通过；`npm run build` 通过（仍有既有 legacy bundle 体积警告）。
+- 下一道门：在 `?debug=1&mutationLab=1` 里逐条 Preview current effect，确认五条形状可分、不遮挡脚和预警。
+
+## 2026-08-20 · 变异与撕裂爪改为立体粒子特效
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：硬壳共生、孢子晕、猎食再生、蜕壳、饥饿代谢、撕裂爪都变成短促的 3D 粒子爆发——有体积、会飞、会落地回弹，并带一点镜头冲击，而不再是一张面向相机的贴图或平面伤口。
+- 做了什么：
+  - `src/gloamwood-mutation-fx.ts` 改为受光网格配方：甲片/碎屑弹道、孢子球漂浮、蜕壳左右落地、琥珀余烬、向内吞噬、三道体积爪痕加火花。
+  - 运行时用共享几何体池生成粒子，上限 96；表现仍只在权威事件之后播放。
+  - 撕裂爪不再用平面 shader 伤口。
+- 为什么：用户要求粒子、立体感和打击感。上一轮画布精灵在固定战斗镜头里仍然是贴纸。
+- 明确不做 / 后置：不开技能栏。棘尾横扫仍用既有 crescent。永久身体附件仍须作者资产。
+- 验收 / 证据：Vitest 105 files / 960 tests 通过；`npm run build` 通过（仍有既有 legacy bundle 体积警告）。
+- 下一道门：进化实验室 Preview 六条效果，确认形状可分、爪痕打在目标体表、碎屑落地。
+
+## 2026-08-20 · 技能特效改为加亮粒子，不再用调试几何体
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：六条效果读成技能特效——闪光、月牙斩、地面冲击环、光点和拖尾——而不是彩色方块/锥体在地上弹。
+- 做了什么：
+  - 粒子贴图改为 glow / slash / ring / streak，Additive 混合。
+  - 硬壳：冲击环 + 护体闪光 + 向外火花。孢子：漂浮光点。猎食：向内吸入。蜕壳：爆发闪光。代谢：升降余烬。撕裂爪：三道画出的月牙斩 + 火花。
+- 为什么：上一轮把「立体粒子」做成了受光网格碎片，玩家看到的是乱七八糟的几何体，不是技能特效。
+- 明确不做 / 后置：不开技能栏。棘尾横扫仍用既有 crescent。
+- 验收 / 证据：Vitest 105 files / 960 tests 通过；`npm run build` 通过（仍有既有 legacy bundle 体积警告）。
+- 下一道门：进化实验室 Preview，确认每条效果一眼能认成技能，而不是调试模型。
+
+## 2026-08-20 · 撕裂爪改为两道尖锐红裂痕
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：命中时目标上划出一两道尖、细、硬边的红色裂痕，沿长度迅速切开再淡出。不再是发光油画月牙或一堆粒子。
+- 做了什么：撕裂爪离开粒子爆发，改用面向战斗镜头的着色器裂痕（两道、尖端收束、暗红+白芯）。预览仍只在近处目标或玩家身前播放。
+- 为什么：用户明确说猎爪太像油画刷子、太浑，要尖锐红色攻击裂痕；粒子斩在这个相机距离读不成伤口。
+- 明确不做 / 后置：不开技能栏。其它变异仍用加亮粒子。
+- 验收 / 证据：Vitest `gloamwood-mutation-fx` 与 `tsc --noEmit` 通过。
+- 下一道门：进化实验室选撕裂爪 Preview，确认两道红痕清楚、不发糊。
+
+## 2026-08-20 · 撕裂爪放大为三道从短拉长的斜向裂痕
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：命中时三道大号斜向裂痕从一点拉满，白芯、橙红、暗边和火星，对得上参考图而不是细得看不见的线。
+- 做了什么：裂痕平面放大到约 4.6×3.8；三道平行锯齿斩；进度沿对角线从 0 拉到 1 再淡出。
+- 为什么：用户说裂纹太小看不清，并给出三道斜斩参考，要求从短变长。
+- 明确不做 / 后置：不开技能栏。不把参考图当静态贴图拉伸。
+- 验收 / 证据：Vitest `gloamwood-mutation-fx` 与 `tsc --noEmit` 通过。
+- 下一道门：进化实验室 Preview 撕裂爪，确认三道裂痕够大、能看出拉长。
+
+## 2026-08-20 · 撕裂爪收成体表抓痕，去掉光晕
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：命中时怪物身上出现三道贴体抓痕，大小约一只前肢宽，从短拉长；暗红伤口、尖细内刃，没有外发光。
+- 做了什么：平面收到约 0.52×0.34；硬边画布抓痕（暗红伤口、细红内刃、无阴影模糊）；钉在命中面朝向镜头，从短拉长。
+- 为什么：上一版铺满镜头且发糊带光晕，用户要的是打在怪物身上的真实抓痕。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：浏览器 Preview 截帧确认贴在身体上、三道清楚、无光晕。
+- 下一道门：用户看实战命中是否够清楚。
+
+## 2026-08-20 · 撕裂爪改回三道收尖猎爪斩
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：命中时三道斜向猎爪从短拉长：两头针尖、中间白芯、橙红刃、周围火星。贴在被打到的身体上，不是粗红虫、也不是铺屏光团。
+- 做了什么：按用户参考图和常见爪斩（月牙形、白芯、收尖、碎屑）重画锥形锯齿斩；加亮混合只作用在斩的像素上；10 颗火星。
+- 为什么：上一版等宽描边读成三条虫子，和参考图的能量猎爪不像。
+- 明确不做 / 后置：不开技能栏。不把商店爪斩资源当素材导入。
+- 验收 / 证据：Vitest 覆盖收尖包络；浏览器 Preview 截帧确认三道尖爪。
+- 下一道门：用户对照参考图看是否够酷、够像。
+
+## 2026-08-20 · 撕裂爪略放大并加亮
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：三道猎爪斩更大、更亮：白芯更白，橙刃更饱和，仍贴在身体上从短拉长。
+- 做了什么：平面约 1.62×1.34；斩更粗一档；加亮混合并提高芯亮度。
+- 为什么：用户认可形状，但说战斗镜头里不够明显。加亮是主杠杆，放大只加一档，避免回到铺屏。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：浏览器 Preview 确认比上一版更跳、仍是三道尖爪。
+- 下一道门：用户看是否够明显。
+
+## 2026-08-20 · 棘尾横扫改为砂石扬尘的立体扫尾
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：尾扫命中时贴地冲击环扩开，砂尘沿弧扬起，碎石带重力飞出再落下，不再是一张月牙贴图。
+- 做了什么：新增 dust/pebble 粒子贴图；`tail-sweep` 爆发沿面向 180° 弧分时喷出尘团和砾石。参考地面斩/砸地沙尘：环 + 尘 + 碎屑，不是贴图。
+- 为什么：用户要立体有氛围的砂石灰尘，不要平面图。
+- 明确不做 / 后置：不开技能栏。不改尾扫判定、压制半径或移速。
+- 验收 / 证据：Vitest `tail-sweep` 粒子构成；浏览器 Preview 棘尾横扫。
+- 下一道门：用户看扬尘和碎石是否够立体。
+
+## 2026-08-20 · 棘尾扬尘改围身一圈并去掉拉扁烟幕
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：砂尘和碎石围着玩家整圈扬起，范围大约压到压制圈；烟不再是被镜头拉扁的竖幕。
+- 做了什么：去掉世界朝向的尘幕网格；尘团改正方形广告牌、更淡更碎；贴地环和粒子半径扩到约 2.7 单位、环扩到约 5.8。
+- 为什么：用户说烟雾失真、范围偏小，要围着玩家扩大一圈。
+- 明确不做 / 后置：不开技能栏。不改尾扫判定或压制半径。
+- 验收 / 证据：Vitest 覆盖尘团环绕跨度和正方形缩放。
+- 下一道门：用户看围身扬尘是否自然、范围是否够。
+
+## 2026-08-20 · 棘尾尘圈改为绕身的立体环，不再盖住玩家
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：砂尘在脚边围成一圈立体环，镜头前侧在身前、后侧被身体挡住；身上不再盖一张平面圆。
+- 做了什么：去掉贴地圆环；粒子开深度测试；中间留空；同一方位叠低/中/高三层尘。
+- 为什么：用户指出圈是平面、效果画在怪物身上，要按视角绕着玩家而不是盖住。
+- 明确不做 / 后置：不开技能栏。不改尾扫判定或压制半径。
+- 验收 / 证据：Vitest 确认无地面环、半径大于体内圈、有高度分层。
+- 下一道门：用户看尘是否绕身、身体是否干净。
+
+## 2026-08-20 · 棘尾立体环补回可见空心圈
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：脚边有两层空心冲击环，砂尘抬离地面绕身；身体在圈洞里，圈不再消失。
+- 做了什么：用 RingGeometry 空心环代替贴地图；尘粒抬高并加大。上一版深度测试把贴地小粒子埋进地形和身体里。
+- 为什么：用户反馈圈看不见，并问是否自己检查过。
+- 明确不做 / 后置：不开技能栏。不改判定。
+- 验收 / 证据：浏览器 Preview 截帧确认圈绕在脚边且身上无盖层。
+- 下一道门：用户确认圈看得见且不盖身。
+
+## 2026-08-20 · 棘尾尘环改为淡渐变，去掉实心亮圈
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：脚边是浅砂色、中间透明、内外淡出的尘环，扬尘也更淡，不再是浓黄实心圈。
+- 做了什么：用径向渐变贴图替换 RingGeometry 纯色材质；尘粒降不透明度和饱和度。
+- 为什么：用户说立体环太假、颜色太浓，要渐变、淡一些、更真实。
+- 明确不做 / 后置：不开技能栏。不改判定。
+- 验收 / 证据：Vitest 与 `tsc --noEmit`。
+- 下一道门：用户看淡环是否自然。
+
+## 2026-08-21 · 棘尾改回贴地冲击，去掉冒烟
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：脚边一条能看清的渐变冲击环向外扩，砂石贴地崩开，不再往上冒烟。
+- 做了什么：环改成窄而清楚的冲击带；删掉多层上飘尘团；只留贴地弹道砂石。
+- 为什么：用户说环看不清，而且像冒烟，不像攻击。
+- 明确不做 / 后置：不开技能栏。不改判定。
+- 验收 / 证据：Vitest 确认尘粒贴地、弹道向外。
+- 下一道门：用户看是否读成尾扫命中。
+
+## 2026-08-21 · 棘尾按砸地斩三层重做
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：脚边一条清楚的冲击带向外扩，碎石崩开落下，矮尘贴地打出。身体仍在圈洞里。
+- 做了什么：窄环着色器冲击带 + 淡砂尘裙；径向曳光、贴地尘、弹道碎石。参考 Ground Slam / Ground Slash 结构，不导入商店资源。
+- 为什么：用户同意按网上砸地斩三层来做，满意再定，不满意退回。
+- 明确不做 / 后置：不开技能栏。不改判定。
+- 验收 / 证据：Vitest 覆盖冲击曳光与贴地弹道。
+- 下一道门：用户 Preview 后决定留下或退回。
+
+## 2026-08-21 · 棘尾冲击带按体型外扩一圈
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：冲击带、碎石和矮尘围在当前身体外侧一圈，幼体小、进化体大。压制判定半径不变。
+- 做了什么：待机时量可见半宽并缓存；环和粒子按 `bodyRadius + 0.7` 布局。不在尾扫旋转中现场量包围盒。
+- 为什么：用户看完砸地斩后觉得环比怪物小。
+- 明确不做 / 后置：不改 `tailSwipeCleaveRadius`。不开技能栏。
+- 验收 / 证据：Vitest 覆盖大体型外扩。
+- 下一道门：用户刷新 Preview，确认环在身外一圈。
+
+## 2026-08-21 · 硬壳共生改为背上甲片受击
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：受击时背、肩、尾根亮起重叠六边甲片，碎壳向外崩落。不是身前能量盾，也不是青绿魔法圈。
+- 做了什么：甲片贴图 + 身体姿态板；碎片与砂尘从体表弹出。结构参考甲壳/六边护甲受击，不导入商店资源。减伤与反震权威不变。
+- 为什么：用户指出当前硬壳没有任何壳的感觉。
+- 明确不做 / 后置：不开技能栏。不做永久甲片附件（仍须作者资产）。不做前方格挡外形。
+- 验收 / 证据：Vitest 覆盖甲片碎片、无魔法环。
+- 下一道门：用户 Preview 硬壳共生。
+
+## 2026-08-21 · 硬壳改成立体围身甲片
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：受击时厚六边甲柱贴在身体外沿围一圈并受光，碎壳向外崩。不再是一张平面图。
+- 做了什么：椭球布局的 CylinderGeometry 六边棱柱，法线朝外；一半甲片再甩出立体碎块。减伤与反震不变。
+- 为什么：用户指出上一版只是平面图，不是围着怪物的壳。
+- 明确不做 / 后置：不开技能栏。不做永久附件。不做前方格挡能量罩。
+- 验收 / 证据：Vitest 覆盖左右、前后、高低都有甲片。
+- 下一道门：用户刷新 Preview 硬壳共生。
+
+## 2026-08-21 · 硬壳甲片减薄并略透明
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：围身甲片厚度约为上一版的三分之二，并能隐约透出身体。
+- 做了什么：甲片厚度 0.28→0.187，峰值透明度 0.94→0.72；碎壳同步减薄。
+- 为什么：用户觉得厚度够、但偏厚，要再薄三分之一并稍透明。
+- 明确不做 / 后置：不改判定。不开技能栏。
+- 验收 / 证据：按用户指定比例改厚度与透明度。
+- 下一道门：用户 Preview 是否够薄、够透。
+
+## 2026-08-21 · 蜕壳改为背缝裂壳剥落
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：旧壳沿背缝裂成左右两瓣并剥落，背顶一盖掀开，浅色身体从里面露一下。不是青绿爆炸圈。
+- 做了什么：半球壳 + 背顶罩 + 内部湿身闪光 + 立体碎壳。结构参考蝉蜕裂背，不导入商店资源。复活 30% 生命权威不变。
+- 为什么：硬壳通过后用户要求下一条蜕壳，同一流程对照相似特效再仿。
+- 明确不做 / 后置：不开技能栏。不做永久空壳附件。
+- 验收 / 证据：Vitest 覆盖左右对剥、无魔法环。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳收成一枚墨绿壳从中裂开
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：身上一枚墨绿半透明立体壳，从中间裂成左右两瓣慢慢分开。不再有第三块盖、内光和碎壳乱飞。
+- 做了什么：只留对合的两半球；同色、半透明；慢速左右裂开。复活权威不变。
+- 为什么：用户觉得上一版太乱，像三块壳。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖墨绿对开、无额外粒子。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳改成土黄龟壳从中裂开
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：背上是一枚土黄半透明龟壳（扁顶、外翻壳沿、前后略长），从中间裂成左右两瓣。不是墨绿圆球。
+- 做了什么：用旋转轮廓做出龟甲，左右半壳对合后裂开。复活权威不变。
+- 为什么：用户要土黄色，并觉得立体壳太圆。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖土黄、扁顶轮廓、前后长于左右。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳去掉脸盆感，改成拱顶龟甲
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：背上是拱起的土黄龟甲：甲片沟、背脊略隆、边缘锯齿、封住底部，从中间裂成左右两瓣。不再是浅碗翻边。
+- 做了什么：弃用旋转碗形；改成前后长、头尾收窄的拱顶网格，带甲片凹缝和底盖。
+- 为什么：用户说上一版像脸盆。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖拱顶高于壳沿、中段宽于头尾、甲片沟下凹。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳放大包身并统一浅角质色
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：龟甲按身体包围盒包住躯干，两半同为浅角质色，从中间裂开。不再是脖子上的一小块，也不再一半无色一半土黄糊在一起。
+- 做了什么：外壳法线朝外、去掉会闪烁的封底和顶点色；壳心对准模型、尺寸按长宽包住；两半同一材质。
+- 为什么：用户看过 Preview：壳太小、颜色丑、一半没颜色。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖包身比例与统一浅色。浏览器 Preview 再看。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳收小到背上并做上下透明渐变
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：壳只盖在怪物上方，空中左右裂开、不落地。从上到下由实到虚，最实处透明度至少 50%。
+- 做了什么：缩小尺寸并抬到背上；重力为 0；顶点 alpha 从壳顶到壳沿衰减；峰值不透明度 0.5。
+- 为什么：用户觉得上一版太大，而且会落到地上。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖峰值 0.5、抬升、顶实沿虚。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳改成菱形板拼出棱角
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：背上的壳由菱形板拼成，有棱角，不再是圆润曲面。仍盖在上方、上实下虚、空中裂开不落地。
+- 做了什么：四面棱柱按拱顶排布成左右两半；透明度仍按高度衰减，峰值 50%。
+- 为什么：用户觉得上一版太圆润，要求用棱形组合。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖菱形板数量、左右对开、顶沿透明度差。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳改成大菱形面拼成的整壳
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：背上是一整块带棱角的壳，由少数大菱形面拼满，左右从中间裂开。不是散落的小菱形花纹。
+- 做了什么：每半边 8 块铺满的平面菱形加厚度；仍抬在背上、上实下虚、空中裂开不落地。
+- 为什么：用户说上一版壳没了，只剩小菱形花纹。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖每半边 8 个菱形面。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳加实并拉长菱形
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：背上的壳更实一点，最实处约 40% 透明。菱形沿头尾方向拉长，不再像正方形。
+- 做了什么：峰值不透明度 0.6；每半边改为 6 块更长的菱形面。
+- 为什么：用户说透明度太多，菱形看起来像方形。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖峰值 0.6、菱形长宽比、每半边 6 面。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳改成严丝合缝的描边菱形面
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：背上是一整块由菱形拼满的壳，中间不再镂空。每片内部 45% 透明，棱边是实线。左右仍从中缝裂开、不落地。
+- 做了什么：共用顶点铺满脊到沿；去掉空心挤出；填充与实线描边分层。
+- 为什么：用户看到壳中间是空的，要求菱形严丝合缝，内部半透明、边缘实线。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖铺满脊线、无内壳、填充 0.45、描边几何。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳改成弧面等边菱形，接缝收成龟甲沟
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：背上是弧形龟壳，由等边菱形严丝合缝铺满，不再是从背脊散开的叶子。接缝细、颜色接近甲片，只用来读质感。
+- 做了什么：在 xz 平面铺菱形再抬到椭球拱顶；描边宽度和对比度都降下来，变成浅色细沟。
+- 为什么：用户说上一版是叶子不是棱形，线条太抢，线条只为龟壳质感。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖边长比、细沟宽度、左右对称。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳左右两半统一向上绕序
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：弧形菱形壳左右两半都是同一浅角质色，不再一边有色一边发黑。
+- 做了什么：三角绕序改成从上往下看都是正面；补一点自发光，避免背光面被打成黑的。
+- 为什么：镜像半壳绕序反了，从镜头看是背面，光照把颜色吃掉。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖左右三角绕序与法线都朝上。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳抬高后移并加深拱度与顶沿渐变
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：壳抬到头上方、往后坐在背上，拱得更像龟壳而不是翅膀。顶上颜色深，越往下沿越浅、越透。
+- 做了什么：加高拱顶、压窄两翼、整体上抬并后移；顶点颜色和透明度按高度衰减。
+- 为什么：用户说卡住头、像翅膀，并且要上深下浅。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖后移、高度大于宽度、顶沿透明度差。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 蜕壳弧度收回并恢复浅角质色
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：壳回到浅拱的菱形龟壳，不再是尖帐篷。颜色回到浅角质金、顶稍实、沿更透，仍抬在头上方、不卡住头。
+- 做了什么：拱高和竖向缩放收到上一版附近；去掉深棕顶点色，只留同色系的轻微顶沿深浅。
+- 为什么：用户说上一版弧度太大、没有刚才好看，颜色也不对。
+- 明确不做 / 后置：不开技能栏。
+- 验收 / 证据：Vitest 覆盖浅拱、浅角质色、顶沿透明度差。
+- 下一道门：用户 Preview 蜕壳。
+
+## 2026-08-21 · 孢子晕改成常驻低空薄雾
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：选了孢子晕后，脚边一直有一层浅橄榄薄雾跟着走。范围仍是 4.2，但压得很淡，不挡脚、不挡预警、也不再隔一下闪一次。
+- 做了什么：常驻贴地软斑加少量漂点；去掉「只有敌人进圈才喷光点」的周期爆发。减速 40%、生物质 −25% 不变。
+- 为什么：用户要光环一直有，但不要太冲突。
+- 明确不做 / 后置：不开技能栏；不改权威半径/减速；不做技能圈。
+- 验收 / 证据：Vitest 覆盖低透明度、贴地高度、常驻布局、预览不再用技能环。
+- 下一道门：用户全页刷新后 Preview 孢子晕。
+
+## 2026-08-21 · 孢子晕可见范围加大
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：贴地薄雾铺得更开，看起来更接近减速圈，仍压得很淡。
+- 做了什么：表现半径从权威 4.2 的 0.9 倍提到 1.22 倍；软边往外推，漂点也散开一点。减速 40% 的判定半径仍是 4.2。
+- 为什么：用户说看着可以，就是范围有点小。
+- 明确不做 / 后置：不改权威减速半径；不开技能栏。
+- 验收 / 证据：Vitest 覆盖表现半径和贴地斑外沿超过 4.2。
+- 下一道门：用户全页刷新后 Preview 孢子晕。
+
+## 2026-08-21 · 饥饿代谢改成肋侧沙漏脉
+
+- 类型：表现层（不改战斗权威）
+- 玩家可见结果：击杀拿双倍生物质时，腹侧琥珀沙漏脉从下往上燃。每 30 秒掉最大生命时，同样的脉变冷、灰烬往下落。实验室 Preview 先燃再落，一次看完两面。
+- 做了什么：肋侧贴体沙漏切面，加少量升尘/落灰。去掉上下飞的光点。生物质 ×2、每 30 秒最大生命 −5 不变。
+- 为什么：孢子晕通过后，按同一流程做饥饿代谢；旧光点与猎食再生分不开。
+- 明确不做 / 后置：不开技能栏；不用运行时几何冒充永久身体附件。
+- 验收 / 证据：Vitest 覆盖左右脉、高度差、增益向上/衰减向下、不用 glow/ring。
+- 下一道门：用户全页刷新后 Preview 饥饿代谢。
+
+## 2026-08-21 · Goal 8 River Valley 背景音乐与基础战斗音频
+
+- 类型：音频表现层 + Settings / 移动端生命周期；不改战斗权威。
+- 玩家可见结果：首次操作后启动低干扰的 River Valley 环境音乐；普攻三段各有起势与挥击，只有确认命中才追加轻/重冲击，击杀、玩家受击/死亡、落地、进化、Elite/Boss 出场和胜利均有独立提示。
+- 做了什么：`src/gloamwood-3d-audio.ts` 仍保留独立的音乐/SFX 总线、温和的 master protection 和大事件 ducking，但已移除会被听成噪音的攻击合成层。第一版每个事件新建 HTML media element / media graph，连续战斗会产生解码和回收压力；现改为小文件静默预取、首次解锁后异步 decode 一次、之后复用 `AudioBuffer`。用户否决第一批 Mixkit/Kenney 打击：像鼓、饱和且和猎兽无关。森林背景音乐现替换为 congusbongus 的 CC0 `Cathedral in the forest` 无缝环境曲（136.974 秒 OGG）：首次可信交互后 2.4 秒淡入，nominal gain 0.035，不与旧 TinyWorlds 自然环境循环叠加；旧曲仅保留出处记录。活动 SFX 路径仍为 CC0 草地脚步/落地、CC0 自然空气挥动、CC0 咬合 crunch 和 CC0 生物受击；脚步可在极端重叠时让位，但攻击和确认命中不会被六音源上限吞掉（上限改为 10）。Settings 继续保存显式静音与 60/100/0 音量；页面恢复、全屏变化和下一次用户操作都会恢复已解锁的 AudioContext。
+- 授权：外部试听素材的准确来源、许可、原始条目和 SHA-256 均记录在 `public/assets/audio/goal8/SOURCES.md`；不使用来历不明音频。
+- 手机 UI：844×390 的反馈设置改成两列，按钮保持 44px，面板无滚动，Resume 首屏可见；没有新增战斗按钮。
+- 首次交互边界：调试门可能在 AudioContext 创建前唤醒 Elite/Boss，因此只保留最后一个 `elite-intro` / `boss-intro` 到首次解锁；普通移动和战斗音绝不排队，防止页面恢复时集中爆音。
+- 时序/归属修正：用户报告动作结束后仍有攻击声。根因一是 suspended `AudioContext` 曾接受普通战斗 source，恢复后才发声；现改为只在 `running + visible` 时排程，暂停态只尝试恢复、绝不补播旧 cue。根因二是 Boss FX 与狂暴阶段错误复用玩家 `hit-heavy`；Boss FX 已移除该调用，狂暴改走独立阶段信号。敌人真实伤害统一走更轻的 `enemy-hit-player`，并以 0.2 秒限流，避免多只怪同帧制造音墙。
+- 验收 / 证据：严格同步和森林配乐修订后，聚焦 3 文件 / 32 项、全量 105 文件 / 971 项（`npx vitest run --testTimeout=15000`）均通过，生产构建通过，仅保留既有 legacy bundle >500 kB 提示。浏览器桌面连段只记录玩家 `attack-* → hit-* → kill`；动作结束后短音源回到 0，之后敌人造成的伤害明确记录为 `enemy-hit-player`，不会再伪装成玩家重击。新森林曲在首次可信操作前不启动；1440×900 等过 2.4 秒淡入后 `contextState=running`、`ambientActive=true`，约 120 FPS（8.3 ms average / 8.9 ms p95）；模拟 844×390 也经可信手势恢复环境床和九个 buffer。桌面/手机横屏控制台均为 0 error / 0 warning。自动化只验证事件路由、恢复和性能，主观试听仍由项目所有者把关。
+- 明确不做：不改数值、判定、进化、地图、模型、Goal 7 候选特效或单键普攻边界；仍待项目所有者主观试听验收。
+- 下一道门：项目所有者按 `docs/GOAL-8-AUDIO-ACCEPTANCE.md` 主观试听环境层、挥空/命中/击杀、受击和 Boss 音量层级后决定是否验收或要求混音微调。

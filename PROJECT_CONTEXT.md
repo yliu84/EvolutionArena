@@ -1,6 +1,6 @@
 # Evolution Arena Lite — Project Context
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 Repository: `https://github.com/yliu84/EvolutionArena.git`  
 Project path: `/Users/yangliu/Documents/EvolutionArenaLite`  
 Branch: `main`  
@@ -330,6 +330,77 @@ Valley gate-1 boss design was locked on 2026-08-18 to concept C (rim visor) as `
 After Goal 7, the recorded player comprehension, route choices and mobile
 performance—not asset volume—decide whether the next investment is mutation
 depth, model production or map expansion.
+
+Goal 7 implementation is ready for external playtest: the five body mutations
+have confirmed action/reaction feedback, authoritative rules and local-only
+session measurement. Primitive runtime silhouette attachments were removed
+after close-view review because bone binding alone did not meet the creature
+quality bar; future static modules require authored, multi-angle-approved art.
+The Goal 7 release includes the exact protocol in
+`docs/GOAL-7-EXTERNAL-PLAYTEST.md`.
+Do not claim the three required external no-explanation runs have occurred
+until their locally captured reports and tester answers exist.
+
+## Current implementation milestone — Goal 8 audio candidate
+
+River Valley now has a review-ready external-audio trial. The former procedural
+attack-noise layer was rejected during listening and removed. congusbongus'
+CC0 `Cathedral in the forest` now supplies the single 136.974-second forest
+music bed, fading in over 2.4 seconds after trusted playback begins; the old
+TinyWorlds natural-atmosphere loop is retained inactive rather than layered.
+CC0 grass/landing Foley covers movement; CC0
+natural air swishes cover the three swings; CC0 bite crunches and creature-hurt
+clips cover confirmed contact and incoming damage. The cinematic/martial-arts
+Mixkit clips and drum-like Kenney impacts are retained for provenance but
+inactive after user rejection. The one-button basic
+chain still plays on action start, while light/heavy impact and kill layers
+consume only confirmed combat results. Footsteps, Pounce landing, player
+hit/death, evolution, Elite/Boss arrival and victory remain separate audible
+events.
+
+The shared Settings panel retains the saved 60/100/0 volume cycle and adds a
+saved explicit mute. Audio is created only after a keyboard, pointer, touch or
+fullscreen gesture, resumes on visible/fullscreen lifecycle changes, and also
+retries on the next gesture. A compressor/limiter caps stacked combat feedback,
+and large cues briefly duck the ambient bed. Combat audio is asynchronously
+prefetched silently, decoded once into reusable buffers after unlock; no
+footstep/swing/hit creates an HTML media element, and a ten-source cap bounds
+overlap without dropping combat cues. Debug-gated Elite/Boss arrival
+stings alone may wait for the first unlock; routine movement and combat cues
+never queue. Phone-landscape Settings uses a
+two-column 44px-target layout without hiding Resume.
+
+After owner feedback that a cue continued after an attack, the routine audio
+contract was made strict: a cue may start only while the context is `running`
+and the page is visible. A suspended lifecycle state resumes but drops its old
+cue, never replaying it late. Boss FX no longer route through player
+`hit-heavy`; enemy-confirmed damage is the separate, quieter
+`enemy-hit-player` event and is rate-limited when several enemies land together.
+
+All external source URLs, licences, item IDs and SHA-256 hashes are recorded in
+`public/assets/audio/goal8/SOURCES.md`. The second-palette browser pass observed
+the real `attack-bite → hit-light → attack-pounce` flow at 1440×900 with nine
+buffers ready, `contextState=running`, `ambientActive=true`, no console errors
+and about 107 FPS; a simulated 844×390 reload restored context and ambience
+with all nine buffers ready at about 120 FPS. This verifies routing and
+lifecycle, not subjective mix quality; real-device listening and 30-FPS
+evidence remain outstanding. The implementation remains a listening candidate
+pending owner approval; source and provenance are now recorded in Git.
+
+The strict timing/separation pass passed focused audio/combat/mobile checks
+(3 files / 32 tests), the full suite (105 files / 971 tests) and the production
+build. Browser debug showed the player sequence only emitted `attack-*`,
+confirmed `hit-*` and `kill`; later incoming damage emitted only
+`enemy-hit-player`, with short sources settling to zero. Simulated 844×390
+restored the running context, ambience and nine buffers after a keyboard user
+gesture, with no console warning or error.
+
+The forest-music replacement passed the same focused 3-file/32-test check,
+the full 105-file/971-test suite and production build. Browser evidence showed
+no music before trusted input; after the 2.4-second fade, 1440×900 reported
+`contextState=running`, `ambientActive=true`, no console warnings/errors and
+about 120 FPS. Simulated 844×390 restored the same state after its trusted
+gesture.
 
 **Open design question, raised by the user on 2026-08-17 after their own playthrough**: the run is two minutes long and contains exactly one decision, so the three evolution routes read as skins. `docs/design/MUTATION-LOOP-PROPOSAL-V1.md` proposes the answer - splitting evolution into a cheap mutation layer that changes rules rather than percentages, and the existing expensive form layer - and argues for building the mutation layer first because it is the only change that tests whether players want a second run without spending any art. Proposal only; not implemented.
 

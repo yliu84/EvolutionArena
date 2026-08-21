@@ -15,6 +15,16 @@ export type GloamwoodMutationFamily = GloamwoodPreyKind | 'neutral'
  */
 export interface GloamwoodMutationEffects {
   damageMultiplier?: number
+  /** Extra push on a confirmed front-body hit. */
+  frontHitKnockback?: number
+  /** Additional all-round mitigation, combined multiplicatively with evolution armour. */
+  incomingDamageReduction?: number
+  /** Extends only the tail-sweep contact reach. */
+  tailSwipeRangeMultiplier?: number
+  /** Nearby enemies pushed aside by a confirmed tail sweep. */
+  tailSwipeCleaveRadius?: number
+  /** Health returned only by a confirmed kill. */
+  killHeal?: number
   moveSpeedMultiplier?: number
   maximumHealthBonus?: number
   biomassMultiplier?: number
@@ -116,10 +126,10 @@ export type GloamwoodMutationMilestone = typeof GLOAMWOOD_MUTATION_MILESTONES[nu
 export const GLOAMWOOD_MUTATION_POOL: readonly GloamwoodMutation[] = [
   // Fang: pressure.
   { id: 'fang-killer-instinct', family: 'fang', effects: { executeBelow: 0.4, executeMultiplier: 1.5, healthyTargetMultiplier: 0.85 } },
-  { id: 'fang-thin-hide', family: 'fang', effects: { damageMultiplier: 1.35, maximumHealthBonus: -40 } },
+  { id: 'fang-thin-hide', family: 'fang', effects: { damageMultiplier: 1.35, frontHitKnockback: 0.32, maximumHealthBonus: -40 } },
   // Shell: absorbing and controlling.
-  { id: 'shell-quake', family: 'shell', effects: { finisherKnockback: 2.4, moveSpeedMultiplier: 0.9 } },
-  { id: 'shell-symbiosis', family: 'shell', effects: { reflectFraction: 0.3, suppressKillHeal: true } },
+  { id: 'shell-quake', family: 'shell', effects: { finisherKnockback: 2.4, tailSwipeRangeMultiplier: 1.35, tailSwipeCleaveRadius: 2.8, moveSpeedMultiplier: 0.9 } },
+  { id: 'shell-symbiosis', family: 'shell', effects: { incomingDamageReduction: 0.18, reflectFraction: 0.3, suppressKillHeal: true } },
   // Swarm: mobility and staying alive.
   { id: 'swarm-moult', family: 'swarm', effects: { reviveFraction: 0.3 } },
     // Sporehaze replaces a first pass called Glowtrap, which widened the nest's
@@ -131,7 +141,7 @@ export const GLOAMWOOD_MUTATION_POOL: readonly GloamwoodMutation[] = [
   { id: 'swarm-sporehaze', family: 'swarm', effects: { slowAuraRadius: 4.2, slowAuraFactor: 0.6, biomassMultiplier: 0.75 } },
   // Neutral: the expensive ones.
   { id: 'neutral-starving-metabolism', family: 'neutral', effects: { biomassMultiplier: 2, healthDecayPerInterval: 5, healthDecayIntervalSeconds: 30 } },
-  { id: 'neutral-gluttony', family: 'neutral', effects: { bonusOfferEveryKills: 3, maximumHealthCostPerMutation: 8 } },
+  { id: 'neutral-gluttony', family: 'neutral', effects: { killHeal: 8, bonusOfferEveryKills: 3, maximumHealthCostPerMutation: 8 } },
 ]
 
 export function createGloamwoodMutationState(seed: number | string): GloamwoodMutationState {

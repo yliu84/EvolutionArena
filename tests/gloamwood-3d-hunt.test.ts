@@ -82,6 +82,24 @@ describe('Gloamwood 3D rebuild routing', () => {
   })
 })
 
+describe('River Valley creature-model loading', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+
+  it('swaps each decoded model before unrelated model requests finish', () => {
+    // The old Promise.all gate meant one missing or slow GLB held every creature
+    // on its low-poly fallback. Settled results preserve per-model fallback,
+    // while the template helper mounts each successful body immediately.
+    expect(source).toContain('Promise.allSettled(configs.map((config) => this.loadModelledPreyTemplate(config)))')
+    expect(source).toContain('this.preyTemplates.set(config.id, { scene: gltf.scene, clips: gltf.animations, config })')
+    expect(source).toContain('if (this.map.bodyFor(prey)?.id !== config.id) continue')
+  })
+
+  it('keeps a failed model observable without blocking the remaining bodies', () => {
+    expect(source).toContain('Primitive fallback: ${summary.failedIds.join(\', \')}')
+    expect(source).toContain('Some River Valley creature models could not load; their primitive fallbacks remain.')
+  })
+})
+
 describe('Evolution accent placeholder', () => {
   const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
 

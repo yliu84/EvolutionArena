@@ -92,3 +92,30 @@ The accepted authoring GLBs remain untouched. Production uses texture-budget run
 - `scarlet-hunter-quadruped-runtime-v1.glb`: 4,057,508 bytes, 52.2% below the quadruped authoring master.
 
 The optimizer changes embedded texture delivery only. Meshes, bones, animation clips and gameplay presentation data are preserved. All three runtime files validate with zero glTF errors and warnings. Vite production output excludes unused GLB authoring candidates but never deletes them from `public/`.
+
+## Goal 7 mutation feedback staging
+
+`fx/` still holds the ImageGen concept plates. They are presentation-only historical references: combat, damage, range, healing, slow and revive stay in TypeScript.
+
+- `fang-rending-runtime-v1.png`: concept reference. Live Rending Claws is three tapered hunting slashes (white core, orange body, needle tips, embers) grown short-to-long on the hit.
+- `shell-carapace-runtime-v1.png`, `swarm-moult-runtime-v1.png`, `swarm-sporehaze-runtime-v2.png`, `neutral-metabolism-runtime-v1.png`, `neutral-regeneration-runtime-v1.png`: rejected painterly plates and rejected debug meshes. Live effects are skill particles from `src/gloamwood-mutation-fx.ts`. Hard-shell hits spawn overlapping chitin plates on the back rather than that PNG. Starving Metabolism lights hourglass veins on the flanks (amber climb on extra biomass, cold ash on the health-cap tick). Runtime no longer loads these five PNGs.
+- `shell-tail-sweep-runtime-v1.png`: rejected painted crescent. Live Spined Tail Sweep is 3D dust, gravel and a ground shock along the sweep arc.
+
+The debug Evolution Lab exposes each effect without changing combat authority. Effects are checked in the fixed top-down game camera.
+
+## Goal 8 commercial audio trial
+
+The first procedural pass was rejected during listening because its generated
+noise layers read as electronic/static rather than creature combat. Goal 8 now
+uses a small, documented external-audio trial: CC0 River Valley ambience from
+OpenGameArt; CC0 footsteps/landing from Kenney; CC0 natural air swishes from
+qubodup; CC0 bite crunches and creature-hurt clips from OpenGameArt creators.
+The first Mixkit and Kenney impact trials were rejected by the owner as
+unrelated and over-saturated, so they remain documented but inactive. The
+complete licence, source, processing notes and SHA-256 record is in
+`../audio/goal8/SOURCES.md`.
+
+`src/gloamwood-3d-audio.ts` remains a presentation-only router: existing
+authority decides every attack, confirmed hit and kill; external clips merely
+respond. Audio is still created only after the first player interaction, and
+still flows through the mute, volume and limiter controls.

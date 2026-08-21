@@ -54,6 +54,33 @@ export interface GloamwoodModelledPreyConfig {
   }
 }
 
+/**
+ * What finished loading from one River Valley creature-model pass.
+ *
+ * A valley can still be played if one optional GLB cannot be fetched: the
+ * matching creature keeps its deliberate primitive fallback, while every
+ * successfully decoded body must still replace its own fallback. Keeping this
+ * as data makes that boundary testable without a WebGL loader.
+ */
+export interface GloamwoodPreyModelLoadSummary {
+  requestedIds: readonly string[]
+  loadedIds: readonly string[]
+  failedIds: readonly string[]
+}
+
+export function summariseGloamwoodPreyModelLoads(
+  requestedIds: readonly string[],
+  failedIds: readonly string[],
+): GloamwoodPreyModelLoadSummary {
+  const requested = [...new Set(requestedIds)]
+  const failed = requested.filter((id) => failedIds.includes(id))
+  return {
+    requestedIds: requested,
+    loadedIds: requested.filter((id) => !failed.includes(id)),
+    failedIds: failed,
+  }
+}
+
 export const GLOAMWOOD_FORD_FANG_PREY: GloamwoodModelledPreyConfig = {
   id: 'ford-fang',
   url: '/assets/quality-3d/models/ford-fang-runtime-v1.glb?v=valley-prey-fang-v1',

@@ -22,6 +22,7 @@ import {
   gloamwoodPreyWalkRate,
   gloamwoodPreyClipForPhase,
   gloamwoodPreyClipRate,
+  summariseGloamwoodPreyModelLoads,
 } from '../src/gloamwood-modelled-prey'
 
 const config = GLOAMWOOD_FORD_FANG_PREY
@@ -67,6 +68,33 @@ describe('Footprint', () => {
     for (const entry of GLOAMWOOD_MODELLED_PREY_CONFIGS) {
       expect(typeof entry.modelYaw).toBe('number')
     }
+  })
+})
+
+describe('Runtime model fallback isolation', () => {
+  it('keeps successfully loaded River Valley bodies available when another model fails', () => {
+    // A transient model/CDN error must not make the whole valley look like the
+    // retired primitive pass. Each successful body mounts immediately and only
+    // the failed ID remains on its deliberate fallback.
+    expect(summariseGloamwoodPreyModelLoads(
+      ['ford-fang', 'spotted-fordbug', 'cliff-maw'],
+      ['cliff-maw'],
+    )).toEqual({
+      requestedIds: ['ford-fang', 'spotted-fordbug', 'cliff-maw'],
+      loadedIds: ['ford-fang', 'spotted-fordbug'],
+      failedIds: ['cliff-maw'],
+    })
+  })
+
+  it('reports duplicate requests once, so a promoted body cannot create a false error list', () => {
+    expect(summariseGloamwoodPreyModelLoads(
+      ['spotted-fordbug', 'spotted-fordbug', 'ford-fang'],
+      ['spotted-fordbug', 'missing-body'],
+    )).toEqual({
+      requestedIds: ['spotted-fordbug', 'ford-fang'],
+      loadedIds: ['ford-fang'],
+      failedIds: ['spotted-fordbug'],
+    })
   })
 })
 

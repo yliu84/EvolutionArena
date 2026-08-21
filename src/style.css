@@ -982,6 +982,43 @@ body.is-gloamwood-3d * {
   -webkit-touch-callout: none;
 }
 .gloamwood-3d-canvas:focus-visible { box-shadow: inset 0 0 0 2px rgba(242, 202, 112, .75); }
+
+/* Debug-only state switchboard. It deliberately stays compact and sits above
+   the real world rather than replacing it: every selected body is still judged
+   in the actual River Valley camera, lighting and controls. */
+.g3d-mutation-lab {
+  position: absolute;
+  z-index: 49;
+  right: 18px;
+  bottom: 18px;
+  width: min(310px, calc(100% - 36px));
+  padding: 12px;
+  border: 1px solid rgba(215, 180, 95, .62);
+  border-radius: 10px;
+  color: #e9eedc;
+  background: linear-gradient(145deg, rgba(12, 27, 20, .94), rgba(23, 33, 25, .9));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .32);
+  backdrop-filter: blur(12px);
+}
+.g3d-mutation-lab header { display: flex; align-items: center; gap: 8px; }
+.g3d-mutation-lab header span { color: #d9b962; font-size: 9px; font-weight: 900; letter-spacing: .14em; }
+.g3d-mutation-lab header strong { flex: 1; font-size: 14px; }
+.g3d-mutation-lab header button { width: 24px; height: 24px; border: 0; border-radius: 5px; color: #d6dfd1; background: rgba(255,255,255,.08); font: 700 18px/1 sans-serif; cursor: pointer; }
+.g3d-mutation-lab p { margin: 8px 0 10px; color: #b6c5b4; font-size: 11px; line-height: 1.35; }
+.g3d-mutation-lab > b { display: block; margin: 8px 0 5px; color: #dfc87f; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.g3d-mutation-lab-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.g3d-mutation-lab-grid button { min-height: 31px; padding: 5px 7px; border: 1px solid rgba(219, 232, 211, .17); border-radius: 6px; color: #e8eddf; background: rgba(255,255,255,.06); font: 700 10px/1.15 system-ui, sans-serif; text-align: left; cursor: pointer; }
+.g3d-mutation-lab-grid button:hover, .g3d-mutation-lab-grid button:focus-visible { border-color: rgba(238, 199, 103, .82); color: #fff4cf; background: rgba(177, 132, 54, .28); outline: none; }
+.g3d-mutation-lab-preview { width: 100%; min-height: 32px; margin-top: 9px; border: 1px solid rgba(240, 193, 103, .62); border-radius: 6px; color: #fff4cf; background: linear-gradient(110deg, rgba(157, 68, 44, .76), rgba(184, 125, 49, .58)); font: 800 10px/1 system-ui, sans-serif; letter-spacing: .02em; cursor: pointer; }
+.g3d-mutation-lab-preview:hover, .g3d-mutation-lab-preview:focus-visible { border-color: #ffe0a0; background: linear-gradient(110deg, rgba(194, 78, 47, .9), rgba(220, 156, 57, .78)); outline: none; }
+@media (max-width: 900px) and (orientation: landscape), (max-height: 520px) and (orientation: landscape) {
+  .g3d-mutation-lab { right: 10px; bottom: 62px; width: 232px; max-height: calc(100% - 72px); overflow: auto; padding: 9px; }
+  .g3d-mutation-lab p { margin: 5px 0 7px; font-size: 9px; }
+  .g3d-mutation-lab > b { margin: 6px 0 3px; }
+  .g3d-mutation-lab-grid { gap: 3px; }
+  .g3d-mutation-lab-grid button { min-height: 26px; padding: 4px 5px; font-size: 9px; }
+  .g3d-mutation-lab-preview { min-height: 27px; margin-top: 6px; font-size: 9px; }
+}
 /* Floating damage readouts. Presentation only: each number is spawned from an
    already-resolved authoritative result, so nothing here can change a hit. */
 .gloamwood-damage-layer { position: absolute; inset: 0; z-index: 20; overflow: hidden; pointer-events: none; }
@@ -1004,6 +1041,7 @@ body.is-gloamwood-3d * {
 .g3d-damage-number[data-tone="kill"] { color: #ffd76a; font-size: 34px; }
 /* Damage taken reads as a warning, and is the one number the player must not miss. */
 .g3d-damage-number[data-tone="player"] { color: #ff8b6b; }
+.g3d-damage-number[data-tone="heal"] { color: #8ff0a4; font-size: 25px; text-shadow: 0 2px 0 rgba(0, 0, 0, .6), 0 0 14px rgba(113, 224, 146, .42); }
 @media (prefers-reduced-motion: reduce) { .g3d-damage-number { transition: none; } }
 @media (max-width: 900px) and (orientation: landscape), (max-height: 520px) and (orientation: landscape) {
   .g3d-damage-number { font-size: 19px; }

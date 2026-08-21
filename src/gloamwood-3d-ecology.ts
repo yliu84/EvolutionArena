@@ -517,6 +517,41 @@ export function damageGloamwoodNestPrey(
   }
 }
 
+/**
+ * Applies a tail-sweep's control without smuggling damage, rewards or gene
+ * credit into its area effect. The direct target remains the only creature
+ * struck by the authoritative damage gate; neighbours are visibly displaced
+ * and briefly lose their attack only after that direct sweep connected.
+ */
+export function suppressGloamwoodNestPreyAround(
+  state: GloamwoodNestState,
+  center: { x: number; z: number },
+  radius: number,
+  knockback: number,
+  excludedId: string,
+) {
+  return {
+    ...state,
+    prey: state.prey.map((prey) => {
+      if (prey.id === excludedId || prey.phase === 'dead') return prey
+      const dx = prey.x - center.x
+      const dz = prey.z - center.z
+      const distance = Math.hypot(dx, dz)
+      if (distance > radius + gloamwoodPreyBodyRadius(prey)) return prey
+      const inverse = 1 / Math.max(0.001, distance)
+      return {
+        ...prey,
+        x: prey.x + dx * inverse * knockback,
+        z: prey.z + dz * inverse * knockback,
+        phase: 'stunned' as const,
+        phaseElapsed: 0,
+        attackResolved: false,
+        stunImmuneSeconds: Math.max(prey.stunImmuneSeconds ?? 0, 0.24),
+      }
+    }),
+  }
+}
+
 function spawnWave(state: GloamwoodNestState, wave: number): GloamwoodNestState {
   const kinds = WAVES[wave - 1] ?? []
   const prey = kinds.slice(0, GLOAMWOOD_NEST.maximumActivePrey).map((kind, slot) => {

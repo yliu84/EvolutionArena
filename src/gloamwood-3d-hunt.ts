@@ -15,6 +15,28 @@ import { SPORE_STALKER_PRESENTATION } from './spore-stalker-character-presentati
 import { applyDocumentLocale, getLocale, persistLocale, setLocale, t, type Locale } from './i18n'
 import { gloamwoodFamilyPortrait } from './gloamwood-family-portraits'
 import { gloamwoodMutationIcon } from './gloamwood-mutation-icons'
+import { gloamwoodMutationExpression } from './gloamwood-mutation-expression'
+import {
+  carapaceShellLayout,
+  metabolicVeinLayout,
+  moultHuskLayout,
+  moultRhombusMeshData,
+  mutationFxBurst,
+  paintMetabolicChevron,
+  paintRendingScratch,
+  paintSkillFxTexture,
+  paintSporeHazePatch,
+  paintTailSweepHalo,
+  rendingSparkBurst,
+  RENDING_CRACK,
+  SKILL_FX_TEXTURE_KINDS,
+  SPORE_HAZE,
+  sporeHazeLayout,
+  tailSweepLayout,
+  type MutationFxBurstId,
+  type MutationFxMotion,
+  type SkillFxTextureKind,
+} from './gloamwood-mutation-fx'
 import { GloamwoodSessionLog, summariseGloamwoodSession } from './gloamwood-3d-session-log'
 import {
   GLOAMWOOD_BLADESHELL_BOSS,
@@ -77,6 +99,7 @@ import {
   gloamwoodFlankApproachAngle,
   GLOAMWOOD_SHELL_FRONT_ARC,
   resolveGloamwoodPlayerPreyCollision,
+  suppressGloamwoodNestPreyAround,
   type GloamwoodNestPrey,
   type GloamwoodNestState,
   type GloamwoodPreyKind,
@@ -128,7 +151,7 @@ import {
 } from './gloamwood-3d-boss'
 import { classifyGloamwoodRunPace, gloamwoodRunPaceVisible } from './gloamwood-3d-run'
 import { deriveGloamwoodOnboardingStep, type GloamwoodOnboardingStep } from './gloamwood-3d-onboarding'
-import { GloamwoodAudioBus, type GloamwoodSoundEvent } from './gloamwood-3d-audio'
+import { GloamwoodAudioBus, type GloamwoodAudioSnapshot, type GloamwoodSoundEvent } from './gloamwood-3d-audio'
 import {
   DEFAULT_COMBAT_FEEDBACK_SETTINGS,
   cycleFeedbackVolume,
@@ -192,6 +215,7 @@ import {
   gloamwoodPreyClipForPhase,
   gloamwoodPreyClipRate,
   gloamwoodPreyWalkRate,
+  summariseGloamwoodPreyModelLoads,
   type GloamwoodModelledPreyConfig,
 } from './gloamwood-modelled-prey'
 import {
@@ -259,8 +283,33 @@ const GLOAMWOOD_3D_FORM_WORLD_HEIGHTS: Partial<Record<Quality3DFormFamily, reado
 
 export function gloamwoodCharacterWorldHeight(stage: number, family?: Quality3DFormFamily) {
   const index = stage >= 2 ? 2 : stage >= 1 ? 1 : 0
-  const override = family ? GLOAMWOOD_3D_FORM_WORLD_HEIGHTS[family] : undefined
-  return override?.[index] ?? GLOAMWOOD_3D_CHARACTER_HEIGHTS[index]
+  return (family && GLOAMWOOD_3D_FORM_WORLD_HEIGHTS[family]?.[index]) ?? GLOAMWOOD_3D_CHARACTER_HEIGHTS[index]
+}
+
+function createMoultShellGeometries(side: 1 | -1) {
+  const mesh = moultRhombusMeshData(side)
+  const fill = new THREE.BufferGeometry()
+  fill.setAttribute('position', new THREE.Float32BufferAttribute(mesh.positions, 3))
+  fill.setAttribute('normal', new THREE.Float32BufferAttribute(mesh.normals, 3))
+  fill.setAttribute('color', new THREE.Float32BufferAttribute(mesh.colors, 3))
+  fill.setAttribute('moultAlpha', new THREE.Float32BufferAttribute(mesh.alphas, 1))
+  const edges = new THREE.BufferGeometry()
+  edges.setAttribute('position', new THREE.Float32BufferAttribute(mesh.edgePositions, 3))
+  edges.setAttribute('normal', new THREE.Float32BufferAttribute(mesh.edgeNormals, 3))
+  edges.setAttribute('moultAlpha', new THREE.Float32BufferAttribute(mesh.edgeAlphas, 1))
+  return { fill, edges }
+}
+
+function applyMoultHeightFade(material: THREE.MeshStandardMaterial) {
+  material.customProgramCacheKey = () => 'moult-height-fade'
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float moultAlpha;\nvarying float vMoultAlpha;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvMoultAlpha = moultAlpha;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vMoultAlpha;')
+      .replace('vec4 diffuseColor = vec4( diffuse, opacity );', 'vec4 diffuseColor = vec4( diffuse, opacity * vMoultAlpha );')
+  }
 }
 
 /**
@@ -362,6 +411,76 @@ interface DustParticle {
   duration: number
   active: boolean
   startScale: number
+}
+
+type FeedbackTextureKind =
+  | 'slash'
+  | 'glow'
+  | 'spore'
+  | 'shard'
+  | 'carapace'
+  | 'moult'
+  | 'metabolism'
+  | 'regeneration'
+
+/**
+ * Mutation reactions and rending claws spawn skill particles.
+ * Tail sweep dust/gravel is generated in `gloamwood-mutation-fx.ts`.
+ */
+const FEEDBACK_TEXTURE_ASSET_PATHS: Partial<Record<FeedbackTextureKind, string>> = {}
+
+interface FeedbackSprite {
+  sprite: THREE.Sprite
+  velocity: THREE.Vector3
+  age: number
+  duration: number
+  /** Rending marks draw outward; ordinary feedback expands with a fast ease-out. */
+  growthStyle: 'ease-out' | 'tear'
+  startScale: THREE.Vector2
+  endScale: THREE.Vector2
+  rotationSpeed: number
+  peakOpacity: number
+}
+
+/**
+ * A rending mark is deliberately built from actual lit geometry, not a
+ * camera-facing card. The three claws draw forward in sequence, then shed
+ * physical chitin sparks that arc down to the ground. It is presentation only:
+ * combat has already confirmed the hit before this list is touched.
+ */
+interface RendingParticle {
+  mesh: THREE.Mesh
+  material: THREE.MeshStandardMaterial
+  velocity: THREE.Vector3
+  spin: THREE.Vector3
+  age: number
+  delay: number
+  duration: number
+  kind: 'spark'
+}
+
+/** A shader-generated wound surface; no bitmap or sprite is involved. */
+interface RendingSurface {
+  mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>
+  material: THREE.ShaderMaterial
+  age: number
+  duration: number
+}
+
+/** Additive skill particles. Presentation only. */
+interface MutationParticle {
+  object: THREE.Object3D
+  material: THREE.SpriteMaterial | THREE.MeshBasicMaterial | THREE.ShaderMaterial | THREE.MeshStandardMaterial
+  velocity: THREE.Vector3
+  spin: number
+  age: number
+  duration: number
+  gravity: number
+  motion: MutationFxMotion
+  peakOpacity: number
+  startScale: THREE.Vector2
+  endScale: THREE.Vector2
+  attractTarget: THREE.Vector3
 }
 
 interface PreyVisual {
@@ -472,6 +591,7 @@ interface DebugState {
     seed: number
     refreshesRemaining: number
     candidateIds: string[]
+    mutationIds: string[]
     selectedId: string | null
     selectedFamily: string | null
     modifiers: GloamwoodEvolutionCandidate['modifiers'] | null
@@ -486,8 +606,9 @@ interface DebugState {
     evolutionsTaken: number
   } | null
   onboarding: { phase: GloamwoodOnboardingStep['phase']; step: number; totalSteps: number; title: string }
-  settings: { paused: boolean; shake: boolean; flash: boolean; volume: number }
-  audio: { lastEvent: GloamwoodSoundEvent | null; eventCount: number }
+  settings: { paused: boolean; shake: boolean; flash: boolean; volume: number; muted: boolean }
+  audio: GloamwoodAudioSnapshot & { lastEvent: GloamwoodSoundEvent | null; eventCount: number; recentEvents: GloamwoodSoundEvent[] }
+  visualFeedback: { activeSprites: number; activeParticles: number; activeDecals: number; sporeHaze: number; slowAuraRadius: number }
   input: { bindings: GloamwoodInputBindings; rebinding: GloamwoodInputAction | null }
   performance: {
     fps: number
@@ -598,6 +719,20 @@ class Gloamwood3DHunt {
   private readonly foliageTime = { value: 0 }
   private readonly actions = new Map<string, THREE.AnimationAction>()
   private readonly tailNodes: THREE.Object3D[] = []
+  /**
+   * Mutation silhouette pieces are attached only to authored model nodes. They
+   * are deliberately kept separate from the GLB so a body reload can remove
+   * them without mutating shared model data.
+   */
+  private readonly mutationBodyAttachments: THREE.Object3D[] = []
+  private sporeHaze: {
+    root: THREE.Group
+    patches: THREE.Mesh[]
+    motes: Array<{ sprite: THREE.Sprite; base: THREE.Vector3; size: number; phase: number }>
+    texture: THREE.CanvasTexture
+    previewBoost: number
+  } | null = null
+  private readonly sporeHazePlane = new THREE.PlaneGeometry(1, 1)
   private readonly shadowMaterials: THREE.MeshBasicMaterial[] = []
   private readonly nestRoot = new THREE.Group()
   private readonly preyVisuals = new Map<string, PreyVisual>()
@@ -698,7 +833,38 @@ class Gloamwood3DHunt {
   // a hunter and a grazer, a pack member and the elite promoted from it - and
   // keying by family silently loaded whichever came last.
   private readonly preyTemplates = new Map<string, { scene: THREE.Group; clips: THREE.AnimationClip[]; config: GloamwoodModelledPreyConfig }>()
-  private readonly feedbackMeshes: Array<{ mesh: THREE.Mesh; age: number; duration: number }> = []
+  /** Short-lived painterly hit feedback. It never participates in combat authority. */
+  private readonly feedbackSprites: FeedbackSprite[] = []
+  private readonly feedbackTextures = new Map<FeedbackTextureKind, THREE.Texture>()
+  /** 3D-only rending feedback. Kept separate from the legacy sprite pool. */
+  private readonly rendingParticles: RendingParticle[] = []
+  private readonly rendingSurfaces: RendingSurface[] = []
+  private readonly rendingGeometries = {
+    spark: new THREE.TetrahedronGeometry(0.11, 0),
+  }
+  private readonly mutationParticles: MutationParticle[] = []
+  private readonly skillFxTextures = new Map<SkillFxTextureKind, THREE.CanvasTexture>()
+  private rendingScratchTexture: THREE.CanvasTexture | null = null
+  private tailSweepHaloTexture: THREE.CanvasTexture | null = null
+  private metabolicChevronTexture: THREE.CanvasTexture | null = null
+  private metabolicPreviewDecayIn = 0
+  private readonly skillFxPlane = new THREE.PlaneGeometry(1, 1)
+  private readonly tailSweepShock = new THREE.RingGeometry(1.52, 2.1, 64)
+  /** Unit hex prism. Y is thickness; scaled per plate. */
+  private readonly carapacePlate = new THREE.CylinderGeometry(0.5, 0.5, 1, 6)
+  /** Faceted rhombus half-shells. Packed tiles, not scattered ornaments. */
+  private readonly moultHuskLeft = createMoultShellGeometries(-1)
+  private readonly moultHuskRight = createMoultShellGeometries(1)
+  private readonly carapaceUp = new THREE.Vector3(0, 1, 0)
+  private readonly carapaceOutward = new THREE.Vector3()
+  private readonly metabolicFace = new THREE.Vector3(0, 0, 1)
+  private readonly tailSweepBounds = new THREE.Box3()
+  private readonly tailSweepMeshBounds = new THREE.Box3()
+  private readonly tailSweepSize = new THREE.Vector3()
+  /** Standing visual half-width. Cached so a spinning tail cannot inflate the ring. */
+  private playerVisualGroundRadius = 1.48
+  /** Debug previews linger; ordinary confirmed combat effects keep their tuned timing. */
+  private feedbackDurationMultiplier = 1
   private readonly dustParticles: DustParticle[] = []
   private readonly footstepState = createGloamwoodFootstepState()
   private nestState: GloamwoodNestState = this.map.createCreatures()
@@ -853,6 +1019,7 @@ class Gloamwood3DHunt {
   private pauseStartedAt = 0
   private lastSoundEvent: GloamwoodSoundEvent | null = null
   private soundEventCount = 0
+  private readonly recentSoundEvents: GloamwoodSoundEvent[] = []
   private inputBindings: GloamwoodInputBindings = { ...DEFAULT_GLOAMWOOD_INPUT_BINDINGS }
   private rebindingAction: GloamwoodInputAction | null = null
   private mixer?: THREE.AnimationMixer
@@ -891,6 +1058,7 @@ class Gloamwood3DHunt {
   private shrinePieces = 0
   private collisionContacts = 0
   private debugOutput?: HTMLOutputElement
+  private mutationLab?: HTMLElement
   private debugLive?: HTMLElement
   private readonly container: HTMLElement
 
@@ -928,6 +1096,8 @@ class Gloamwood3DHunt {
     this.scene.add(this.playerRoot)
     this.scene.add(this.nestRoot)
     this.scene.add(this.bossFx.root)
+    this.preloadFeedbackTextures()
+    this.bakeSkillFxTextures()
   }
 
   async start() {
@@ -985,6 +1155,23 @@ class Gloamwood3DHunt {
     // actually reviewed. They now follow the same rule as every other debug
     // surface: available when ?debug=1 is present.
     const debugGatesAllowed = import.meta.env.DEV || debugParams.get('debug') === '1'
+    // A reviewer needs to be able to inspect an earned body mutation without
+    // replaying an entire run. This remains a debug-only, validated list and
+    // uses the same state/effect path as an actual choice.
+    const debugMutations = (debugParams.get('mutationDebug') ?? '')
+      .split(',')
+      .filter((id) => GLOAMWOOD_MUTATION_POOL.some((mutation) => mutation.id === id))
+    if (debugGatesAllowed && debugMutations.length > 0) {
+      this.mutationState = { ...this.mutationState, taken: [...new Set(debugMutations)] }
+      this.mutationEffects = accumulateGloamwoodMutationEffects(this.mutationState.taken)
+      this.applyProgressionModifiers()
+      this.refreshMutationBodyPresentation()
+      this.updateMutationList()
+    }
+    // Debug links are already explicit QA entry points. Keep the state lab on
+    // that surface so a reviewer never has to hand-edit another URL just to
+    // inspect a body or mutation.
+    if (debugGatesAllowed) this.createMutationLab()
     if (debugGatesAllowed && debugParams.get('bossGate') === '1') {
       this.openEvolutionGateForDebug()
       const choice = THREE.MathUtils.clamp(Number(debugParams.get('evolutionChoice')) || 0, 0, 2)
@@ -1022,8 +1209,40 @@ class Gloamwood3DHunt {
       particle.sprite.geometry.dispose()
       particle.sprite.material.dispose()
     }
+    for (const feedback of this.feedbackSprites) feedback.sprite.material.dispose()
+    for (const particle of this.rendingParticles) particle.material.dispose()
+    for (const particle of this.mutationParticles) particle.material.dispose()
+    for (const surface of this.rendingSurfaces) {
+      surface.mesh.geometry.dispose()
+      surface.material.dispose()
+    }
+    for (const texture of this.feedbackTextures.values()) texture.dispose()
+    for (const texture of this.skillFxTextures.values()) texture.dispose()
+    this.feedbackSprites.length = 0
+    this.rendingParticles.length = 0
+    this.mutationParticles.length = 0
+    this.rendingSurfaces.length = 0
+    this.feedbackTextures.clear()
+    this.skillFxTextures.clear()
+    this.rendingScratchTexture?.dispose()
+    this.rendingScratchTexture = null
+    this.tailSweepHaloTexture?.dispose()
+    this.tailSweepHaloTexture = null
+    this.metabolicChevronTexture?.dispose()
+    this.metabolicChevronTexture = null
+    this.rendingGeometries.spark.dispose()
+    this.skillFxPlane.dispose()
+    this.tailSweepShock.dispose()
+    this.carapacePlate.dispose()
+    this.moultHuskLeft.fill.dispose()
+    this.moultHuskLeft.edges.dispose()
+    this.moultHuskRight.fill.dispose()
+    this.moultHuskRight.edges.dispose()
+    this.disposeSporeHaze()
+    this.sporeHazePlane.dispose()
     this.renderer.domElement.remove()
     this.debugOutput?.remove()
+    this.mutationLab?.remove()
     this.onboardingHud?.remove()
     this.deathOverlay?.remove()
     this.settingsPanel?.remove()
@@ -1533,6 +1752,481 @@ class Gloamwood3DHunt {
     }
   }
 
+  /**
+   * Load the authored mutation effects ahead of the first combat event. A load
+   * failure leaves the small canvas fallback intact, so a missing optional art
+   * file cannot interrupt a fight or change combat authority.
+   */
+  private preloadFeedbackTextures() {
+    const loader = new THREE.TextureLoader()
+    for (const [kind, source] of Object.entries(FEEDBACK_TEXTURE_ASSET_PATHS) as Array<[FeedbackTextureKind, string]>) {
+      loader.load(source, (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace
+        if (this.disposed) {
+          texture.dispose()
+          return
+        }
+        this.feedbackTextures.set(kind, texture)
+      })
+    }
+  }
+
+  /** Soft additive skill sprites: glow, crescent slash, shock ring, streak. */
+  private bakeSkillFxTextures() {
+    for (const kind of SKILL_FX_TEXTURE_KINDS) {
+      const canvas = document.createElement('canvas')
+      canvas.width = kind === 'glow' || kind === 'pebble' ? 64 : kind === 'dust' || kind === 'plate' ? 128 : 256
+      canvas.height = kind === 'streak' ? 128 : kind === 'glow' || kind === 'pebble' ? 64 : kind === 'dust' || kind === 'plate' ? 128 : 256
+      const context = canvas.getContext('2d')
+      if (!context) continue
+      paintSkillFxTexture(kind, context, canvas.width, canvas.height)
+      const texture = new THREE.CanvasTexture(canvas)
+      texture.colorSpace = THREE.SRGBColorSpace
+      this.skillFxTextures.set(kind, texture)
+    }
+    const scratch = document.createElement('canvas')
+    scratch.width = 512
+    scratch.height = 512
+    const scratchContext = scratch.getContext('2d')
+    if (scratchContext) {
+      paintRendingScratch(scratchContext, scratch.width, scratch.height)
+      this.rendingScratchTexture = new THREE.CanvasTexture(scratch)
+      this.rendingScratchTexture.colorSpace = THREE.SRGBColorSpace
+      this.rendingScratchTexture.generateMipmaps = false
+      this.rendingScratchTexture.minFilter = THREE.LinearFilter
+      this.rendingScratchTexture.magFilter = THREE.LinearFilter
+    }
+    const halo = document.createElement('canvas')
+    halo.width = 256
+    halo.height = 256
+    const haloContext = halo.getContext('2d')
+    if (haloContext) {
+      paintTailSweepHalo(haloContext, halo.width, halo.height)
+      this.tailSweepHaloTexture = new THREE.CanvasTexture(halo)
+      this.tailSweepHaloTexture.colorSpace = THREE.SRGBColorSpace
+    }
+    const chevron = document.createElement('canvas')
+    chevron.width = 128
+    chevron.height = 256
+    const chevronContext = chevron.getContext('2d')
+    if (chevronContext) {
+      paintMetabolicChevron(chevronContext, chevron.width, chevron.height)
+      this.metabolicChevronTexture = new THREE.CanvasTexture(chevron)
+      this.metabolicChevronTexture.colorSpace = THREE.SRGBColorSpace
+    }
+  }
+
+  /**
+   * Ordinary combat keeps compact procedural fallback marks. Mutation and
+   * rending bursts use shared lit meshes instead of these canvases.
+   */
+  private feedbackTexture(kind: FeedbackTextureKind) {
+    const existing = this.feedbackTextures.get(kind)
+    if (existing) return existing
+    const canvas = document.createElement('canvas')
+    const square = kind !== 'slash'
+    canvas.width = square ? 192 : 320
+    canvas.height = square ? 192 : 96
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Unable to create combat feedback texture')
+    const width = canvas.width
+    const height = canvas.height
+    context.clearRect(0, 0, width, height)
+    context.lineCap = 'round'
+    context.lineJoin = 'round'
+
+    if (kind === 'slash') {
+      const stroke = context.createLinearGradient(12, height / 2, width - 12, height / 2)
+      stroke.addColorStop(0, 'rgba(255,255,255,0)')
+      stroke.addColorStop(0.2, 'rgba(255,255,255,.38)')
+      stroke.addColorStop(0.5, 'rgba(255,255,255,1)')
+      stroke.addColorStop(0.82, 'rgba(255,255,255,.44)')
+      stroke.addColorStop(1, 'rgba(255,255,255,0)')
+      context.strokeStyle = stroke
+      context.shadowColor = 'rgba(255,255,255,.95)'
+      context.shadowBlur = 12
+      for (const [offset, widthScale] of [[-14, 10], [0, 7], [15, 4]] as const) {
+        context.lineWidth = widthScale
+        context.beginPath()
+        context.moveTo(18, height * 0.58 + offset * 0.15)
+        context.quadraticCurveTo(width * 0.46, height * 0.12 + offset, width - 18, height * 0.48 + offset * 0.25)
+        context.stroke()
+      }
+    } else if (kind === 'shard') {
+      context.save()
+      context.translate(width / 2, height / 2)
+      context.shadowColor = 'rgba(255,255,255,.84)'
+      context.shadowBlur = 9
+      context.fillStyle = 'rgba(255,255,255,.88)'
+      for (const angle of [0, 2.1, 4.15]) {
+        context.save()
+        context.rotate(angle)
+        context.beginPath()
+        context.moveTo(0, -62)
+        context.lineTo(13, 18)
+        context.lineTo(-11, 38)
+        context.closePath()
+        context.fill()
+        context.restore()
+      }
+      context.restore()
+    } else {
+      const glow = context.createRadialGradient(width / 2, height / 2, 3, width / 2, height / 2, width * 0.46)
+      glow.addColorStop(0, 'rgba(255,255,255,1)')
+      glow.addColorStop(0.24, 'rgba(255,255,255,.78)')
+      glow.addColorStop(0.62, 'rgba(255,255,255,.18)')
+      glow.addColorStop(1, 'rgba(255,255,255,0)')
+      context.fillStyle = glow
+      context.fillRect(0, 0, width, height)
+    }
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    this.feedbackTextures.set(kind, texture)
+    return texture
+  }
+
+  private spawnFeedbackSprite(
+    kind: FeedbackTextureKind,
+    position: THREE.Vector3,
+    color: number,
+    startScale: [number, number],
+    endScale: [number, number],
+    duration: number,
+    velocity = new THREE.Vector3(),
+    rotation = 0,
+    rotationSpeed = 0,
+    peakOpacity = 0.9,
+    growthStyle: FeedbackSprite['growthStyle'] = 'ease-out',
+  ) {
+    const material = new THREE.SpriteMaterial({
+      map: this.feedbackTexture(kind),
+      color,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      // A confirmed impact must win against the victim's own model. Effects
+      // are shorter than a blink, so rendering over nearby foliage improves
+      // readability without becoming a permanent through-wall marker.
+      depthTest: false,
+      // Every mutation owns a palette. Additive blending was pushing every
+      // texture toward white on the bright river-valley floor, making eight
+      // different effects read as the same anonymous halo. Alpha-blended
+      // sprites retain their authored coral, jade, amber and spore colours.
+      blending: THREE.NormalBlending,
+      rotation,
+    })
+    const sprite = new THREE.Sprite(material)
+    sprite.position.copy(position)
+    sprite.scale.set(startScale[0], startScale[1], 1)
+    sprite.renderOrder = 10
+    this.scene.add(sprite)
+    this.feedbackSprites.push({
+      sprite,
+      velocity,
+      age: 0,
+      duration: duration * this.feedbackDurationMultiplier,
+      growthStyle,
+      startScale: new THREE.Vector2(...startScale),
+      endScale: new THREE.Vector2(...endScale),
+      rotationSpeed,
+      peakOpacity,
+    })
+  }
+
+  /** Presentation-only skill burst. Combat authority has already resolved. */
+  private spawnMutationFxBurst(id: MutationFxBurstId, facing = this.lastFacing, origin?: THREE.Vector3) {
+    const x = origin?.x ?? this.playerRoot.position.x
+    const z = origin?.z ?? this.playerRoot.position.z
+    const y = origin?.y ?? this.map.height(x, z)
+    const burst = id === 'tail-sweep' || id === 'carapace' || id === 'moult'
+      ? mutationFxBurst(id, facing, this.playerVisualGroundRadius)
+      : mutationFxBurst(id, facing)
+    const pace = this.feedbackDurationMultiplier
+    this.cameraTrauma = Math.min(1, this.cameraTrauma + burst.trauma)
+    const attract = new THREE.Vector3(x, y + 0.82, z)
+    for (const spec of burst.particles) {
+      const map = this.skillFxTextures.get(spec.texture)
+      const common = {
+        map,
+        color: spec.color,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: spec.depthTest === true,
+        blending: spec.texture === 'glow' || spec.texture === 'streak'
+          ? THREE.AdditiveBlending
+          : THREE.NormalBlending,
+        fog: false,
+      } as const
+      let object: THREE.Object3D
+      let material: THREE.SpriteMaterial | THREE.MeshBasicMaterial
+      if (spec.billboard === 'camera') {
+        material = new THREE.SpriteMaterial({ ...common, rotation: spec.roll })
+        const sprite = new THREE.Sprite(material)
+        sprite.position.set(x + spec.offset[0], y + spec.offset[1], z + spec.offset[2])
+        sprite.scale.set(spec.startScale[0], spec.startScale[1], 1)
+        sprite.renderOrder = spec.depthTest ? 3 : 12
+        object = sprite
+      } else {
+        material = new THREE.MeshBasicMaterial({ ...common, side: THREE.DoubleSide })
+        const mesh = new THREE.Mesh(this.skillFxPlane, material)
+        mesh.position.set(x + spec.offset[0], y + spec.offset[1], z + spec.offset[2])
+        mesh.scale.set(spec.startScale[0], spec.startScale[1], 1)
+        mesh.renderOrder = spec.billboard === 'slash' ? 13 : spec.depthTest ? 3 : 11
+        if (spec.billboard === 'ground') mesh.rotation.set(-Math.PI / 2, facing, 0)
+        else mesh.rotation.set(0.22, facing, spec.roll)
+        object = mesh
+      }
+      this.scene.add(object)
+      this.mutationParticles.push({
+        object,
+        material,
+        velocity: new THREE.Vector3(spec.velocity[0], spec.velocity[1], spec.velocity[2]),
+        spin: spec.spin,
+        age: -spec.delay * pace,
+        duration: spec.duration * pace,
+        gravity: spec.gravity,
+        motion: spec.motion,
+        peakOpacity: spec.peakOpacity,
+        startScale: new THREE.Vector2(spec.startScale[0], spec.startScale[1]),
+        endScale: new THREE.Vector2(spec.endScale[0], spec.endScale[1]),
+        attractTarget: attract.clone(),
+      })
+    }
+    while (this.mutationParticles.length > 80) this.retireMutationParticle(this.mutationParticles.shift()!)
+  }
+
+  /**
+   * Three tapered hunting claws on the hit. Grown short-to-long.
+   * White-hot core, orange body, needle tips. Presentation only.
+   */
+  private spawnRendingClaws(contact: THREE.Vector3, _facing: THREE.Vector3) {
+    const pace = this.feedbackDurationMultiplier
+    this.cameraTrauma = Math.min(1, this.cameraTrauma + RENDING_CRACK.trauma)
+    const map = this.rendingScratchTexture
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        uMap: { value: map },
+        uProgress: { value: 0 },
+        uOpacity: { value: 0 },
+      },
+      vertexShader: `varying vec2 vUv;
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `varying vec2 vUv;
+        uniform sampler2D uMap;
+        uniform float uProgress;
+        uniform float uOpacity;
+        void main() {
+          vec4 texel = texture2D(uMap, vUv);
+          float along = vUv.x * 0.78 + (1.0 - vUv.y) * 0.22;
+          float drawn = step(along, uProgress);
+          gl_FragColor = vec4(texel.rgb * 1.55, texel.a * drawn * uOpacity);
+        }`,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.DoubleSide,
+    })
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(RENDING_CRACK.planeWidth, RENDING_CRACK.planeHeight),
+      material,
+    )
+    const towardCamera = this.camera.position.clone().sub(contact)
+    if (towardCamera.lengthSq() < 0.0001) towardCamera.set(0, 1, 0)
+    towardCamera.normalize()
+    mesh.position.copy(contact).addScaledVector(towardCamera, 0.12)
+    mesh.lookAt(this.camera.position)
+    mesh.renderOrder = 14
+    this.scene.add(mesh)
+    this.rendingSurfaces.push({
+      mesh,
+      material,
+      age: 0,
+      duration: RENDING_CRACK.durationSeconds * pace,
+    })
+    while (this.rendingSurfaces.length > 4) this.retireRendingSurface(this.rendingSurfaces.shift()!)
+    this.spawnRendingSparks(contact, pace)
+  }
+
+  private spawnRendingSparks(origin: THREE.Vector3, pace: number) {
+    for (const spec of rendingSparkBurst()) {
+      const material = new THREE.SpriteMaterial({
+        map: this.skillFxTextures.get(spec.texture),
+        color: spec.color,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: false,
+        blending: THREE.AdditiveBlending,
+        fog: false,
+        rotation: spec.roll,
+      })
+      const sprite = new THREE.Sprite(material)
+      sprite.position.set(
+        origin.x + spec.offset[0],
+        origin.y + spec.offset[1],
+        origin.z + spec.offset[2],
+      )
+      sprite.scale.set(spec.startScale[0], spec.startScale[1], 1)
+      sprite.renderOrder = 15
+      this.scene.add(sprite)
+      this.mutationParticles.push({
+        object: sprite,
+        material,
+        velocity: new THREE.Vector3(spec.velocity[0], spec.velocity[1], spec.velocity[2]),
+        spin: spec.spin,
+        age: -spec.delay * pace,
+        duration: spec.duration * pace,
+        gravity: spec.gravity,
+        motion: spec.motion,
+        peakOpacity: spec.peakOpacity,
+        startScale: new THREE.Vector2(spec.startScale[0], spec.startScale[1]),
+        endScale: new THREE.Vector2(spec.endScale[0], spec.endScale[1]),
+        attractTarget: origin.clone(),
+      })
+    }
+    while (this.mutationParticles.length > 80) this.retireMutationParticle(this.mutationParticles.shift()!)
+  }
+
+  private retireMutationParticle(particle: MutationParticle) {
+    const materials = new Set<THREE.Material>()
+    particle.object.traverse((node) => {
+      if (!(node instanceof THREE.Mesh)) return
+      const material = node.material
+      if (Array.isArray(material)) material.forEach((entry) => materials.add(entry))
+      else materials.add(material)
+    })
+    this.scene.remove(particle.object)
+    for (const material of materials) material.dispose()
+    if (!materials.has(particle.material)) particle.material.dispose()
+  }
+
+  private updateMutationParticles(delta: number) {
+    for (let index = this.mutationParticles.length - 1; index >= 0; index -= 1) {
+      const particle = this.mutationParticles[index]
+      particle.age += delta
+      if (particle.age < 0) {
+        particle.object.visible = false
+        continue
+      }
+      particle.object.visible = true
+      const progress = Math.min(1, particle.age / particle.duration)
+      const fade = particle.motion === 'draw'
+        ? (progress < 0.62 ? 1 : 1 - (progress - 0.62) / 0.38)
+        : Math.min(1, progress / 0.08) * (1 - Math.max(0, (progress - 0.62) / 0.38))
+      const scaleProgress = particle.motion === 'draw' || particle.motion === 'expand'
+        ? 1 - (1 - progress) ** 3
+        : progress
+      const scaleX = THREE.MathUtils.lerp(particle.startScale.x, particle.endScale.x, scaleProgress)
+      const scaleY = THREE.MathUtils.lerp(particle.startScale.y, particle.endScale.y, scaleProgress)
+      if (particle.object instanceof THREE.Sprite) {
+        particle.object.scale.set(scaleX, scaleY, 1)
+        particle.object.material.rotation += particle.spin * delta
+      } else if (particle.object.userData.moultCap) {
+        const depth = Number(particle.object.userData.depth) || scaleX
+        const grow = particle.startScale.x === 0 ? 1 : scaleX / particle.startScale.x
+        particle.object.scale.set(scaleX, scaleY, depth * grow)
+        if (particle.spin) particle.object.rotateOnAxis(this.carapaceUp, particle.spin * delta)
+        particle.object.traverse((node) => {
+          if (!(node instanceof THREE.Mesh)) return
+          const material = node.material
+          if (!(material instanceof THREE.MeshStandardMaterial) && !(material instanceof THREE.MeshBasicMaterial)) return
+          material.opacity = fade * Number(node.userData.moultPeak ?? particle.peakOpacity)
+        })
+      } else if (particle.object.userData.volumeKind === 'ellipsoid') {
+        const depth = Number(particle.object.userData.depth) || scaleX
+        const grow = particle.startScale.x === 0 ? 1 : scaleX / particle.startScale.x
+        particle.object.scale.set(scaleX, scaleY, depth * grow)
+        if (particle.spin) particle.object.rotateOnAxis(this.carapaceUp, particle.spin * delta)
+      } else if (particle.object.userData.carapaceVolume) {
+        particle.object.scale.set(scaleX, scaleY, scaleX)
+        if (particle.spin) particle.object.rotateOnAxis(this.carapaceUp, particle.spin * delta)
+      } else {
+        particle.object.scale.set(scaleX, scaleY, 1)
+        particle.object.rotation.z += particle.spin * delta
+      }
+      if (particle.motion === 'attract') {
+        particle.object.position.lerp(particle.attractTarget, 1 - Math.exp(-9.5 * delta))
+      } else if (particle.motion !== 'expand' && particle.motion !== 'draw') {
+        if (particle.motion === 'drift') particle.velocity.y += 0.55 * delta
+        particle.velocity.y -= particle.gravity * delta
+        particle.object.position.addScaledVector(particle.velocity, delta)
+        particle.velocity.multiplyScalar(Math.exp((particle.motion === 'ballistic' ? -2.4 : -1.4) * delta))
+      }
+      if (!particle.object.userData.moultCap) {
+        particle.material.opacity = fade * particle.peakOpacity
+      }
+      if (particle.material instanceof THREE.ShaderMaterial && particle.material.uniforms.uOpacity) {
+        particle.material.uniforms.uOpacity.value = fade * particle.peakOpacity
+      }
+      if (progress >= 1) {
+        this.retireMutationParticle(particle)
+        this.mutationParticles.splice(index, 1)
+      }
+    }
+  }
+
+  private retireRendingParticle(particle: RendingParticle) {
+    this.scene.remove(particle.mesh)
+    particle.material.dispose()
+  }
+
+  private retireRendingSurface(surface: RendingSurface) {
+    this.scene.remove(surface.mesh)
+    surface.mesh.geometry.dispose()
+    surface.material.dispose()
+  }
+
+  private updateRendingParticles(delta: number) {
+    for (let index = this.rendingSurfaces.length - 1; index >= 0; index -= 1) {
+      const surface = this.rendingSurfaces[index]
+      surface.age += delta
+      const progress = Math.min(1, surface.age / surface.duration)
+      const reveal = Math.min(1, progress / 0.4)
+      const fade = progress < 0.68 ? 1 : 1 - (progress - 0.68) / 0.32
+      surface.material.uniforms.uProgress.value = reveal
+      surface.material.uniforms.uOpacity.value = fade
+      if (progress >= 1) {
+        this.retireRendingSurface(surface)
+        this.rendingSurfaces.splice(index, 1)
+      }
+    }
+    for (let index = this.rendingParticles.length - 1; index >= 0; index -= 1) {
+      const particle = this.rendingParticles[index]
+      particle.age += delta
+      if (particle.age < 0) {
+        particle.mesh.visible = false
+        continue
+      }
+      particle.mesh.visible = true
+      const progress = Math.min(1, particle.age / particle.duration)
+      const fade = Math.min(1, progress / 0.08) * (1 - Math.max(0, (progress - 0.62) / 0.38))
+
+      particle.velocity.y -= 7.6 * delta
+      particle.mesh.position.addScaledVector(particle.velocity, delta)
+      particle.velocity.multiplyScalar(Math.exp(-2.5 * delta))
+      const ground = this.map.height(particle.mesh.position.x, particle.mesh.position.z) + 0.035
+      if (particle.mesh.position.y < ground && particle.velocity.y < 0) {
+        particle.mesh.position.y = ground
+        particle.velocity.y *= -0.26
+        particle.velocity.x *= 0.64
+        particle.velocity.z *= 0.64
+      }
+      const scale = THREE.MathUtils.lerp(1, 0.24, progress)
+      particle.mesh.scale.setScalar(scale)
+      particle.mesh.rotation.x += particle.spin.x * delta
+      particle.mesh.rotation.y += particle.spin.y * delta
+      particle.mesh.rotation.z += particle.spin.z * delta
+      particle.material.opacity = fade * 0.92
+
+      if (progress >= 1) {
+        this.retireRendingParticle(particle)
+        this.rendingParticles.splice(index, 1)
+      }
+    }
+  }
+
   private createNest() {
     this.nestRoot.name = 'CorruptedBroodNest'
     this.nestRoot.position.set(GLOAMWOOD_NEST.centerX, this.map.height(GLOAMWOOD_NEST.centerX, GLOAMWOOD_NEST.centerZ) + 0.94, GLOAMWOOD_NEST.centerZ)
@@ -1751,6 +2445,7 @@ class Gloamwood3DHunt {
     if (this.disposed) return
     this.actions.clear()
     this.tailNodes.length = 0
+    this.clearMutationBodyAttachments()
     this.mixer?.stopAllAction()
     if (this.character) this.characterRoot.remove(this.character)
     if (this.evolutionAccent) {
@@ -1836,6 +2531,8 @@ class Gloamwood3DHunt {
     const groundedBounds = new THREE.Box3().setFromObject(gltf.scene)
     gltf.scene.position.y -= groundedBounds.min.y
     this.characterRoot.add(gltf.scene)
+    this.refreshMutationBodyPresentation()
+    this.cachePlayerVisualGroundRadius()
     this.mixer = new THREE.AnimationMixer(gltf.scene)
     for (const sourceClip of gltf.animations) {
       // The yaw/roll damping is a scarlet-gecko-specific repair for its source
@@ -1846,6 +2543,34 @@ class Gloamwood3DHunt {
     }
     this.modelReady = true
     this.setAction('Idle', true)
+  }
+
+  /**
+   * Removes only the small meshes created for held mutations. GLB geometry is
+   * shared by the loader cache, so it is never disposed here.
+   */
+  private clearMutationBodyAttachments() {
+    for (const attachment of this.mutationBodyAttachments) {
+      attachment.parent?.remove(attachment)
+      attachment.traverse((node) => {
+        if (!(node instanceof THREE.Mesh)) return
+        node.geometry.dispose()
+        const materials = Array.isArray(node.material) ? node.material : [node.material]
+        for (const material of materials) material.dispose()
+      })
+    }
+    this.mutationBodyAttachments.length = 0
+  }
+
+  /**
+   * Placeholder geometry is intentionally forbidden here. The earlier
+   * foot-needles and forearm rods demonstrated that a primitive can be bound to
+   * the correct bone and still look like a broken rig. Mutation bodies wait for
+   * an authored/graded model module; confirmed attack and hit feedback remain
+   * available for playtesting without pretending a rough proxy is finished.
+   */
+  private refreshMutationBodyPresentation() {
+    this.clearMutationBodyAttachments()
   }
 
   private bindInput() {
@@ -2411,6 +3136,7 @@ class Gloamwood3DHunt {
     const combo = this.combatProfile.primaryCombo
     const isFinisher = action === combo[combo.length - 1]
     const knockback = (action === 'TailSwipe' ? 0.72 : action === 'Pounce' ? 0.52 : 0.34)
+      + (action === 'TailSwipe' ? 0 : this.mutationEffects.frontHitKnockback ?? 0)
       + (isFinisher ? this.mutationEffects.finisherKnockback ?? 0 : 0)
     const baseDamage = this.attackBaseDamage(action)
       * this.mutationDamageMultiplierAgainst(target.health / target.maxHealth)
@@ -2423,12 +3149,30 @@ class Gloamwood3DHunt {
       knockback,
     )
     this.nestState = damage.state
+    if (action !== 'TailSwipe' && this.mutationState.taken.includes('fang-thin-hide')) {
+      this.logSession({ kind: 'mutation-effect', id: 'fang-thin-hide', effect: 'rending-hit' })
+    }
+    if (action === 'TailSwipe' && damage.effectiveDamage > 0 && this.mutationEffects.tailSwipeCleaveRadius) {
+      this.nestState = suppressGloamwoodNestPreyAround(
+        this.nestState,
+        this.playerRoot.position,
+        this.mutationEffects.tailSwipeCleaveRadius,
+        1.15,
+        target.id,
+      )
+      this.spawnTailSuppressionFeedback()
+      this.logSession({ kind: 'mutation-effect', id: 'shell-quake', effect: 'tail-suppression' })
+    }
     this.struckThisFrame.push(target.id)
     this.playSound(damage.killed ? 'kill' : action === 'Pounce' || action === 'TailSwipe' ? 'hit-heavy' : 'hit-light')
     let displayedBiomass = damage.biomassGained
     if (damage.killed && this.biomassMultiplier !== 1) {
       displayedBiomass = Math.round(damage.biomassGained * this.biomassMultiplier)
       this.nestState = { ...this.nestState, biomass: this.nestState.biomass + displayedBiomass - damage.biomassGained }
+      if (this.mutationState.taken.includes('neutral-starving-metabolism')) {
+        this.spawnMetabolicFeedback('gain')
+        this.logSession({ kind: 'mutation-effect', id: 'neutral-starving-metabolism', effect: 'metabolic-gain' })
+      }
     }
     if (damage.killed && this.mutationEffects.bonusOfferEveryKills) {
       this.killsTowardBonusOffer += 1
@@ -2438,7 +3182,15 @@ class Gloamwood3DHunt {
       }
     }
     if (damage.killed && this.killHeal > 0) {
-      this.playerCombat = { ...this.playerCombat, health: Math.min(this.playerCombat.maxHealth, this.playerCombat.health + this.killHeal) }
+      const before = this.playerCombat.health
+      this.playerCombat = { ...this.playerCombat, health: Math.min(this.playerCombat.maxHealth, before + this.killHeal) }
+      const restored = this.playerCombat.health - before
+      if (restored > 0) {
+        this.spawnFeedingFeedback(restored)
+        if (this.mutationState.taken.includes('neutral-gluttony')) {
+          this.logSession({ kind: 'mutation-effect', id: 'neutral-gluttony', effect: 'feeding-heal' })
+        }
+      }
     }
     const recipe = getQuality3DAttackFeedback(action)
     this.hitStopRemaining = recipe.hitStopSeconds
@@ -2589,7 +3341,7 @@ class Gloamwood3DHunt {
     const feedback = this.combatHitFeedback()
     if (action === 'Pounce') return feedback.pounceRange
     if (action === 'Claw') return feedback.clawRange
-    if (action === 'TailSwipe') return feedback.tailSwipeRange
+    if (action === 'TailSwipe') return feedback.tailSwipeRange * (this.mutationEffects.tailSwipeRangeMultiplier ?? 1)
     return feedback.biteRange
   }
 
@@ -2971,28 +3723,44 @@ class Gloamwood3DHunt {
       const config = this.map.bodyFor({ id: `probe-${kind}`, kind } as GloamwoodNestPrey)
       if (config) wanted.set(config.id, config)
     }
-    await Promise.all([...wanted.values()].map(async (config) => {
-      const gltf = await this.loader.loadAsync(assetUrl(config.url))
-      if (this.disposed) return
-      gltf.scene.updateMatrixWorld(true)
-      const size = new THREE.Box3().setFromObject(gltf.scene).getSize(new THREE.Vector3())
-      // Re-derived here rather than trusted from the export. The processing
-      // script already scales to this, so the factor should be one - and if a
-      // model is ever re-exported at a different scale, the visible footprint
-      // still matches what blocks the player rather than silently drifting.
-      const halfExtent = Math.max(size.x, size.z) / 2
-      gltf.scene.scale.setScalar(config.footprintRadius / Math.max(0.001, halfExtent))
-      gltf.scene.updateMatrixWorld(true)
-      gltf.scene.position.y -= new THREE.Box3().setFromObject(gltf.scene).min.y
-      gltf.scene.rotation.y = config.modelYaw
-      gltf.scene.traverse((node) => {
-        node.castShadow = true
-        node.receiveShadow = true
-      })
-      this.preyTemplates.set(config.id, { scene: gltf.scene, clips: gltf.animations, config })
-    }))
-    // Anything already on screen keeps its primitives until it is replaced.
+    const configs = [...wanted.values()]
+    // Each body switches as soon as it has decoded. Waiting for the full batch
+    // made a single bad or slow GLB leave *every* River Valley creature in its
+    // primitive fallback, which looks exactly like the model feature vanished.
+    const results = await Promise.allSettled(configs.map((config) => this.loadModelledPreyTemplate(config)))
+    const summary = summariseGloamwoodPreyModelLoads(
+      configs.map((config) => config.id),
+      results.flatMap((result, index) => result.status === 'rejected' ? [configs[index].id] : []),
+    )
+    if (summary.failedIds.length > 0) {
+      this.preyModelError = `Primitive fallback: ${summary.failedIds.join(', ')}`
+      console.warn('Some River Valley creature models could not load; their primitive fallbacks remain.', summary.failedIds)
+    }
+  }
+
+  private async loadModelledPreyTemplate(config: GloamwoodModelledPreyConfig) {
+    const gltf = await this.loader.loadAsync(assetUrl(config.url))
+    if (this.disposed) return
+    gltf.scene.updateMatrixWorld(true)
+    const size = new THREE.Box3().setFromObject(gltf.scene).getSize(new THREE.Vector3())
+    // Re-derived here rather than trusted from the export. The processing
+    // script already scales to this, so the factor should be one - and if a
+    // model is ever re-exported at a different scale, the visible footprint
+    // still matches what blocks the player rather than silently drifting.
+    const halfExtent = Math.max(size.x, size.z) / 2
+    gltf.scene.scale.setScalar(config.footprintRadius / Math.max(0.001, halfExtent))
+    gltf.scene.updateMatrixWorld(true)
+    gltf.scene.position.y -= new THREE.Box3().setFromObject(gltf.scene).min.y
+    gltf.scene.rotation.y = config.modelYaw
+    gltf.scene.traverse((node) => {
+      node.castShadow = true
+      node.receiveShadow = true
+    })
+    this.preyTemplates.set(config.id, { scene: gltf.scene, clips: gltf.animations, config })
+    // Existing creatures do not have to wait for unrelated bodies. Creatures
+    // born after this point mount the template in createPreyVisual instead.
     for (const prey of this.nestState.prey) {
+      if (this.map.bodyFor(prey)?.id !== config.id) continue
       const visual = this.preyVisuals.get(prey.id)
       if (visual && !visual.model) this.applyPreyModel(visual, prey)
     }
@@ -3172,26 +3940,373 @@ class Gloamwood3DHunt {
   private spawnSlashFeedback(action: FormalHuntBasicAttackAction, target: GloamwoodNestPrey) {
     const recipe = getQuality3DAttackFeedback(action)
     const leapBite = this.stage === 0 && action === 'Pounce'
-    for (let index = 0; index < recipe.arcCount; index += 1) {
+    const rendingClaws = action !== 'TailSwipe' && this.mutationState.taken.some((id) =>
+      gloamwoodMutationExpression(id)?.reaction === 'double-slash',
+    )
+    const arcCount = rendingClaws ? 0 : recipe.arcCount
+    const targetY = this.map.height(target.x, target.z) + (target.kind === 'shell' ? 1.28 : 0.94)
+    const rendingDirection = new THREE.Vector3(
+      target.x - this.playerRoot.position.x,
+      0,
+      target.z - this.playerRoot.position.z,
+    )
+    if (rendingDirection.lengthSq() > 0.0001) rendingDirection.normalize()
+    else rendingDirection.set(Math.cos(this.lastFacing), 0, -Math.sin(this.lastFacing))
+    if (rendingClaws) {
+      // Anchor the wound to the side of the victim that faces the attacker.
+      // A world-centred mark can cut through a large body and appear to float.
+      const surfaceContact = new THREE.Vector3(target.x, targetY, target.z)
+        .addScaledVector(rendingDirection, -gloamwoodPreyBodyRadius(target) * 0.48)
+      this.spawnRendingClaws(surfaceContact, rendingDirection)
+      return
+    }
+    for (let index = 0; index < arcCount; index += 1) {
+      const color = index === 0 ? recipe.color : recipe.accent
+      const length = (leapBite ? 1.24 : 1.94) * recipe.scale
+      this.spawnFeedbackSprite(
+        'slash',
+        new THREE.Vector3(target.x, targetY + index * 0.08, target.z),
+        color,
+        [length * 0.62, 0.3], [length * 1.08, 0.5], recipe.durationSeconds,
+        new THREE.Vector3(0, 0.2 + index * 0.05, 0),
+        leapBite ? (index === 0 ? 0.32 : -0.2) : (index === 0 ? -0.58 : 0.5),
+        index === 0 ? 1.2 : -0.9,
+        0.96,
+        'ease-out',
+      )
+      // Ordinary attacks keep two small sparks without changing their combat contract.
+      const sparkCount = 2
+      for (let spark = 0; spark < sparkCount; spark += 1) {
+        const angle = index * 1.8 + spark * 1.37
+        this.spawnFeedbackSprite(
+          'shard',
+          new THREE.Vector3(target.x + Math.cos(angle) * 0.1, targetY + 0.05 + spark * 0.035, target.z + Math.sin(angle) * 0.1),
+          spark % 2 === 0 ? 0xffdf8a : color,
+          [0.12, 0.12],
+          [0.34, 0.34],
+          0.2 + spark * 0.025,
+          new THREE.Vector3(Math.cos(angle) * 0.82, 0.52 + spark * 0.08, Math.sin(angle) * 0.82),
+          angle,
+          5 - spark * 0.5,
+          0.68,
+        )
+      }
+    }
+  }
+
+  /** Standing body half-width. Idle bind pose, so a spinning tail cannot enlarge the ring. */
+  private cachePlayerVisualGroundRadius() {
+    const combat = gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily)
+    const mesh = this.character
+    if (!mesh) {
+      this.playerVisualGroundRadius = combat
+      return
+    }
+    mesh.updateWorldMatrix(true, true)
+    this.tailSweepBounds.makeEmpty()
+    mesh.traverse((node) => {
+      if (!node.visible || node.name === 'Icosphere' || !(node instanceof THREE.Mesh)) return
+      if (!node.geometry.boundingBox) node.geometry.computeBoundingBox()
+      const geometryBox = node.geometry.boundingBox
+      if (!geometryBox) return
+      this.tailSweepMeshBounds.copy(geometryBox).applyMatrix4(node.matrixWorld)
+      this.tailSweepBounds.union(this.tailSweepMeshBounds)
+    })
+    if (this.tailSweepBounds.isEmpty()) {
+      this.playerVisualGroundRadius = combat
+      return
+    }
+    this.tailSweepBounds.getSize(this.tailSweepSize)
+    const halfWidth = Math.min(this.tailSweepSize.x, this.tailSweepSize.z) * 0.5
+    const halfLength = Math.max(this.tailSweepSize.x, this.tailSweepSize.z) * 0.5
+    this.playerVisualGroundRadius = Math.max(combat, halfWidth, halfLength * 0.5)
+  }
+
+  /** A connected enhanced tail sweep kicks gravel and dust around the body. */
+  private spawnTailSuppressionFeedback() {
+    this.spawnMutationFxBurst('tail-sweep')
+    this.spawnTailSweepHalo()
+  }
+
+  /** Ground-slam band plus a softer dusty skirt. The body stays in the hole. */
+  private spawnTailSweepHalo() {
+    const x = this.playerRoot.position.x
+    const z = this.playerRoot.position.z
+    const y = this.map.height(x, z) + 0.2
+    const pace = this.feedbackDurationMultiplier
+    const shock = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(0xffe9b8) },
+        uOpacity: { value: 0 },
+      },
+      vertexShader: `
+        varying vec2 vLocal;
+        void main() {
+          vLocal = position.xy;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uOpacity;
+        varying vec2 vLocal;
+        void main() {
+          float r = length(vLocal);
+          float t = clamp((r - 1.52) / 0.58, 0.0, 1.0);
+          float core = 1.0 - smoothstep(0.06, 0.28, abs(t - 0.36));
+          float dust = smoothstep(0.0, 0.16, t) * (1.0 - smoothstep(0.48, 1.0, t)) * 0.4;
+          gl_FragColor = vec4(uColor, (core + dust) * uOpacity);
+        }`,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
+      side: THREE.DoubleSide,
+      fog: false,
+      toneMapped: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    })
+    const shockMesh = new THREE.Mesh(this.tailSweepShock, shock)
+    shockMesh.position.set(x, y, z)
+    shockMesh.rotation.x = -Math.PI / 2
+    const layout = tailSweepLayout(this.playerVisualGroundRadius)
+    shockMesh.scale.set(layout.shockStart, layout.shockStart, 1)
+    shockMesh.renderOrder = 4
+    this.scene.add(shockMesh)
+    this.mutationParticles.push({
+      object: shockMesh,
+      material: shock,
+      velocity: new THREE.Vector3(),
+      spin: 0.15,
+      age: 0,
+      duration: 0.42 * pace,
+      gravity: 0,
+      motion: 'expand',
+      peakOpacity: 0.95,
+      startScale: new THREE.Vector2(layout.shockStart, layout.shockStart),
+      endScale: new THREE.Vector2(layout.shockEnd, layout.shockEnd),
+      attractTarget: shockMesh.position.clone(),
+    })
+    const map = this.tailSweepHaloTexture
+    if (!map) return
+    const skirt = new THREE.MeshBasicMaterial({
+      map,
+      color: 0xc4ae8c,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      depthTest: true,
+      side: THREE.DoubleSide,
+      fog: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    })
+    const skirtMesh = new THREE.Mesh(this.skillFxPlane, skirt)
+    skirtMesh.position.set(x, y + 0.02, z)
+    skirtMesh.rotation.x = -Math.PI / 2
+    skirtMesh.scale.set(layout.skirtStart, layout.skirtStart, 1)
+    skirtMesh.renderOrder = 3
+    this.scene.add(skirtMesh)
+    this.mutationParticles.push({
+      object: skirtMesh,
+      material: skirt,
+      velocity: new THREE.Vector3(),
+      spin: 0.08,
+      age: 0,
+      duration: 0.5 * pace,
+      gravity: 0,
+      motion: 'expand',
+      peakOpacity: 0.55,
+      startScale: new THREE.Vector2(layout.skirtStart, layout.skirtStart),
+      endScale: new THREE.Vector2(layout.skirtEnd, layout.skirtEnd),
+      attractTarget: skirtMesh.position.clone(),
+    })
+  }
+
+  /** A confirmed kill returns health and makes that return readable at the body. */
+  private spawnFeedingFeedback(restored: number) {
+    this.spawnMutationFxBurst('regeneration')
+    this.spawnDamageNumber(
+      new THREE.Vector3(this.playerRoot.position.x, this.map.height(this.playerRoot.position.x, this.playerRoot.position.z) + 1.5, this.playerRoot.position.z),
+      restored,
+      'heal',
+    )
+  }
+
+  /** The metabolism trade must show both hunger and the unusually fast gain. */
+  private spawnMetabolicFeedback(event: 'gain' | 'decay' | 'preview') {
+    if (event === 'preview') {
+      this.spawnMetabolicVeins('gain')
+      this.spawnMutationFxBurst('metabolism-gain')
+      this.metabolicPreviewDecayIn = 0.72
+      return
+    }
+    this.spawnMetabolicVeins(event)
+    this.spawnMutationFxBurst(event === 'decay' ? 'metabolism-decay' : 'metabolism-gain')
+  }
+
+  /** Hourglass veins on the flanks. Gain climbs from the belly; decay sheds downward. */
+  private spawnMetabolicVeins(event: 'gain' | 'decay') {
+    const map = this.metabolicChevronTexture
+    if (!map) return
+    const x = this.playerRoot.position.x
+    const z = this.playerRoot.position.z
+    const ground = this.map.height(x, z)
+    const facing = this.lastFacing
+    const pace = this.feedbackDurationMultiplier
+    const layout = metabolicVeinLayout(this.playerVisualGroundRadius)
+    const color = event === 'gain' ? layout.gainColor : layout.decayColor
+    const forwardX = Math.cos(facing)
+    const forwardZ = -Math.sin(facing)
+    const rightX = Math.cos(facing - Math.PI / 2)
+    const rightZ = -Math.sin(facing - Math.PI / 2)
+    const chestY = ground + 0.72
+    const maxRow = Math.max(...layout.veins.map((vein) => vein.row))
+    for (const vein of layout.veins) {
+      const worldX = x + rightX * vein.local[0] + forwardX * vein.local[2]
+      const worldY = chestY + vein.local[1]
+      const worldZ = z + rightZ * vein.local[0] + forwardZ * vein.local[2]
       const material = new THREE.MeshBasicMaterial({
-        color: index === 0 ? recipe.color : recipe.accent,
+        map,
+        color,
         transparent: true,
-        opacity: 0.94,
-        side: THREE.DoubleSide,
+        opacity: 0,
         depthWrite: false,
+        depthTest: true,
+        side: THREE.DoubleSide,
+        blending: event === 'gain' ? THREE.AdditiveBlending : THREE.NormalBlending,
+        fog: false,
+        toneMapped: false,
       })
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(leapBite ? 0.2 : 0.16, leapBite ? 1.12 : 1.82), material)
-      mesh.position.set(target.x, this.map.height(target.x, target.z) + (target.kind === 'shell' ? 1.28 : 0.94), target.z)
-      mesh.rotation.set(0, -this.camera.rotation.y, leapBite ? (index === 0 ? 0.28 : Math.PI + 0.28) : (index === 0 ? -0.55 : 0.48))
-      mesh.scale.setScalar(recipe.scale)
-      mesh.renderOrder = 10
+      const mesh = new THREE.Mesh(this.skillFxPlane, material)
+      mesh.position.set(worldX, worldY, worldZ)
+      this.carapaceOutward.set(worldX - x, 0, worldZ - z)
+      if (this.carapaceOutward.lengthSq() < 0.0001) this.carapaceOutward.set(vein.local[0], 0, vein.local[2])
+      this.carapaceOutward.normalize()
+      mesh.quaternion.setFromUnitVectors(this.metabolicFace, this.carapaceOutward)
+      mesh.scale.set(vein.width, vein.height, 1)
+      mesh.renderOrder = 6
       this.scene.add(mesh)
-      this.feedbackMeshes.push({ mesh, age: 0, duration: recipe.durationSeconds })
+      const delay = event === 'gain' ? vein.row * 0.07 : (maxRow - vein.row) * 0.07
+      this.mutationParticles.push({
+        object: mesh,
+        material,
+        velocity: event === 'gain'
+          ? new THREE.Vector3(0, 0.42, 0)
+          : new THREE.Vector3(this.carapaceOutward.x * 0.35, -0.55, this.carapaceOutward.z * 0.35),
+        spin: 0,
+        age: -delay * pace,
+        duration: (event === 'gain' ? 0.62 : 0.78) * pace,
+        gravity: event === 'gain' ? 0 : 2.4,
+        motion: event === 'gain' ? 'rise' : 'ballistic',
+        peakOpacity: layout.peakOpacity,
+        startScale: new THREE.Vector2(vein.width, vein.height),
+        endScale: event === 'gain'
+          ? new THREE.Vector2(vein.width * 1.08, vein.height * 1.12)
+          : new THREE.Vector2(vein.width * 0.72, vein.height * 0.82),
+        attractTarget: mesh.position.clone(),
+      })
+    }
+  }
+
+  /** Moult is a rare fatal-hit rescue, so it gets the largest non-Boss burst. */
+  private spawnMoultFeedback() {
+    this.spawnMutationFxBurst('moult')
+    this.spawnMoultHusks()
+  }
+
+  /** Hovering rhombus-tiled shell above the back. Splits in the air, never drops. */
+  private spawnMoultHusks() {
+    const x = this.playerRoot.position.x
+    const z = this.playerRoot.position.z
+    const ground = this.map.height(x, z)
+    const facing = this.lastFacing
+    const pace = this.feedbackDurationMultiplier
+    const layout = moultHuskLayout(this.playerVisualGroundRadius)
+    const [rx, ry, rz] = layout.scale
+    const forwardX = Math.cos(facing)
+    const forwardZ = -Math.sin(facing)
+    const rightX = Math.cos(facing - Math.PI / 2)
+    const rightZ = -Math.sin(facing - Math.PI / 2)
+    const shellY = ground + layout.lift
+    const duration = 1.15 * pace
+    for (const side of layout.sides) {
+      const fillMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.46,
+        metalness: 0.05,
+        emissive: 0x5c4018,
+        emissiveIntensity: 0.12,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: true,
+        side: THREE.DoubleSide,
+      })
+      applyMoultHeightFade(fillMaterial)
+      const edgeMaterial = new THREE.MeshStandardMaterial({
+        color: layout.edgeColor,
+        roughness: 0.62,
+        metalness: 0.02,
+        emissive: 0x3a2810,
+        emissiveIntensity: 0.04,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: true,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      })
+      applyMoultHeightFade(edgeMaterial)
+      const geometries = side.half === 'left' ? this.moultHuskLeft : this.moultHuskRight
+      const fill = new THREE.Mesh(geometries.fill, fillMaterial)
+      fill.userData.moultPeak = layout.peakOpacity
+      const edges = new THREE.Mesh(geometries.edges, edgeMaterial)
+      edges.userData.moultPeak = layout.edgeOpacity
+      const group = new THREE.Group()
+      group.add(fill, edges)
+      group.position.set(
+        x - forwardX * layout.shiftBack,
+        shellY,
+        z - forwardZ * layout.shiftBack,
+      )
+      group.rotation.set(0, facing, 0)
+      group.scale.set(rx, ry, rz)
+      group.userData.moultCap = true
+      group.userData.depth = rz
+      group.renderOrder = 5
+      this.scene.add(group)
+      this.mutationParticles.push({
+        object: group,
+        material: fillMaterial,
+        velocity: new THREE.Vector3(rightX * side.peel * 0.42, 0.12, rightZ * side.peel * 0.42),
+        spin: side.spin,
+        age: 0,
+        duration,
+        gravity: 0,
+        motion: 'ballistic',
+        peakOpacity: layout.peakOpacity,
+        startScale: new THREE.Vector2(rx, ry),
+        endScale: new THREE.Vector2(rx * 1.04, ry * 1.04),
+        attractTarget: group.position.clone(),
+      })
     }
   }
 
   private updateFeedback(delta: number) {
     this.cameraTrauma = Math.max(0, this.cameraTrauma - delta * 2.8)
+    this.updateRendingParticles(delta)
+    this.updateMutationParticles(delta)
+    this.updateSporeHazePresentation(delta)
+    if (this.metabolicPreviewDecayIn > 0) {
+      this.metabolicPreviewDecayIn = Math.max(0, this.metabolicPreviewDecayIn - delta)
+      if (this.metabolicPreviewDecayIn === 0) this.spawnMetabolicFeedback('decay')
+    }
     this.updateDust(delta)
     this.playerFlashRemaining = Math.max(0, this.playerFlashRemaining - delta)
     for (const visual of this.preyVisuals.values()) {
@@ -3203,19 +4318,139 @@ class Gloamwood3DHunt {
         else material.emissive.setHex(0x000000)
       }
     }
-    for (let index = this.feedbackMeshes.length - 1; index >= 0; index -= 1) {
-      const feedback = this.feedbackMeshes[index]
+    for (let index = this.feedbackSprites.length - 1; index >= 0; index -= 1) {
+      const feedback = this.feedbackSprites[index]
       feedback.age += delta
       const progress = Math.min(1, feedback.age / feedback.duration)
-      feedback.mesh.scale.multiplyScalar(1 + delta * 4.5)
-      ;(feedback.mesh.material as THREE.MeshBasicMaterial).opacity = 1 - progress
+      const scaleProgress = feedback.growthStyle === 'tear'
+        ? progress ** 1.25
+        : 1 - (1 - progress) ** 3
+      feedback.sprite.position.addScaledVector(feedback.velocity, delta)
+      feedback.velocity.multiplyScalar(Math.exp(-3.1 * delta))
+      feedback.sprite.scale.set(
+        THREE.MathUtils.lerp(feedback.startScale.x, feedback.endScale.x, scaleProgress),
+        THREE.MathUtils.lerp(feedback.startScale.y, feedback.endScale.y, scaleProgress),
+        1,
+      )
+      const material = feedback.sprite.material as THREE.SpriteMaterial
+      const opacity = feedback.growthStyle === 'tear'
+        ? Math.min(1, progress / 0.1) * (1 - Math.max(0, (progress - 0.7) / 0.3))
+        : Math.sin(progress * Math.PI)
+      material.opacity = opacity * feedback.peakOpacity
+      material.rotation += feedback.rotationSpeed * delta
       if (progress >= 1) {
-        feedback.mesh.geometry.dispose()
-        ;(feedback.mesh.material as THREE.Material).dispose()
-        this.scene.remove(feedback.mesh)
-        this.feedbackMeshes.splice(index, 1)
+        material.dispose()
+        this.scene.remove(feedback.sprite)
+        this.feedbackSprites.splice(index, 1)
       }
     }
+  }
+
+  /** Persistent low haze while the mutation is held. Never a pulsing skill burst. */
+  private updateSporeHazePresentation(delta: number) {
+    const radius = this.mutationEffects.slowAuraRadius ?? 0
+    if (radius <= 0) {
+      this.disposeSporeHaze()
+      return
+    }
+    if (!this.sporeHaze) this.sporeHaze = this.createSporeHaze(radius)
+    const haze = this.sporeHaze
+    const x = this.playerRoot.position.x
+    const z = this.playerRoot.position.z
+    haze.root.position.set(x, this.map.height(x, z) + 0.08, z)
+    haze.previewBoost = Math.max(0, haze.previewBoost - delta * 1.4)
+    const breathe = 0.86 + 0.14 * Math.sin(performance.now() * 0.0011)
+    const hazeOpacity = (SPORE_HAZE.hazeOpacity + haze.previewBoost * 0.08) * breathe
+    const moteOpacity = (SPORE_HAZE.moteOpacity + haze.previewBoost * 0.06) * breathe
+    const time = performance.now() * 0.001
+    for (const patch of haze.patches) {
+      patch.rotation.z += Number(patch.userData.spin ?? 0) * delta
+      const material = patch.material
+      if (material instanceof THREE.MeshBasicMaterial) material.opacity = hazeOpacity
+    }
+    for (const mote of haze.motes) {
+      const wobble = 0.05 * Math.sin(time * 1.3 + mote.phase)
+      mote.sprite.position.set(mote.base.x, mote.base.y + wobble, mote.base.z)
+      mote.sprite.material.opacity = moteOpacity
+    }
+  }
+
+  private createSporeHaze(radius: number) {
+    const layout = sporeHazeLayout(radius)
+    const canvas = document.createElement('canvas')
+    canvas.width = 128
+    canvas.height = 128
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Spore haze texture needs a 2D canvas.')
+    paintSporeHazePatch(context, canvas.width, canvas.height)
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    const root = new THREE.Group()
+    const patches: THREE.Mesh[] = []
+    for (const patch of layout.patches) {
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        color: layout.color,
+        transparent: true,
+        opacity: layout.hazeOpacity,
+        depthWrite: false,
+        depthTest: true,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        fog: false,
+        toneMapped: false,
+      })
+      const mesh = new THREE.Mesh(this.sporeHazePlane, material)
+      mesh.position.set(...patch.local)
+      mesh.scale.set(patch.size, patch.size * 0.72, 1)
+      mesh.rotation.set(-Math.PI / 2, 0, 0)
+      mesh.userData.spin = patch.spin
+      mesh.renderOrder = 2
+      root.add(mesh)
+      patches.push(mesh)
+    }
+    const motes: Array<{ sprite: THREE.Sprite; base: THREE.Vector3; size: number; phase: number }> = []
+    for (const mote of layout.motes) {
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        color: layout.moteColor,
+        transparent: true,
+        opacity: layout.moteOpacity,
+        depthWrite: false,
+        depthTest: true,
+        blending: THREE.AdditiveBlending,
+        fog: false,
+        toneMapped: false,
+      })
+      const sprite = new THREE.Sprite(material)
+      sprite.position.set(...mote.local)
+      sprite.scale.set(mote.size, mote.size, 1)
+      sprite.renderOrder = 2
+      root.add(sprite)
+      motes.push({
+        sprite,
+        base: new THREE.Vector3(...mote.local),
+        size: mote.size,
+        phase: mote.phase,
+      })
+    }
+    this.scene.add(root)
+    return { root, patches, motes, texture, previewBoost: 0 }
+  }
+
+  private disposeSporeHaze() {
+    const haze = this.sporeHaze
+    if (!haze) return
+    this.scene.remove(haze.root)
+    for (const patch of haze.patches) {
+      if (patch.material instanceof THREE.Material) patch.material.dispose()
+    }
+    for (const mote of haze.motes) mote.sprite.material.dispose()
+    haze.texture.dispose()
+    this.sporeHaze = null
   }
 
   /**
@@ -3967,7 +5202,11 @@ class Gloamwood3DHunt {
   private takePlayerDamage(rawDamage: number) {
     const reflect = this.mutationEffects.reflectFraction ?? 0
     const received = gloamwoodPlayerDamageTaken(rawDamage * (1 - reflect), this.damageReduction, this.flatArmour)
-    if (reflect > 0) this.reflectDamageToNearestPrey(Math.round(rawDamage * reflect))
+    if (reflect > 0) {
+      this.reflectDamageToNearestPrey(Math.round(rawDamage * reflect))
+      this.spawnCarapaceFeedback()
+      this.logSession({ kind: 'mutation-effect', id: 'shell-symbiosis', effect: 'carapace-reflect' })
+    }
     this.playerCombat = damageGloamwoodPlayer(this.playerCombat, received)
     // Moult spends itself on the blow that would have ended the run.
     const revive = this.mutationEffects.reviveFraction
@@ -3978,6 +5217,9 @@ class Gloamwood3DHunt {
         alive: true,
         health: Math.max(1, Math.round(this.playerCombat.maxHealth * revive)),
       }
+      this.spawnMoultFeedback()
+      this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.28)
+      this.logSession({ kind: 'mutation-effect', id: 'swarm-moult', effect: 'moult-revive' })
       this.combatMessage = t('mutation.moulted')
       this.playSound('evolution-select')
     }
@@ -4005,16 +5247,112 @@ class Gloamwood3DHunt {
     this.nestState = result.state
   }
 
+  /** Incoming hard-shell mitigation is not silent: plates flash and shed chips. */
+  private spawnCarapaceFeedback() {
+    this.spawnMutationFxBurst('carapace')
+    this.spawnCarapaceShell()
+  }
+
+  /** Thick hex plates wrapped around the torso, facing outward. Not a painted card. */
+  private spawnCarapaceShell() {
+    const x = this.playerRoot.position.x
+    const z = this.playerRoot.position.z
+    const ground = this.map.height(x, z)
+    const facing = this.lastFacing
+    const pace = this.feedbackDurationMultiplier
+    const layout = carapaceShellLayout(this.playerVisualGroundRadius)
+    const forwardX = Math.cos(facing)
+    const forwardZ = -Math.sin(facing)
+    const rightX = Math.cos(facing - Math.PI / 2)
+    const rightZ = -Math.sin(facing - Math.PI / 2)
+    const chestY = ground + 0.82
+    for (const [index, plate] of layout.entries()) {
+      const worldX = x + rightX * plate.local[0] + forwardX * plate.local[2]
+      const worldY = chestY + plate.local[1]
+      const worldZ = z + rightZ * plate.local[0] + forwardZ * plate.local[2]
+      const material = new THREE.MeshStandardMaterial({
+        color: index % 2 ? 0xc4a070 : 0x8a6a44,
+        roughness: 0.46,
+        metalness: 0.14,
+        emissive: 0x4a3014,
+        emissiveIntensity: 0.42,
+        transparent: true,
+        opacity: 0,
+        depthWrite: true,
+        depthTest: true,
+      })
+      const mesh = new THREE.Mesh(this.carapacePlate, material)
+      mesh.position.set(worldX, worldY, worldZ)
+      this.carapaceOutward.set(worldX - x, worldY - chestY, worldZ - z)
+      if (this.carapaceOutward.lengthSq() < 0.0001) this.carapaceOutward.set(0, 1, 0)
+      else this.carapaceOutward.normalize()
+      mesh.quaternion.setFromUnitVectors(this.carapaceUp, this.carapaceOutward)
+      mesh.userData.carapaceVolume = true
+      mesh.renderOrder = 5
+      const size = plate.size
+      const thickness = size * 0.187
+      mesh.scale.set(size, thickness, size)
+      this.scene.add(mesh)
+      this.mutationParticles.push({
+        object: mesh,
+        material,
+        velocity: new THREE.Vector3(),
+        spin: 0,
+        age: 0,
+        duration: 0.52 * pace,
+        gravity: 0,
+        motion: 'expand',
+        peakOpacity: 0.72,
+        startScale: new THREE.Vector2(size, thickness),
+        endScale: new THREE.Vector2(size * 1.08, thickness * 1.08),
+        attractTarget: mesh.position.clone(),
+      })
+      if (index % 2 !== 0) continue
+      const chipMaterial = new THREE.MeshStandardMaterial({
+        color: 0x5a4030,
+        roughness: 0.62,
+        metalness: 0.08,
+        transparent: true,
+        opacity: 0,
+        depthWrite: true,
+        depthTest: true,
+      })
+      const chip = new THREE.Mesh(this.carapacePlate, chipMaterial)
+      chip.position.copy(mesh.position)
+      chip.quaternion.copy(mesh.quaternion)
+      chip.userData.carapaceVolume = true
+      chip.renderOrder = 6
+      const chipSize = size * 0.38
+      const chipThick = chipSize * 0.227
+      chip.scale.set(chipSize, chipThick, chipSize)
+      this.scene.add(chip)
+      this.mutationParticles.push({
+        object: chip,
+        material: chipMaterial,
+        velocity: this.carapaceOutward.clone().multiplyScalar(2.4).add(new THREE.Vector3(0, 1.4, 0)),
+        spin: 6.2,
+        age: index * 0.006,
+        duration: 0.55 * pace,
+        gravity: 9.2,
+        motion: 'ballistic',
+        peakOpacity: 0.82,
+        startScale: new THREE.Vector2(chipSize, chipThick),
+        endScale: new THREE.Vector2(chipSize * 0.45, chipThick * 0.45),
+        attractTarget: chip.position.clone(),
+      })
+    }
+  }
+
   private applyProgressionModifiers() {
     const evolution = this.evolutionModifiers
     const mutation = this.mutationEffects
     this.damageMultiplier = evolution.damageMultiplier * (mutation.damageMultiplier ?? 1)
     this.moveSpeedMultiplier = evolution.moveSpeedMultiplier * (mutation.moveSpeedMultiplier ?? 1)
-    this.damageReduction = evolution.damageReduction
+    this.damageReduction = 1 - (1 - evolution.damageReduction) * (1 - (mutation.incomingDamageReduction ?? 0))
     this.flatArmour = evolution.flatArmour
     this.biomassMultiplier = evolution.biomassMultiplier * (mutation.biomassMultiplier ?? 1)
     // Symbiosis trades away kill healing outright, whatever granted it.
-    this.killHeal = mutation.suppressKillHeal ? 0 : evolution.killHeal
+    this.killHeal = mutation.suppressKillHeal ? 0 : evolution.killHeal + (mutation.killHeal ?? 0)
     const previousMaximum = this.playerCombat.maxHealth
     const maximumHealth = Math.max(
       20,
@@ -4282,6 +5620,7 @@ class Gloamwood3DHunt {
     this.mutationEffects = accumulateGloamwoodMutationEffects(this.mutationState.taken)
     this.mutationOffersTaken += 1
     this.applyProgressionModifiers()
+    this.refreshMutationBodyPresentation()
     // Update the strip here rather than waiting for the next HUD tick: the
     // panel closes on this click, and the chip should already be there when it
     // does.
@@ -4306,6 +5645,8 @@ class Gloamwood3DHunt {
     this.healthDecayElapsed -= interval
     this.decayedMaximumHealth += perInterval
     this.applyProgressionModifiers()
+    this.spawnMetabolicFeedback('decay')
+    this.logSession({ kind: 'mutation-effect', id: 'neutral-starving-metabolism', effect: 'metabolic-decay' })
   }
 
   private async chooseEvolution(
@@ -4800,6 +6141,116 @@ class Gloamwood3DHunt {
     }
   }
 
+  /**
+   * A reviewer-facing, debug-only form and mutation switchboard. It reloads the
+   * same River Valley into an explicit state so every selection exercises the
+   * normal model/effect startup path instead of a second test-only character.
+   */
+  private createMutationLab() {
+    this.mutationLab?.remove()
+    const panel = document.createElement('aside')
+    panel.className = 'g3d-mutation-lab'
+    panel.setAttribute('aria-label', 'Evolution test lab')
+    const forms: Array<{ label: string; stage: number; family: Quality3DFormFamily }> = [
+      { label: 'Origin', stage: 0, family: 'fang' },
+      { label: 'Fang I', stage: 1, family: 'fang' },
+      { label: 'Fang II', stage: 2, family: 'fang' },
+      { label: 'Shell I', stage: 1, family: 'shell' },
+      { label: 'Swarm I', stage: 1, family: 'swarm' },
+    ]
+    panel.innerHTML = [
+      '<header><span>DEBUG</span><strong>Evolution Lab</strong><button type="button" data-mutation-lab-close aria-label="Close evolution lab">×</button></header>',
+      '<p>Pick a body or one mutation. The river valley and normal controls stay active.</p>',
+      '<b>Body</b>',
+      '<div class="g3d-mutation-lab-grid">',
+      ...forms.map((form) => `<button type="button" data-mutation-lab-stage="${form.stage}" data-mutation-lab-family="${form.family}">${form.label}</button>`),
+      '</div>',
+      '<b>Mutation</b>',
+      '<div class="g3d-mutation-lab-grid">',
+      '<button type="button" data-mutation-lab-mutation="">None</button>',
+      ...GLOAMWOOD_MUTATION_POOL.map((mutation) => `<button type="button" data-mutation-lab-mutation="${mutation.id}">${escapeGloamwoodHtml(t(`mutation.${mutation.id}.name` as 'mutation.fang-thin-hide.name'))}</button>`),
+      '</div>',
+      '<button class="g3d-mutation-lab-preview" type="button" data-mutation-lab-preview>Preview current effect</button>',
+    ].join('')
+    const updateUrl = (update: (params: URLSearchParams) => void) => {
+      const params = new URLSearchParams(window.location.search)
+      params.set('debug', '1')
+      params.set('maplab', '5')
+      params.set('mutationLab', '1')
+      update(params)
+      window.location.search = params.toString()
+    }
+    for (const button of panel.querySelectorAll<HTMLButtonElement>('[data-mutation-lab-stage]')) {
+      button.addEventListener('click', () => updateUrl((params) => {
+        params.set('evolutionStage', button.dataset.mutationLabStage ?? '0')
+        params.set('evolutionRoute', button.dataset.mutationLabFamily ?? 'fang')
+      }))
+    }
+    for (const button of panel.querySelectorAll<HTMLButtonElement>('[data-mutation-lab-mutation]')) {
+      button.addEventListener('click', () => updateUrl((params) => {
+        const mutation = button.dataset.mutationLabMutation ?? ''
+        if (mutation) params.set('mutationDebug', mutation)
+        else params.delete('mutationDebug')
+      }))
+    }
+    panel.querySelector<HTMLButtonElement>('[data-mutation-lab-preview]')?.addEventListener('click', () => this.previewMutationFeedback())
+    panel.querySelector<HTMLButtonElement>('[data-mutation-lab-close]')?.addEventListener('click', () => {
+      panel.hidden = true
+      this.renderer.domElement.focus()
+    })
+    this.mutationLab = panel
+    this.container.append(panel)
+  }
+
+  /** Debug-only presentation check. It never reaches combat state, health, range or a target. */
+  private previewMutationFeedback() {
+    // Long enough to inspect, short enough that a drawn rending mark still
+    // reads as an attack instead of a slowly appearing decal.
+    this.feedbackDurationMultiplier = 2.6
+    window.setTimeout(() => { this.feedbackDurationMultiplier = 1 }, 1600)
+    const x = this.playerRoot.position.x
+    const z = this.playerRoot.position.z
+    const ground = this.map.height(x, z)
+    const forward = new THREE.Vector3(Math.cos(this.lastFacing), 0, -Math.sin(this.lastFacing))
+    const at = new THREE.Vector3(x, ground + 0.7, z)
+    const reaction = this.mutationState.taken
+      .map((id) => gloamwoodMutationExpression(id)?.reaction)
+      .find((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+    if (reaction === 'double-slash') {
+      const target = this.livePrey()
+        .filter((prey) => prey.phase !== 'dead')
+        .sort((left, right) => (
+          Math.hypot(left.x - x, left.z - z) - Math.hypot(right.x - x, right.z - z)
+        ))[0]
+      const close = target && Math.hypot(target.x - x, target.z - z) <= 5.5
+      if (target && close) {
+        const targetDirection = new THREE.Vector3(target.x - x, 0, target.z - z)
+        if (targetDirection.lengthSq() > 0.0001) targetDirection.normalize()
+        else targetDirection.copy(forward)
+        const targetY = this.map.height(target.x, target.z) + (target.kind === 'shell' ? 1.28 : 0.94)
+        const surfaceContact = new THREE.Vector3(target.x, targetY, target.z)
+          .addScaledVector(targetDirection, -gloamwoodPreyBodyRadius(target) * 0.48)
+        this.spawnRendingClaws(surfaceContact, targetDirection)
+      } else this.spawnRendingClaws(at, forward)
+    } else if (reaction === 'suppression-ring') {
+      this.spawnTailSuppressionFeedback()
+    } else if (reaction === 'armour-shards') {
+      this.spawnCarapaceFeedback()
+    } else if (reaction === 'feeding-pulse') {
+      this.spawnFeedingFeedback(Math.max(1, this.killHeal || 8))
+    } else if (reaction === 'slow-gait') {
+      if (this.sporeHaze) this.sporeHaze.previewBoost = 1
+      this.spawnMutationFxBurst('spore-preview')
+    } else if (reaction === 'moult-burst') {
+      this.spawnMoultFeedback()
+    } else if (reaction === 'metabolic-pulse') {
+      this.spawnMetabolicFeedback('preview')
+    } else {
+      this.spawnFeedbackSprite('glow', at, 0xf6ca72, [0.18, 0.18], [0.86, 0.86], 0.34, new THREE.Vector3(0, 0.3, 0), 0, 0, 0.7)
+    }
+    this.combatMessage = 'Debug effect preview — no damage'
+  }
+
   private createOrientationGate() {
     const gate = document.createElement('section')
     gate.className = 'gloamwood-orientation-gate'
@@ -5051,7 +6502,7 @@ class Gloamwood3DHunt {
    * @param amount authoritative effective damage, already decided
    * @param tone   presentation only; picks colour and weight, never the number
    */
-  private spawnDamageNumber(world: THREE.Vector3, amount: number, tone: 'hit' | 'weakness' | 'blocked' | 'kill' | 'player') {
+  private spawnDamageNumber(world: THREE.Vector3, amount: number, tone: 'hit' | 'weakness' | 'blocked' | 'kill' | 'player' | 'heal') {
     if (!this.damageLayer) return
     const element = document.createElement('span')
     element.className = 'g3d-damage-number'
@@ -5324,6 +6775,8 @@ class Gloamwood3DHunt {
   private playSound(event: GloamwoodSoundEvent) {
     this.lastSoundEvent = event
     this.soundEventCount += 1
+    this.recentSoundEvents.push(event)
+    if (this.recentSoundEvents.length > 16) this.recentSoundEvents.shift()
     this.audio.play(event)
   }
 
@@ -5661,6 +7114,7 @@ class Gloamwood3DHunt {
         seed: this.evolutionState.seed,
         refreshesRemaining: this.evolutionState.refreshesRemaining,
         candidateIds: this.evolutionState.candidates.map((candidate) => candidate.id),
+        mutationIds: [...this.mutationState.taken],
         selectedId: this.evolutionState.selected?.id ?? null,
         selectedFamily: this.evolutionState.selected?.family ?? null,
         modifiers: this.evolutionState.selected?.modifiers ?? null,
@@ -5687,7 +7141,19 @@ class Gloamwood3DHunt {
         return { phase: step.phase, step: step.step, totalSteps: step.totalSteps, title: step.title }
       })(),
       settings: { paused: this.paused, ...this.feedbackSettings },
-      audio: { lastEvent: this.lastSoundEvent, eventCount: this.soundEventCount },
+      audio: {
+        ...this.audio.snapshot(),
+        lastEvent: this.lastSoundEvent,
+        eventCount: this.soundEventCount,
+        recentEvents: [...this.recentSoundEvents],
+      },
+      visualFeedback: {
+        activeSprites: this.feedbackSprites.length,
+        activeParticles: this.rendingParticles.length + this.rendingSurfaces.length + this.mutationParticles.length,
+        activeDecals: 0,
+        sporeHaze: this.sporeHaze?.patches.length ?? 0,
+        slowAuraRadius: this.mutationEffects.slowAuraRadius ?? 0,
+      },
       input: { bindings: { ...this.inputBindings }, rebinding: this.rebindingAction },
       performance: {
         ...performanceSnapshot,

@@ -22,6 +22,8 @@ export type GloamwoodSessionEvent =
   | { t: number; kind: 'damage'; to: 'player' | 'enemy'; amount: number }
   | { t: number; kind: 'death'; who: 'player' | 'enemy'; livesLeft?: number }
   | { t: number; kind: 'mutation'; id: string; phase: string }
+  /** A mutation produced a visible, confirmed gameplay result. */
+  | { t: number; kind: 'mutation-effect'; id: string; effect: string }
   | { t: number; kind: 'sample'; phase: string; arenaOffset: number; health: number }
 
 export interface GloamwoodSessionFinding {
@@ -37,6 +39,8 @@ export interface GloamwoodSessionReport {
   counts: Record<string, number>
   /** Hits and misses per attack action, which is where reach errors show up. */
   accuracy: Record<string, { hit: number; miss: number }>
+  /** Whether each selected mutation was actually seen paying out in the run. */
+  mutationUse: Record<string, { selected: number; confirmed: number; effects: Record<string, number> }>
   findings: GloamwoodSessionFinding[]
 }
 
@@ -50,6 +54,7 @@ export function summariseGloamwoodSession(
   const counts: Record<string, number> = {}
   const accuracy: Record<string, { hit: number; miss: number }> = {}
   const findings: GloamwoodSessionFinding[] = []
+  const mutationUse: GloamwoodSessionReport['mutationUse'] = {}
   const first = events[0]?.t ?? 0
   const last = events[events.length - 1]?.t ?? 0
 
@@ -95,6 +100,17 @@ export function summariseGloamwoodSession(
     if (event.kind === 'mutation' && (event.phase === 'guardian' || event.phase === 'boss')) {
       findings.push({ code: 'choice-during-fight', detail: `took ${event.id} during ${event.phase}`, at: event.t })
     }
+    if (event.kind === 'mutation') {
+      const entry = mutationUse[event.id] ?? { selected: 0, confirmed: 0, effects: {} }
+      entry.selected += 1
+      mutationUse[event.id] = entry
+    }
+    if (event.kind === 'mutation-effect') {
+      const entry = mutationUse[event.id] ?? { selected: 0, confirmed: 0, effects: {} }
+      entry.confirmed += 1
+      entry.effects[event.effect] = (entry.effects[event.effect] ?? 0) + 1
+      mutationUse[event.id] = entry
+    }
   }
 
   // An encounter that ended without the enemy ever attacking is the strongest
@@ -124,6 +140,7 @@ export function summariseGloamwoodSession(
     events: events.length,
     counts,
     accuracy,
+    mutationUse,
     findings: dedupeFindings(findings),
   }
 }

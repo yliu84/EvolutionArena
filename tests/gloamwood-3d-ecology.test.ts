@@ -30,10 +30,29 @@ import {
   gloamwoodPreyStopDistance,
   resolveGloamwoodPlayerPreyCollision,
   resolveGloamwoodPreyAroundPlayer,
+  suppressGloamwoodNestPreyAround,
   stepGloamwoodNest,
 } from '../src/gloamwood-3d-ecology'
 
 describe('Gloamwood first ecology nest', () => {
+  it('tail suppression moves nearby enemies without granting damage, genes or kills', () => {
+    let state = stepGloamwoodNest(createGloamwoodNestState(), 0.05, { x: GLOAMWOOD_NEST.centerX, z: GLOAMWOOD_NEST.centerZ, alive: true }).state
+    const [direct, nearby] = state.prey
+    state = {
+      ...state,
+      prey: [
+        { ...direct, id: 'direct', x: 2, z: 0 },
+        { ...nearby, id: 'nearby', x: 1.4, z: 0 },
+      ],
+    }
+    const result = suppressGloamwoodNestPreyAround(state, { x: 0, z: 0 }, 2, 1.15, 'direct')
+    expect(result.prey.find((prey) => prey.id === 'direct')?.x).toBe(2)
+    expect(result.prey.find((prey) => prey.id === 'nearby')).toMatchObject({ phase: 'stunned', attackResolved: false })
+    expect(result.prey.find((prey) => prey.id === 'nearby')?.x).toBeGreaterThan(1.4)
+    expect(result.kills).toBe(state.kills)
+    expect(result.biomass).toBe(state.biomass)
+  })
+
   it('stays dormant until approached, then starts a bounded three-wave encounter', () => {
     let state = createGloamwoodNestState()
     state = stepGloamwoodNest(state, 0.05, { x: -6, z: 3, alive: true }).state

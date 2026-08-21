@@ -174,6 +174,15 @@ describe('Stacking', () => {
     expect(effects.reviveFraction).toBeCloseTo(0.3)
   })
 
+  it('keeps visible body-combat rules in the same accumulated authority', () => {
+    const effects = accumulateGloamwoodMutationEffects(['fang-thin-hide', 'shell-quake', 'shell-symbiosis', 'neutral-gluttony'])
+    expect(effects.frontHitKnockback).toBeGreaterThan(0)
+    expect(effects.tailSwipeRangeMultiplier).toBeGreaterThan(1)
+    expect(effects.tailSwipeCleaveRadius).toBeGreaterThan(0)
+    expect(effects.incomingDamageReduction).toBeGreaterThan(0)
+    expect(effects.killHeal).toBeGreaterThan(0)
+  })
+
   it('is empty for a run that has taken nothing', () => {
     expect(accumulateGloamwoodMutationEffects([])).toEqual({})
   })

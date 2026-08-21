@@ -75,6 +75,19 @@ describe('Reading a recording back', () => {
     expect(summariseGloamwoodSession(events, ARENA).findings.map((f) => f.code)).toContain('choice-during-fight')
   })
 
+  it('records whether a selected body mutation ever visibly paid out', () => {
+    const report = summariseGloamwoodSession([
+      { t: 1, kind: 'mutation', id: 'fang-thin-hide', phase: 'hunt' },
+      { t: 4, kind: 'mutation-effect', id: 'fang-thin-hide', effect: 'rending-hit' },
+      { t: 6, kind: 'mutation-effect', id: 'fang-thin-hide', effect: 'rending-hit' },
+    ], ARENA)
+    expect(report.mutationUse['fang-thin-hide']).toEqual({
+      selected: 1,
+      confirmed: 2,
+      effects: { 'rending-hit': 2 },
+    })
+  })
+
   it('reports each distinct problem once, not once per frame', () => {
     const events: GloamwoodSessionEvent[] = [
       { t: 0, kind: 'phase', phase: 'boss' },
