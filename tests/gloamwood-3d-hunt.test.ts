@@ -151,3 +151,31 @@ describe('Shell attack chain', () => {
     expect(presentation).toContain("primaryCombo: ['Bite', 'Pounce', 'TailSwipe']")
   })
 })
+
+describe('Goal 8 audio event boundaries', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+
+  it('keeps swing, confirmed contact and landing on separate presentation hooks', () => {
+    expect(source).toContain("this.playSound(action === 'Bite' ? 'attack-bite'")
+    expect(source).toContain("damage.killed ? 'kill' : action === 'Pounce' || action === 'TailSwipe' ? 'hit-heavy' : 'hit-light'")
+    expect(source).toContain("this.playSound('land')")
+  })
+
+  it('does not reuse player swing or impact cues for enemy damage and boss FX', () => {
+    expect(source).toContain("this.playSound('enemy-hit-player')")
+    expect(source).not.toContain("this.playSound('player-hit')")
+    expect(source).not.toContain("this.playSound('hit-heavy')\n    }")
+  })
+
+  it('resumes an already-unlocked audio context after mobile lifecycle changes', () => {
+    expect(source).toContain("document.addEventListener('visibilitychange', this.visibilityChanged)")
+    expect(source).toContain("document.removeEventListener('visibilitychange', this.visibilityChanged)")
+    expect(source).toContain('this.audio.resume()')
+  })
+
+  it('announces elite and boss arrivals without changing their authority', () => {
+    expect(source).toContain("creature.tier === 'boss' ? 'boss-intro' : 'elite-intro'")
+    expect(source).toContain("this.playSound('boss-intro')")
+    expect(source).toContain("this.playSound('elite-intro')")
+  })
+})

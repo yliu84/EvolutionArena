@@ -680,6 +680,8 @@ class Gloamwood3DHunt {
    * impact never registers as new and the screen never shakes.
    */
   private readonly bossFxPhase = new Map<string, GloamwoodNestPrey['phase']>()
+  /** Each Elite/Boss gets one arrival sting when authority first wakes it. */
+  private readonly announcedThreats = new Set<string>()
   private snapCameraNextFrame = false
   /**
    * Where the map decided the player comes back, held until they do.
@@ -904,7 +906,7 @@ class Gloamwood3DHunt {
     } catch {
       this.inputBindings = { ...DEFAULT_GLOAMWOOD_INPUT_BINDINGS }
     }
-    this.audio = new GloamwoodAudioBus(this.feedbackSettings.volume)
+    this.audio = new GloamwoodAudioBus(this.feedbackSettings.volume, this.feedbackSettings.muted)
     const params = new URLSearchParams(window.location.search)
     this.evolutionState = createGloamwoodEvolutionState(params.get('evolutionSeed') ?? 'gloamwood-first-run')
     // Same seed as the form evolution: one seed reproduces a whole run, which is
@@ -1006,6 +1008,7 @@ class Gloamwood3DHunt {
     document.removeEventListener('gesturestart', this.suppressGesture)
     document.removeEventListener('gesturechange', this.suppressGesture)
     document.removeEventListener('gestureend', this.suppressGesture)
+    document.removeEventListener('visibilitychange', this.visibilityChanged)
     document.removeEventListener('fullscreenchange', this.fullscreenChanged)
     this.scene.traverse((node) => {
       if (!(node instanceof THREE.Mesh)) return
@@ -1858,6 +1861,7 @@ class Gloamwood3DHunt {
     document.addEventListener('gesturestart', this.suppressGesture)
     document.addEventListener('gesturechange', this.suppressGesture)
     document.addEventListener('gestureend', this.suppressGesture)
+    document.addEventListener('visibilitychange', this.visibilityChanged)
     this.renderer.domElement.focus()
   }
 
@@ -1866,8 +1870,13 @@ class Gloamwood3DHunt {
   }
 
   private readonly fullscreenChanged = () => {
+    this.audio.resume()
     this.updateFullscreenToggle()
     this.resize()
+  }
+
+  private readonly visibilityChanged = () => {
+    if (document.visibilityState === 'visible') this.audio.resume()
   }
 
   private readonly resize = () => {
@@ -2652,6 +2661,7 @@ class Gloamwood3DHunt {
     // separation here without that history treated every overlap as the prey's
     // fault and put the plough behaviour straight back.
     this.nestState = frame.state
+    this.announceAwakenedThreats()
     if (this.runPhase === 'guardian') {
       this.nestState = {
         ...this.nestState,
@@ -2708,7 +2718,7 @@ class Gloamwood3DHunt {
         const boss = enraged ? gloamwoodValleyBossSpecFor(enraged as GloamwoodValleyCreature) : undefined
         this.combatMessage = t('hud.msg.bossEnraged', { name: boss?.displayName ?? '' })
         this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.7)
-        this.playSound('hit-heavy')
+        this.playSound('boss-phase')
         continue
       }
       if (event.type === 'valley-nest-entered') {
@@ -2748,7 +2758,7 @@ class Gloamwood3DHunt {
       })
       const receivedDamage = this.takePlayerDamage(event.damage)
       if (this.playerCombat.health < previousHealth) {
-        this.playSound('player-hit')
+        this.playSound('enemy-hit-player')
         this.lockedPreyId = assistGloamwoodAttackerLock(this.nestState.prey, this.lockedPreyId, attacker.id)
         const dx = this.playerRoot.position.x - attacker.x
         const dz = this.playerRoot.position.z - attacker.z
@@ -2798,6 +2808,18 @@ class Gloamwood3DHunt {
     return this.runPhase === 'boss' && this.bossState.state !== 'dormant' && this.bossState.state !== 'dead'
   }
 
+  /** Presentation observes `awake`; it never decides detection or encounter state. */
+  private announceAwakenedThreats() {
+    if (this.map.id !== 'valley') return
+    for (const prey of this.nestState.prey) {
+      const creature = prey as GloamwoodValleyCreature
+      if (!creature.awake || creature.phase === 'dead' || this.announcedThreats.has(creature.id)) continue
+      if (creature.tier !== 'elite' && creature.tier !== 'boss') continue
+      this.announcedThreats.add(creature.id)
+      this.playSound(creature.tier === 'boss' ? 'boss-intro' : 'elite-intro')
+    }
+  }
+
   private updateBoss(delta: number) {
     const frame = stepGloamwoodBoss(this.bossState, delta, {
       x: this.playerRoot.position.x,
@@ -2824,7 +2846,7 @@ class Gloamwood3DHunt {
       })
       const receivedDamage = this.takePlayerDamage(event.damage)
       if (this.playerCombat.health >= previousHealth) continue
-      this.playSound('player-hit')
+      this.playSound('enemy-hit-player')
       const dx = this.playerRoot.position.x - this.bossState.x
       const dz = this.playerRoot.position.z - this.bossState.z
       const inverse = 1 / Math.max(0.001, Math.hypot(dx, dz))
@@ -3315,7 +3337,6 @@ class Gloamwood3DHunt {
     const trauma = this.bossFx.update(entries, delta)
     if (trauma > 0) {
       this.cameraTrauma = Math.min(1, this.cameraTrauma + trauma)
-      this.playSound('hit-heavy')
     }
   }
 
@@ -3527,7 +3548,7 @@ class Gloamwood3DHunt {
           // The authority decides. Presentation has only ever drawn where.
           if (gloamwoodEliteBurstHits(entry.burst, this.playerRoot.position.x, this.playerRoot.position.z)) {
             this.takePlayerDamage(entry.burst.damage)
-            this.playSound('player-hit')
+            this.playSound('enemy-hit-player')
           }
           this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.5)
         }
@@ -3756,6 +3777,7 @@ class Gloamwood3DHunt {
     if (leapBite && leapBite.progress >= CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.landingProgress && !this.leapBiteLandingResolved) {
       this.leapBiteLandingResolved = true
       this.leapBiteLandingEvents += 1
+      this.playSound('land')
       this.spawnFootstepDust(-1)
       this.spawnFootstepDust(1)
       this.locomotionImpact = 1
@@ -4375,6 +4397,7 @@ class Gloamwood3DHunt {
     }
     this.target.copy(this.playerRoot.position)
     this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.56)
+    this.playSound('elite-intro')
     this.combatMessage = t('hud.msg.guardianRises', { name: t('creature.guardian') })
     this.syncPreyVisuals()
   }
@@ -4396,6 +4419,7 @@ class Gloamwood3DHunt {
     this.attackState = createFormalHuntBasicAttackState()
     this.syncBossVisual()
     this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.72)
+    this.playSound('boss-intro')
     this.combatMessage = t('hud.msg.bossRises', { name: t('creature.boss') })
   }
 
@@ -4433,6 +4457,7 @@ class Gloamwood3DHunt {
       this.completeRunDefeat(reason)
       return true
     }
+    this.playSound('player-death')
     this.combatMessage = t('hud.msg.livesLeft', { count: this.livesRemaining })
     // Asked for rather than assumed. Dying used to put the player back on their
     // feet somewhere else with a line of HUD text, which is easy to miss in the
@@ -4666,6 +4691,7 @@ class Gloamwood3DHunt {
     // Already launched from a home-screen icon: there is no browser chrome to hide.
     if (this.fullscreenToggle && gloamwoodStandaloneDisplay()) this.fullscreenToggle.hidden = true
     this.fullscreenToggle?.addEventListener('click', () => {
+      this.audio.unlock()
       if (document.fullscreenEnabled) void this.toggleFullscreenPresentation()
       else this.toggleHomeScreenTip()
     })
@@ -5118,6 +5144,7 @@ class Gloamwood3DHunt {
       `<p>${t('settings.body')}</p>`,
       `<button type="button" data-g3d-setting="shake">${t('settings.shakeLabel', { state: t('toggle.on') })}</button>`,
       `<button type="button" data-g3d-setting="flash">${t('settings.flashLabel', { state: t('toggle.on') })}</button>`,
+      `<button type="button" data-g3d-setting="mute">${t('settings.muteLabel', { state: t('toggle.off') })}</button>`,
       `<button type="button" data-g3d-setting="volume">${t('settings.volumeLabel', { value: 60 })}</button>`,
       `<button type="button" data-g3d-setting="language">${t('settings.language')}</button>`,
       `<button type="button" data-g3d-input-open>${t('settings.openInput')}</button>`,
@@ -5206,8 +5233,10 @@ class Gloamwood3DHunt {
     if (setting === 'language') return this.toggleLocale()
     if (setting === 'shake') this.feedbackSettings.shake = !this.feedbackSettings.shake
     else if (setting === 'flash') this.feedbackSettings.flash = !this.feedbackSettings.flash
+    else if (setting === 'mute') this.feedbackSettings.muted = !this.feedbackSettings.muted
     else if (setting === 'volume') this.feedbackSettings.volume = cycleFeedbackVolume(this.feedbackSettings.volume)
     this.audio.setVolume(this.feedbackSettings.volume)
+    this.audio.setMuted(this.feedbackSettings.muted)
     try {
       localStorage.setItem(PLAYER_FEEDBACK_SETTINGS_KEY, JSON.stringify(this.feedbackSettings))
     } catch {
@@ -5220,9 +5249,11 @@ class Gloamwood3DHunt {
     if (!this.settingsPanel) return
     const shake = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="shake"]')
     const flash = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="flash"]')
+    const mute = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="mute"]')
     const volume = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="volume"]')
     if (shake) shake.textContent = t('settings.shakeLabel', { state: this.feedbackSettings.shake ? t('toggle.on') : t('toggle.off') })
     if (flash) flash.textContent = t('settings.flashLabel', { state: this.feedbackSettings.flash ? t('toggle.on') : t('toggle.off') })
+    if (mute) mute.textContent = t('settings.muteLabel', { state: this.feedbackSettings.muted ? t('toggle.on') : t('toggle.off') })
     if (volume) volume.textContent = t('settings.volumeLabel', { value: Math.round(this.feedbackSettings.volume * 100) })
     // Labelled in its own language, so it reads as the language you would get.
     const language = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="language"]')

@@ -18,6 +18,8 @@ describe('Gloamwood mobile HUD', () => {
     expect(css).toContain('env(safe-area-inset-left)')
     expect(css).toContain('env(safe-area-inset-right)')
     expect(css).toMatch(/g3d-actions button\.primary[^}]*82px/s)
+    expect(css).toMatch(/max-height:\s*520px[\s\S]*\.gloamwood-settings-panel button\s*{[^}]*min-height:\s*44px/s)
+    expect(css).toMatch(/data-g3d-settings-feedback[^}]*grid-template-columns:\s*repeat\(2,/s)
   })
 
   it('offers a portrait rotation gate without assuming orientation lock support', () => {

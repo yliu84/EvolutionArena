@@ -7,6 +7,7 @@ export interface CombatFeedbackSettings {
   shake: boolean
   flash: boolean
   volume: FeedbackVolume
+  muted: boolean
 }
 
 export interface PlayerHitFeedbackProfile {
@@ -25,6 +26,7 @@ export const DEFAULT_COMBAT_FEEDBACK_SETTINGS: CombatFeedbackSettings = {
   shake: true,
   flash: true,
   volume: 0.6,
+  muted: false,
 }
 
 const HIT_KIND_PROFILE: Record<IncomingHitKind, Omit<PlayerHitFeedbackProfile, 'kind' | 'lethal'>> = {
@@ -83,5 +85,6 @@ export function normalizeCombatFeedbackSettings(value: unknown): CombatFeedbackS
     shake: typeof candidate.shake === 'boolean' ? candidate.shake : DEFAULT_COMBAT_FEEDBACK_SETTINGS.shake,
     flash: typeof candidate.flash === 'boolean' ? candidate.flash : DEFAULT_COMBAT_FEEDBACK_SETTINGS.flash,
     volume,
+    muted: typeof candidate.muted === 'boolean' ? candidate.muted : DEFAULT_COMBAT_FEEDBACK_SETTINGS.muted,
   }
 }

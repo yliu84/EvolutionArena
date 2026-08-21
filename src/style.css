@@ -1617,10 +1617,17 @@ body.is-gloamwood-3d * {
 @media (max-height: 520px) {
   .gloamwood-settings-panel { place-items: start center; overflow: auto; padding: 8px; }
   .gloamwood-settings-panel > div { padding: 14px 18px; }
+  .gloamwood-settings-panel [data-g3d-settings-feedback] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 6px; }
+  .gloamwood-settings-panel [data-g3d-settings-feedback] > span,
+  .gloamwood-settings-panel [data-g3d-settings-feedback] > h2,
+  .gloamwood-settings-panel [data-g3d-settings-feedback] > p,
+  .gloamwood-settings-panel [data-g3d-settings-feedback] > .primary,
+  .gloamwood-settings-panel [data-g3d-settings-feedback] > output,
+  .gloamwood-settings-panel [data-g3d-settings-feedback] > small { grid-column: 1 / -1; }
   .gloamwood-settings-panel h2 { margin: 3px 0; font-size: 18px; }
   .gloamwood-settings-panel p { margin-bottom: 6px; font-size: 9px; }
-  .gloamwood-settings-panel button { min-height: 38px; margin-top: 4px; }
-  .gloamwood-settings-panel button.primary { margin-top: 7px; }
+  .gloamwood-settings-panel button { min-height: 44px; margin-top: 0; }
+  .gloamwood-settings-panel button.primary { margin-top: 3px; }
   .gloamwood-settings-panel small { margin-top: 6px; font-size: 8px; }
   .gloamwood-settings-panel .g3d-performance-readout { margin-top: 5px; padding: 4px 5px; font-size: 7px; }
   .g3d-input-bindings { gap: 4px; }

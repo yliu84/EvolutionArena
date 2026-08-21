@@ -346,6 +346,7 @@ const STRINGS = {
   'hud.settingsKey': { en: 'Settings · {key}', zh: '体验设置 · {key}' },
   'settings.shakeLabel': { en: 'Camera shake: {state}', zh: '镜头震动：{state}' },
   'settings.flashLabel': { en: 'Hit flash: {state}', zh: '受击闪光：{state}' },
+  'settings.muteLabel': { en: 'Mute all audio: {state}', zh: '全部静音：{state}' },
   'settings.volumeLabel': { en: 'Volume: {value}%', zh: '音效音量：{value}%' },
   'settings.summaryDyn': { en: 'Keyboard: {pause} pause/resume · move {move} · lock {lock} · attack {attack}', zh: '键盘：{pause} 暂停/继续 · 移动 {move} · 锁定 {lock} · 普攻 {attack}' },
   'bind.capturing': { en: '{action}: press a new key…', zh: '{action}：请按新按键…' },
