@@ -5883,6 +5883,10 @@ class Gloamwood3DHunt {
     this.paused = false
     this.snapCameraNextFrame = true
     this.renderer.domElement.focus()
+    // The performance pass deliberately stops rAF while a death dialog is
+    // open. A revive returns the simulation to the respawn countdown, so it
+    // must explicitly restart that loop just like Settings and evolution do.
+    this.requestNextFrame(true)
   }
 
   /** Name of the region the player is standing in, for the death prompt. */

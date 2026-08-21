@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import {
   GLOAMWOOD_RENDER_QUALITY,
   resolveGloamwoodRenderPixelRatio,
@@ -26,5 +27,13 @@ describe('Gloamwood render quality', () => {
     expect(shouldGloamwoodRenderContinuously({ paused: false, evolutionChoosing: true, mutationOffering: false, terminal: false })).toBe(false)
     expect(shouldGloamwoodRenderContinuously({ paused: false, evolutionChoosing: false, mutationOffering: true, terminal: false })).toBe(false)
     expect(shouldGloamwoodRenderContinuously({ paused: false, evolutionChoosing: false, mutationOffering: false, terminal: true })).toBe(false)
+  })
+
+  it('restarts the simulation after a player revives from the frozen death prompt', () => {
+    const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+    const dismissDeathPrompt = source.match(/private dismissDeathPrompt\(\) \{([\s\S]*?)\n  \}/)?.[1] ?? ''
+
+    expect(dismissDeathPrompt).toContain('this.paused = false')
+    expect(dismissDeathPrompt).toContain('this.requestNextFrame(true)')
   })
 })

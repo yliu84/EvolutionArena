@@ -412,7 +412,10 @@ backdrop once then stop the continuous WebGL loop; a resume or selection starts
 it again. Local 1291×755 browser evidence recorded 63.2 FPS / 19.7 ms p95 at
 1.35 pixel ratio, 130 draw calls, 1.098M triangles and 105.7 MB JS heap; the
 frame counter remained unchanged for 1.2 seconds while Settings was open and
-resumed afterward. The current full suite is 106 files / 980 tests and the
+resumed afterward. A post-release review found that the death prompt's Revive
+button also needed that explicit wake-up; it now restarts the loop, and a real
+browser recovery restored Health 0→100 while the frame counter advanced with no
+console error. The current full suite is 106 files / 981 tests and the
 production build passes. This is a measurable desktop reduction, not yet a
 replacement for the outstanding real midrange-mobile 30-FPS test.
 
