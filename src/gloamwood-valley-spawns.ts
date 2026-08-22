@@ -3,6 +3,7 @@ import { GLOAMWOOD_AGGRO, type GloamwoodCreatureRole } from './gloamwood-creatur
 import { GLOAMWOOD_VALLEY_BRANCHES, gloamwoodValleyBranchHalfWidth } from './gloamwood-valley-branches'
 import { GLOAMWOOD_PREY_BODY_RADII } from './gloamwood-3d-ecology'
 import { gloamwoodModelledPreyFor } from './gloamwood-modelled-prey'
+import { gloamwoodValleyEcologyPacks, resolveGloamwoodValleyEcology } from './gloamwood-valley-ecology'
 import {
   GLOAMWOOD_VALLEY,
   GLOAMWOOD_VALLEY_LENGTH,
@@ -143,11 +144,13 @@ function gloamwoodValleyModelledRadius(
     ?? GLOAMWOOD_PREY_BODY_RADII[kind]
 }
 
-export function planGloamwoodValleySpawns(seed: number): GloamwoodValleySpawn[] {
+export function planGloamwoodValleySpawns(seed: number, ecologyRunSeed = 'valley-run'): GloamwoodValleySpawn[] {
   const random = seededRandom(seed)
+  const ecology = resolveGloamwoodValleyEcology(ecologyRunSeed)
   const spawns: GloamwoodValleySpawn[] = []
 
   for (const plan of GLOAMWOOD_VALLEY_SPAWN_PLAN) {
+    const packs = gloamwoodValleyEcologyPacks(ecology, plan.region, plan.packs)
     const region = GLOAMWOOD_VALLEY.regions.find((entry) => entry.id === plan.region)
     if (!region) continue
     // Kept clear of both gates and of the boss bowl. A pack standing in a choke
@@ -161,7 +164,7 @@ export function planGloamwoodValleySpawns(seed: number): GloamwoodValleySpawn[] 
     const free = (s: number) => !blocked.some(([from, to]) => s >= from && s <= to)
 
     const slots: number[] = []
-    const wanted = plan.packs.length + 1
+    const wanted = packs.length + 1
     const step = (usable.to - usable.from) / wanted
     // Route distance two anchors must keep. The test asserts the world-space
     // version of this; encoding it here is what makes it true rather than
@@ -198,9 +201,9 @@ export function planGloamwoodValleySpawns(seed: number): GloamwoodValleySpawn[] 
     // The nest takes the widest slot it can, because it is the one fight that
     // needs an arena rather than a stretch of road.
     const nestSlot = slots.reduce((best, s) => gloamwoodValleyHalfWidth(s) > gloamwoodValleyHalfWidth(best) ? s : best, slots[0])
-    const packSlots = slots.filter((s) => s !== nestSlot).slice(0, plan.packs.length)
+    const packSlots = slots.filter((s) => s !== nestSlot).slice(0, packs.length)
 
-    for (const [index, members] of plan.packs.entries()) {
+    for (const [index, members] of packs.entries()) {
       const anchorS = packSlots[index] ?? slots[index]
       const group = `${plan.region}-pack-${index + 1}`
       for (const [memberIndex, kind] of members.entries()) {

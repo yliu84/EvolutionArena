@@ -6,6 +6,7 @@ import {
   gloamwoodValleyWeatherAtmosphere,
   resolveGloamwoodValleyWeather,
 } from '../src/gloamwood-valley-weather'
+import { resolveGloamwoodWeatherRunSeed } from '../src/gloamwood-run-weather'
 
 describe('River Valley presentation weather', () => {
   it('accepts explicit review weather while keeping seeded selection reproducible', () => {
@@ -34,5 +35,21 @@ describe('River Valley presentation weather', () => {
 
     expect(gloamwoodValleyWeatherAtmosphere(shallows, mist).fogDensity)
       .toBeLessThan(gloamwoodValleyWeatherAtmosphere(headwater, dawn).fogDensity)
+  })
+
+  it('uses a fresh presentation seed for each unseeded run while preserving reproducible review seeds', () => {
+    expect(resolveGloamwoodWeatherRunSeed('review-7', () => 'unused')).toBe('weather-seed:review-7')
+    expect(resolveGloamwoodWeatherRunSeed(null, () => 'run-a')).toBe('weather-run:run-a')
+    expect(resolveGloamwoodWeatherRunSeed(null, () => 'run-b')).toBe('weather-run:run-b')
+  })
+
+  it('can produce all three weather moods across distinct run seeds', () => {
+    const moods = new Set(
+      Array.from({ length: 36 }, (_, index) => resolveGloamwoodValleyWeather(
+        undefined,
+        resolveGloamwoodWeatherRunSeed(null, () => `run-${index}`),
+      ).id),
+    )
+    expect(moods).toEqual(new Set(['dawn', 'mist', 'rain']))
   })
 })

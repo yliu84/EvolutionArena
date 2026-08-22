@@ -91,7 +91,7 @@ export const GLOAMWOOD_VALLEY_WANDER = {
 } as const
 
 export function createGloamwoodValleyCreatures(seed: number, runSeed = 'valley-run'): GloamwoodValleyCreature[] {
-  const spawns = planGloamwoodValleySpawns(seed)
+  const spawns = planGloamwoodValleySpawns(seed, runSeed)
   // Dealt across the whole set, not rolled one at a time. Rolled, the six
   // elites came out as three affixes doubled with two of the five never
   // appearing - and the tier exists so that the optional fight at the end of a

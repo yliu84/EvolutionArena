@@ -1154,7 +1154,29 @@ body.is-gloamwood-3d * {
 .g3d-boss-plate[data-phase="2"] > i em { background: linear-gradient(90deg, #c32f31, #ff7948 62%, #ffd782); }
 .g3d-boss-plate[data-rhythm="evade"] > b { color: #ff9c6b; text-shadow: 0 0 10px rgba(244, 80, 53, .48); }
 .g3d-boss-plate[data-rhythm="counter"] > b { color: #d9f0a5; text-shadow: 0 0 10px rgba(156, 221, 102, .4); }
+.g3d-valley-radar { position: relative; box-sizing: border-box; flex: none; width: 106px; padding: 6px; border: 1px solid rgba(187, 207, 163, .3); border-radius: 50%; color: #dbe9cc; background: radial-gradient(circle at 43% 42%, rgba(30, 71, 49, .5), rgba(5, 18, 14, .54)); box-shadow: inset 0 0 22px rgba(27, 73, 51, .22); backdrop-filter: blur(5px); pointer-events: none; }
+.g3d-valley-radar svg { display: block; width: 100%; height: auto; }
+.g3d-radar-range { fill: none; stroke: rgba(198, 226, 188, .12); stroke-width: .6; }
+.g3d-radar-range-far { stroke-dasharray: 1.6 2.1; }
+.g3d-radar-forward { fill: rgba(228, 239, 196, .72); }
+.g3d-radar-region { fill: none; stroke-width: 13; stroke-linecap: round; stroke-linejoin: round; opacity: .48; }
+.g3d-radar-region-shallows { stroke: #557b64; }
+.g3d-radar-region-gorge { stroke: #687653; }
+.g3d-radar-region-headwater { stroke: #546e66; }
+.g3d-radar-river { fill: none; stroke: rgba(106, 203, 194, .8); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.g3d-radar-branch { fill: none; stroke: rgba(183, 220, 164, .76); stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 2 1.4; }
+.g3d-radar-branch-node { fill: #a6d79f; stroke: #274b38; stroke-width: .65; }
+.g3d-radar-gate { fill: none; stroke: rgba(225, 194, 107, .7); stroke-width: 1.15; stroke-linecap: round; }
+.g3d-radar-route { fill: none; stroke: rgba(216, 232, 205, .73); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.g3d-radar-player { fill: #f7f2cd; stroke: #486d57; stroke-width: 1.2; }
+.g3d-radar-arrow { fill: #fff4c3; stroke: #283f31; stroke-width: .8; }
+.g3d-radar-objective { fill: #f1c468; stroke: #fff0af; stroke-width: 1.1; }
+.g3d-radar-objective[data-offscreen="true"] { fill: #edb85d; stroke-width: 1.5; }
+.g3d-radar-elite { fill: #8ae1b5; stroke: #e0ffe3; stroke-width: 1; }
+.g3d-valley-radar small { position: absolute; right: 50%; bottom: -11px; max-width: 76px; overflow: hidden; padding: 1px 4px; border-radius: 999px; color: #f0f4d8; background: rgba(4, 17, 12, .72); font-size: 6px; font-weight: 800; letter-spacing: .08em; text-overflow: ellipsis; text-transform: uppercase; transform: translateX(50%); white-space: nowrap; }
 @media (max-width: 900px) and (orientation: landscape), (max-height: 520px) and (orientation: landscape) {
+  .g3d-valley-radar { width: 74px; padding: 5px; opacity: .86; }
+  .g3d-valley-radar small { bottom: 4px; max-width: 62px; font-size: 5px; }
   .g3d-target-bar { width: 92px; padding-bottom: 9px; }
   .g3d-target-bar b { font-size: 9px; }
   .g3d-target-bar i { height: 5px; }
@@ -1204,12 +1226,20 @@ body.is-gloamwood-3d * {
 /* How the run is going, read between fights. Sized to its contents so it never
    grows into the view. */
 .g3d-hud-right {
-  display: grid;
-  gap: 8px;
-  justify-items: end;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
   width: max-content;
   max-width: 42%;
 }
+.g3d-hud-run { display: grid; min-width: 0; min-height: 82px; padding: 12px 14px; border: 1px solid rgba(210, 191, 132, .28); border-radius: 4px; background: linear-gradient(135deg, rgba(7, 18, 13, .9), rgba(17, 29, 21, .72)); box-shadow: 0 16px 44px rgba(0, 0, 0, .28); backdrop-filter: blur(9px); gap: 8px; align-content: space-between; justify-items: end; }
+.g3d-hud-radar-slot { display: flex; flex: none; }
+.g3d-hud-radar-slot:empty { display: none; }
 .g3d-status-line {
   display: block;
   margin-top: 9px;
@@ -1501,7 +1531,9 @@ body.is-gloamwood-3d * {
     border-radius: 4px;
     background: linear-gradient(135deg, rgba(7, 18, 13, .9), rgba(17, 29, 21, .72));
     box-shadow: 0 16px 44px rgba(0, 0, 0, .28);
-    backdrop-filter: blur(9px);
+    /* Lets the nested radar slot anchor itself to the viewport on a phone,
+       rather than treating this compact left HUD as its containing block. */
+    backdrop-filter: none;
   }
   .g3d-hud-left,
   .g3d-hud-right {
@@ -1514,6 +1546,14 @@ body.is-gloamwood-3d * {
     background: none;
     box-shadow: none;
     backdrop-filter: none;
+  }
+  .g3d-hud-run { display: block; min-height: 0; }
+  .g3d-hud-run { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; }
+  .g3d-hud-radar-slot {
+    position: fixed;
+    top: max(84px, calc(env(safe-area-inset-top) + 76px));
+    right: max(8px, env(safe-area-inset-right));
+    z-index: 8;
   }
   .g3d-hud-actions { justify-content: flex-start; margin-top: 5px; }
   .g3d-nest-resources { justify-content: flex-start; margin-top: 5px; }

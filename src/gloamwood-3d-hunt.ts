@@ -196,6 +196,12 @@ import {
   resolveGloamwoodHuntRhythm,
   type GloamwoodHuntRhythm,
 } from './gloamwood-hunt-rhythm'
+import { GLOAMWOOD_WEATHER_SEED_PARAM, resolveGloamwoodWeatherRunSeed } from './gloamwood-run-weather'
+import {
+  GLOAMWOOD_ECOLOGY_SEED_PARAM,
+  resolveGloamwoodEcologyRunSeed,
+  resolveGloamwoodValleyEcology,
+} from './gloamwood-valley-ecology'
 import { createGloamwoodMap, gloamwoodMapStep, type GloamwoodMapContract } from './gloamwood-map'
 import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
 import { createGloamwoodValleyMap } from './gloamwood-valley-map'
@@ -222,7 +228,19 @@ import {
   resolveGloamwoodValleyBossDefeat,
   type GloamwoodValleyProgression,
 } from './gloamwood-valley-progression'
-import { gloamwoodValleyCorridorAt, gloamwoodValleyRegionAt } from './gloamwood-valley-terrain'
+import { GLOAMWOOD_VALLEY, gloamwoodValleyCorridorAt, gloamwoodValleyRegionAt } from './gloamwood-valley-terrain'
+import {
+  GLOAMWOOD_VALLEY_RADAR_NORTH_UP,
+  gloamwoodValleyRadarLocalBranchEndpoints,
+  gloamwoodValleyRadarLocalBranchPaths,
+  gloamwoodValleyRadarLocalMarker,
+  gloamwoodValleyRadarLocalMarkerAt,
+  gloamwoodValleyRadarLocalPointAt,
+  gloamwoodValleyRadarLocalRegionPath,
+  gloamwoodValleyRadarLocalRiverPath,
+  gloamwoodValleyRadarLocalRoutePath,
+  type GloamwoodValleyRadarViewport,
+} from './gloamwood-valley-radar'
 import {
   gloamwoodPreyClipForPhase,
   gloamwoodPreyClipRate,
@@ -675,6 +693,9 @@ interface DebugState {
     shrinePieces: number
     collisionObstacles: number
     weather: string
+    weatherSeed: string
+    ecology: string
+    ecologySeed: string
     flatBackdrop: false
   }
 }
@@ -719,6 +740,12 @@ class Gloamwood3DHunt {
   private readonly characterRoot = new THREE.Group()
   private readonly target = new THREE.Vector3(-6, 0, 3)
   private readonly movement = new THREE.Vector3()
+  /** Separate from layout and evolution so restarting a hunt changes ecology. */
+  private readonly ecologyRunSeed = resolveGloamwoodEcologyRunSeed(
+    new URLSearchParams(window.location.search).get(GLOAMWOOD_ECOLOGY_SEED_PARAM),
+    () => window.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+  )
+  private readonly ecology = resolveGloamwoodValleyEcology(this.ecologyRunSeed)
   private readonly desiredCamera = new THREE.Vector3()
   private readonly keys = new Set<string>()
   private readonly raycaster = new THREE.Raycaster()
@@ -771,6 +798,7 @@ class Gloamwood3DHunt {
       async () => { await this.buildValleyScenery() },
       (camera, elapsed, delta) => this.valley?.update(camera, elapsed, delta),
       () => this.valleyGroundHeight,
+      this.ecologyRunSeed,
     )
     : createGloamwoodMap(
       terrainHeight,
@@ -1073,6 +1101,25 @@ class Gloamwood3DHunt {
   private debugOutput?: HTMLOutputElement
   private mutationLab?: HTMLElement
   private debugLive?: HTMLElement
+  private valleyRadar?: {
+    root: HTMLElement
+    player: SVGElement
+    arrow: SVGElement
+    objective: SVGElement
+    elite: SVGElement
+    label: HTMLElement
+    route: SVGPathElement
+    river: SVGPathElement
+    regions: SVGPathElement[]
+    branches: SVGPathElement[]
+    branchNodes: SVGCircleElement[]
+    gates: SVGPathElement[]
+    terrainX: number
+    terrainZ: number
+    nextTerrainUpdateAt: number
+  }
+  /** Generated once for a new run; query-string seeds remain reproducible. */
+  private readonly weatherRunSeed: string
   private readonly container: HTMLElement
 
   constructor(container: HTMLElement) {
@@ -1089,6 +1136,10 @@ class Gloamwood3DHunt {
     }
     this.audio = new GloamwoodAudioBus(this.feedbackSettings.volume, this.feedbackSettings.muted)
     const params = new URLSearchParams(window.location.search)
+    this.weatherRunSeed = resolveGloamwoodWeatherRunSeed(
+      params.get(GLOAMWOOD_WEATHER_SEED_PARAM),
+      () => window.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+    )
     this.evolutionState = createGloamwoodEvolutionState(params.get('evolutionSeed') ?? 'gloamwood-first-run')
     // Same seed as the form evolution: one seed reproduces a whole run, which is
     // what Goal 3's acceptance actually checks.
@@ -1145,6 +1196,7 @@ class Gloamwood3DHunt {
       })
     }
     this.createHud()
+    this.createValleyRadar()
     this.bindInput()
     const debugSettings = import.meta.env.DEV ? new URLSearchParams(window.location.search) : null
     if (debugSettings?.get('settings') === '1' || debugSettings?.get('inputSettings') === '1') this.toggleSettings(true)
@@ -1257,6 +1309,7 @@ class Gloamwood3DHunt {
     this.debugOutput?.remove()
     this.mutationLab?.remove()
     this.onboardingHud?.remove()
+    this.valleyRadar?.root.remove()
     this.deathOverlay?.remove()
     this.settingsPanel?.remove()
     this.orientationGate?.remove()
@@ -3775,7 +3828,7 @@ class Gloamwood3DHunt {
     const seed = Number(params.get('mapSeed') ?? 0) || 0x5a11e
     const weather = resolveGloamwoodValleyWeather(
       params.get('weather'),
-      `${seed}:${params.get('evolutionSeed') ?? 'gloamwood-first-run'}`,
+      this.weatherRunSeed,
     )
     // The valley scene loads its own kit templates - the same seven plants and
     // three rocks, through the same loader - so the Gloamwood's tree and rock
@@ -6104,6 +6157,7 @@ class Gloamwood3DHunt {
       `<b class="g3d-status-line" data-g3d-remaining>${t('hud.undisturbed')}</b>`,
       '</div>',
       '<div class="g3d-hud-right">',
+      '<div class="g3d-hud-run">',
       `<div class="g3d-nest-resources"><span>${t('hud.lives')} <strong data-g3d-lives>${this.map.lives}</strong></span><span>${t('hud.biomass')} <strong data-g3d-biomass>0</strong></span><span data-g3d-mutation-progress-cell hidden>${t('hud.mutationTrack')} <strong data-g3d-mutation-progress>0/0</strong></span><span data-g3d-gene-cell>${t('hud.fang')} <strong data-g3d-fang>0</strong></span><span data-g3d-gene-cell>${t('hud.shell')} <strong data-g3d-shell>0</strong></span><span data-g3d-gene-cell>${t('hud.swarm')} <strong data-g3d-swarm>0</strong></span></div>`,
       // Mutations stack rather than replace, and a build the player cannot see
       // is a build they cannot plan around. Hidden until the first one is taken.
@@ -6113,6 +6167,8 @@ class Gloamwood3DHunt {
       `<button class="g3d-fullscreen-toggle" type="button" data-g3d-fullscreen>${t('fs.enter')}</button>`,
       `<button class="g3d-settings-toggle" type="button" data-g3d-settings-toggle>${t('hud.settings')}</button>`,
       '</div>',
+      '</div>',
+      '<div class="g3d-hud-radar-slot" data-g3d-radar-slot></div>',
       '</div>',
     ].join('')
     this.hud = hud
@@ -6241,6 +6297,123 @@ class Gloamwood3DHunt {
       }
       ;(window as Window & { __EA_DEBUG__?: typeof api }).__EA_DEBUG__ = api
     }
+  }
+
+  /** A geographic hint, not a second combat HUD: normal prey never appears. */
+  private createValleyRadar() {
+    if (this.map.id !== 'valley') return
+    const radar = document.createElement('aside')
+    radar.className = 'g3d-valley-radar'
+    radar.setAttribute('aria-label', t('radar.label'))
+    radar.innerHTML = [
+      '<svg viewBox="0 0 100 100" aria-hidden="true">',
+      '<defs><clipPath id="g3d-radar-local-clip"><circle cx="50" cy="50" r="43"/></clipPath></defs>',
+      '<circle class="g3d-radar-range g3d-radar-range-far" cx="50" cy="50" r="40"/>',
+      '<circle class="g3d-radar-range" cx="50" cy="50" r="25"/>',
+      '<g clip-path="url(#g3d-radar-local-clip)">',
+      '<path class="g3d-radar-region g3d-radar-region-shallows" data-g3d-radar-region/>',
+      '<path class="g3d-radar-region g3d-radar-region-gorge" data-g3d-radar-region/>',
+      '<path class="g3d-radar-region g3d-radar-region-headwater" data-g3d-radar-region/>',
+      '<path class="g3d-radar-river" data-g3d-radar-river/>',
+      ...Array.from({ length: 6 }, () => '<path class="g3d-radar-branch" data-g3d-radar-branch/>'),
+      ...Array.from({ length: 6 }, () => '<circle class="g3d-radar-branch-node" data-g3d-radar-branch-node r="1.35"/>'),
+      ...GLOAMWOOD_VALLEY.chokes.map(() => '<path class="g3d-radar-gate" data-g3d-radar-gate/>'),
+      '<path class="g3d-radar-route" data-g3d-radar-route/>',
+      '</g>',
+      '<path class="g3d-radar-forward" d="M50 5 L53 10 L50 8.5 L47 10 Z"/>',
+      '<circle class="g3d-radar-player" data-g3d-radar-player r="3.2"/>',
+      '<path class="g3d-radar-arrow" data-g3d-radar-arrow d="M0 -5 L3.6 3 L0 1.6 L-3.6 3 Z"/>',
+      '<circle class="g3d-radar-objective" data-g3d-radar-objective visibility="hidden" r="3.6"/>',
+      '<rect class="g3d-radar-elite" data-g3d-radar-elite visibility="hidden" x="-2.7" y="-2.7" width="5.4" height="5.4" rx="1"/>',
+      '</svg>',
+      '<small data-g3d-radar-label></small>',
+    ].join('')
+    const slot = this.hud?.querySelector<HTMLElement>('[data-g3d-radar-slot]')
+    ;(slot ?? this.container).append(radar)
+    this.valleyRadar = {
+      root: radar,
+      player: radar.querySelector('[data-g3d-radar-player]')!,
+      arrow: radar.querySelector('[data-g3d-radar-arrow]')!,
+      objective: radar.querySelector('[data-g3d-radar-objective]')!,
+      elite: radar.querySelector('[data-g3d-radar-elite]')!,
+      label: radar.querySelector('[data-g3d-radar-label]')!,
+      route: radar.querySelector('[data-g3d-radar-route]')!,
+      river: radar.querySelector('[data-g3d-radar-river]')!,
+      regions: Array.from(radar.querySelectorAll('[data-g3d-radar-region]')),
+      branches: Array.from(radar.querySelectorAll('[data-g3d-radar-branch]')),
+      branchNodes: Array.from(radar.querySelectorAll('[data-g3d-radar-branch-node]')),
+      gates: Array.from(radar.querySelectorAll('[data-g3d-radar-gate]')),
+      terrainX: Number.NaN,
+      terrainZ: Number.NaN,
+      nextTerrainUpdateAt: 0,
+    }
+  }
+
+  private updateValleyRadar() {
+    const radar = this.valleyRadar
+    if (!radar) return
+    const viewport: GloamwoodValleyRadarViewport = {
+      x: this.playerRoot.position.x,
+      z: this.playerRoot.position.z,
+      // North-up radar: the geography stays stable while the player arrow
+      // turns. It lets players build a spatial memory of the river and forks.
+      facingRadians: GLOAMWOOD_VALLEY_RADAR_NORTH_UP,
+    }
+    this.updateValleyRadarTerrain(radar, viewport)
+    radar.player.setAttribute('cx', '50'); radar.player.setAttribute('cy', '50')
+    radar.arrow.setAttribute('transform', `translate(50 50) rotate(${(this.lastFacing * 180 / Math.PI).toFixed(1)})`)
+    const corridor = gloamwoodValleyCorridorAt(this.playerRoot.position.x, this.playerRoot.position.z)
+    const region = gloamwoodValleyRegionAt(corridor.s)
+    const regionLabel = region ? t(`radar.region.${region.id}`) : t('radar.region.shallows')
+    const ecologyLabel = t(this.ecology.labelKey)
+    const label = `${regionLabel} · ${ecologyLabel}`
+    if (radar.label.textContent !== label) radar.label.textContent = label
+    let boss: GloamwoodValleyCreature | undefined
+    for (const candidate of this.nestState.prey) {
+      const creature = candidate as GloamwoodValleyCreature
+      if (creature.tier !== 'boss' || creature.phase === 'dead' || creature.spawnS < corridor.s - 20) continue
+      if (!boss || creature.spawnS < boss.spawnS) boss = creature
+    }
+    const gate = gloamwoodValleyNextGate(this.valleyProgression, corridor.s)
+    const target = boss
+      ? gloamwoodValleyRadarLocalMarker(boss.x, boss.z, viewport)
+      : gate ? gloamwoodValleyRadarLocalMarkerAt(gate.s, viewport) : null
+    radar.objective.setAttribute('visibility', target ? 'visible' : 'hidden')
+    if (target) {
+      radar.objective.setAttribute('cx', target.x.toFixed(2)); radar.objective.setAttribute('cy', target.y.toFixed(2))
+      radar.objective.dataset.offscreen = target.offscreen ? 'true' : 'false'
+    }
+    const locked = this.lockedPrey() as GloamwoodValleyCreature | undefined
+    const elite = locked?.tier === 'elite' && locked.phase !== 'dead' ? gloamwoodValleyRadarLocalMarker(locked.x, locked.z, viewport) : null
+    radar.elite.setAttribute('visibility', elite ? 'visible' : 'hidden')
+    if (elite) radar.elite.setAttribute('transform', `translate(${elite.x.toFixed(2)} ${elite.y.toFixed(2)})`)
+  }
+
+  private updateValleyRadarTerrain(radar: NonNullable<Gloamwood3DHunt['valleyRadar']>, viewport: GloamwoodValleyRadarViewport) {
+    const now = performance.now()
+    const firstLayout = !Number.isFinite(radar.terrainX)
+    const moved = Math.hypot(viewport.x - radar.terrainX, viewport.z - radar.terrainZ) > 1.25
+    if (now < radar.nextTerrainUpdateAt || (!firstLayout && !moved)) return
+    radar.route.setAttribute('d', gloamwoodValleyRadarLocalRoutePath(viewport))
+    radar.river.setAttribute('d', gloamwoodValleyRadarLocalRiverPath(viewport))
+    const regionIds = ['shallows', 'gorge', 'headwater'] as const
+    radar.regions.forEach((element, index) => element.setAttribute('d', gloamwoodValleyRadarLocalRegionPath(regionIds[index], viewport)))
+    gloamwoodValleyRadarLocalBranchPaths(viewport).forEach((path, index) => radar.branches[index]?.setAttribute('d', path))
+    gloamwoodValleyRadarLocalBranchEndpoints(viewport).forEach((point, index) => {
+      const element = radar.branchNodes[index]
+      element?.setAttribute('cx', point.x.toFixed(2)); element?.setAttribute('cy', point.y.toFixed(2))
+    })
+    GLOAMWOOD_VALLEY.chokes.forEach((s, index) => {
+      const point = gloamwoodValleyRadarLocalPointAt(s, viewport)
+      radar.gates[index]?.setAttribute('d', this.valleyRadarGatePath(point.x, point.y))
+    })
+    radar.terrainX = viewport.x
+    radar.terrainZ = viewport.z
+    radar.nextTerrainUpdateAt = now + 80
+  }
+
+  private valleyRadarGatePath(x: number, y: number) {
+    return `M${(x - 2.1).toFixed(2)} ${(y - 2.1).toFixed(2)} L${(x + 2.1).toFixed(2)} ${(y + 2.1).toFixed(2)} M${(x + 2.1).toFixed(2)} ${(y - 2.1).toFixed(2)} L${(x - 2.1).toFixed(2)} ${(y + 2.1).toFixed(2)}`
   }
 
   /**
@@ -6970,6 +7143,7 @@ class Gloamwood3DHunt {
   }
 
   private updateHud() {
+    this.updateValleyRadar()
     if (!this.hud) return
     const playerRatio = this.playerCombat.health / this.playerCombat.maxHealth
     const setText = (selector: string, value: string) => {
@@ -7345,6 +7519,9 @@ class Gloamwood3DHunt {
         shrinePieces: this.shrinePieces,
         collisionObstacles: this.obstacles.length,
         weather: this.valley?.weather.id ?? 'gloamwood-static',
+        weatherSeed: this.map.id === 'valley' ? this.weatherRunSeed : 'gloamwood-static',
+        ecology: this.map.id === 'valley' ? this.ecology.id : 'gloamwood-static',
+        ecologySeed: this.map.id === 'valley' ? this.ecologyRunSeed : 'gloamwood-static',
         flatBackdrop: false,
       },
     }

@@ -74,6 +74,7 @@ export function createGloamwoodValleyMap(
    * vertices, so everything that has to *stand* on the ground asks this.
    */
   drawnHeight?: () => ((x: number, z: number) => number) | null,
+  ecologyRunSeed = 'valley-run',
 ): GloamwoodMapContract {
   const spawnPoint = gloamwoodValleyPointAt(
     GLOAMWOOD_VALLEY.spawnS,
@@ -125,7 +126,7 @@ export function createGloamwoodValleyMap(
         wave: GLOAMWOOD_NEST.waveCount,
         phaseElapsed: 0,
         prey: (() => {
-          const built = createGloamwoodValleyCreatures(seed)
+          const built = createGloamwoodValleyCreatures(seed, ecologyRunSeed)
           nests = createGloamwoodValleyNests(built)
           clearedNests.clear()
           return built as GloamwoodNestPrey[]

@@ -446,8 +446,8 @@ publication on 2026-08-21.
 ## Latest accepted presentation milestone — Goal 10 light weather direction
 
 River Valley now has a presentation-only three-state weather direction:
-`dawn`, `mist` and `rain`. It is deterministic from the existing run inputs
-and can be explicitly reviewed with `?weather=dawn|mist|rain`. Weather tints
+`dawn`, `mist` and `rain`. It stays deterministic within one run and can be
+explicitly reviewed with `?weather=dawn|mist|rain`. Weather tints
 the existing regional fog and lighting; it never changes collision, AI,
 damage, movement, target selection, evolution or map scatter. Rain is one
 camera-local line batch (64 drops on desktop, 36 on coarse-pointer devices),
@@ -457,7 +457,7 @@ visible. See `docs/GOAL-10-WEATHER-ACCEPTANCE.md`. The project owner accepted
 the local rain playtest on 2026-08-21 and authorized release; the exact public
 deployment result is recorded by the GitHub Pages workflow.
 
-## Active implementation milestone — Goal 11 hunt rhythm
+## Latest accepted gameplay milestone — Goal 11 hunt rhythm
 
 Goal 11 keeps the existing single basic-attack input and all combat authority
 intact, but interprets established Boss phases for the standing order: during
@@ -468,3 +468,42 @@ as “立即闪避 / 反击空档 / 保持距离” (with English equivalents), 
 River Valley bosses. It does not alter damage, health, hit ranges, target
 selection, evolution, map geometry or creature models. See
 `docs/GOAL-11-HUNT-RHYTHM-ACCEPTANCE.md`.
+
+## Active implementation milestone — Goal 12 per-run weather variation
+
+River Valley now creates a presentation-only weather seed when a player begins
+a run. That seed selects dawn, mist, or rain once and keeps it stable until the
+run ends; restarting creates another seed without changing the established map
+or evolution seeds. `?weather=dawn|mist|rain` still overrides the roll for
+review, and `?weatherSeed=<value>` reproduces an otherwise seed-selected mood.
+See `docs/GOAL-12-PER-RUN-WEATHER-ACCEPTANCE.md`.
+
+## Latest accepted UI milestone — Goal 13A River Valley hunt radar
+
+River Valley now has a read-only circular, player-centred hunt radar. Nearby
+route, actual river and actual side-canyon geography remain in a fixed north-up
+frame while only the centre player arrow turns; distant Boss/evolution gates remain
+as edge-direction cues. It also shows the current region and a currently
+locked Elite. Normal prey never appears, so it does not turn into a cluttered
+creature tracker or change the reason to look into the 3D world. On desktop it
+is the outer item in the same compact row as the run card; on mobile it moves
+to the right-side safe space. See
+`docs/GOAL-13A-HUNT-RADAR-ACCEPTANCE.md`.
+
+## Latest accepted replayability milestone — Goal 13B River Valley ecology rotation
+
+Goal 13B is the first bounded replayability pass after the local radar. It
+keeps the entire existing Fang / Shell / Swarm population in every run, but
+uses an independent `ecologySeed` to deal one of three mixed-pack encounter
+decks and re-deal the existing Elite affixes. It does not add models, map
+changes, AI loops, skills or combat-stat changes. The radar caption will state
+the current ecology beside the region name. See
+`docs/GOAL-13B-VALLEY-ECOLOGY-ACCEPTANCE.md`.
+
+Its local validation is complete: explicit seeds reproduce a deck, different
+seeds produce a different deck, all prey families remain available and the
+full suite is 110 files / 1002 tests. The project owner accepted it on
+2026-08-22, noting that the perceived difficulty is slightly lower. Preserve
+that observation for a dedicated encounter-pressure calibration rather than
+changing health or damage inside this milestone. No commit, push or release has
+been made.
