@@ -505,5 +505,6 @@ seeds produce a different deck, all prey families remain available and the
 full suite is 110 files / 1002 tests. The project owner accepted it on
 2026-08-22, noting that the perceived difficulty is slightly lower. Preserve
 that observation for a dedicated encounter-pressure calibration rather than
-changing health or damage inside this milestone. No commit, push or release has
-been made.
+changing health or damage inside this milestone. Commit `f8077e6` was pushed
+to `main` on 2026-08-22; GitHub Pages workflow run 55 completed successfully
+and the public site was checked with a fresh random ecology seed.
