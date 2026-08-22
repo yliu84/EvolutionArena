@@ -126,7 +126,9 @@ describe('Auto-engage and target bar', () => {
   })
 
   it('lets steering drop the automation while keeping the lock', () => {
-    expect(source).toContain('if (this.autoEngageTargetId) this.cancelAutoEngage()')
+    expect(source).toContain('if (manualMovement) {')
+    expect(source).toContain('this.cancelAutoEngage()')
+    expect(source).toContain('this.cancelAttackForMovement()')
     // Cancelling must not clear lockedPreyId, or flanking costs a re-select.
     expect(source).not.toMatch(/cancelAutoEngage\(\)\s*\n\s*this\.lockedPreyId = null/)
   })

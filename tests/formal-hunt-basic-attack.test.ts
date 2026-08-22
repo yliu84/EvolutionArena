@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   canFormalHuntBasicAttackContact,
+  cancelFormalHuntBasicAttack,
   createFormalHuntBasicAttackState,
   formalHuntAttackAimErrorDegrees,
   formalHuntTargetSurfaceDistance,
@@ -38,6 +39,16 @@ describe('formal hunt coral-gecko basic attack chain', () => {
     state = updateFormalHuntBasicAttack(state, 2650, false).state
     expect(state.comboStep).toBe(0)
     expect(requestFormalHuntBasicAttack(state, 2670).action).toBe('Bite')
+  })
+
+  it('cancels an active or buffered chain when movement takes priority', () => {
+    let state = requestFormalHuntBasicAttack(createFormalHuntBasicAttackState(), 1000)
+    state = requestFormalHuntBasicAttack(state, 1040)
+    expect(state).toMatchObject({ action: 'Bite', buffered: true })
+
+    state = cancelFormalHuntBasicAttack(state)
+    expect(state).toMatchObject({ action: null, buffered: false, comboStep: 0, resetAt: 0 })
+    expect(requestFormalHuntBasicAttack(state, 1080).action).toBe('Bite')
   })
 
   it('emits each authoritative contact once at the accepted clip timing', () => {

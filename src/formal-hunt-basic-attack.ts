@@ -54,6 +54,27 @@ export function requestFormalHuntBasicAttack(
   return startComboAction(resetState, now, profile)
 }
 
+/**
+ * Movement is an explicit defensive choice, not a delayed input.
+ *
+ * Clear the active swing and its one buffered follow-up together, so holding
+ * the primary button cannot quietly resume a chain after the player has chosen
+ * to leave a boss telegraph. The next deliberate attack starts at the safe
+ * opener rather than preserving an invisible combo position.
+ */
+export function cancelFormalHuntBasicAttack(state: FormalHuntBasicAttackState): FormalHuntBasicAttackState {
+  if (!state.action && !state.buffered) return state
+  return {
+    ...state,
+    action: null,
+    actionStartedAt: 0,
+    contactResolved: false,
+    comboStep: 0,
+    buffered: false,
+    resetAt: 0,
+  }
+}
+
 export function updateFormalHuntBasicAttack(
   state: FormalHuntBasicAttackState,
   now: number,

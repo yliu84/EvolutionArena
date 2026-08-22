@@ -415,7 +415,7 @@ frame counter remained unchanged for 1.2 seconds while Settings was open and
 resumed afterward. A post-release review found that the death prompt's Revive
 button also needed that explicit wake-up; it now restarts the loop, and a real
 browser recovery restored Health 0→100 while the frame counter advanced with no
-console error. The current full suite is 106 files / 981 tests and the
+console error. The current full suite is 106 files / 982 tests and the
 production build passes. This is a measurable desktop reduction, not yet a
 replacement for the outstanding real midrange-mobile 30-FPS test.
 
@@ -429,3 +429,16 @@ Open and unclosed, carried forward:
 - A small static seam remains between two plates at the top of the Shell body. It is a mesh seam present in the rest pose, not a rigging fault, and is not resolvable at the 13.3% screen height the standard records.
 
 Per the user's standing instruction, do not modify the map environment, assets, shrine, lighting or vegetation; that is an independent workflow. Skills remain disabled.
+
+## Latest accepted gameplay milestone — Goal 9 agile hunt
+
+External player feedback found the current most-effective combat loop was to
+hold the one melee attack and trade damage. The primary cause was mechanical:
+the player could not translate while a combo was active, and a reverse movement
+input was held behind a turn-before-move gate. Goal 9 restores player agency
+without adding a skill system: manual keyboard or touch movement cancels
+auto-engage and the active/buffered basic chain, then translates immediately
+while the body finishes turning. Target lock, collision, and the authoritative
+attack distance and aim checks remain unchanged. See `docs/GOAL-9-AGILE-HUNT.md`.
+The project owner accepted the local playtest and requested GitHub Pages
+publication on 2026-08-21.

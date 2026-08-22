@@ -70,6 +70,7 @@ import { SCARLET_HUNTER_PRESENTATION } from './scarlet-hunter-character-presenta
 import { juvenileLeapBiteMotionFrame, juvenileSpinTailSwipeMotionFrame, quadrupedAttackMotionFrame } from './quadruped-combat-motion'
 import {
   canFormalHuntBasicAttackContact,
+  cancelFormalHuntBasicAttack,
   createFormalHuntBasicAttackState,
   formalHuntAttackAimErrorDegrees,
   formalHuntTargetSurfaceDistance,
@@ -2824,15 +2825,19 @@ class Gloamwood3DHunt {
   }
 
   private updatePlayer(delta: number) {
-    this.updateAutoEngage()
     const inputX = Number(this.keys.has(this.inputBindings.moveRight) || this.keys.has('ArrowRight')) - Number(this.keys.has(this.inputBindings.moveLeft) || this.keys.has('ArrowLeft')) + this.touchMoveX
     const inputZ = Number(this.keys.has(this.inputBindings.moveDown) || this.keys.has('ArrowDown')) - Number(this.keys.has(this.inputBindings.moveUp) || this.keys.has('ArrowUp')) + this.touchMoveZ
+    const manualMovement = Math.abs(inputX) > 0.01 || Math.abs(inputZ) > 0.01
+    // A direction is the player's answer to danger. It must win before an
+    // auto-approach can re-arm another swing, otherwise tapping away from a
+    // Boss telegraph still spends a frame rooted in the old combo.
+    if (manualMovement) {
+      this.cancelAutoEngage()
+      this.cancelAttackForMovement()
+    } else this.updateAutoEngage()
     const cameraRelativeInput = gloamwoodScreenMovementVector(inputX, inputZ, this.cameraOffset)
     this.movement.set(cameraRelativeInput.x, 0, cameraRelativeInput.z)
     if (this.movement.lengthSq() > 0) {
-      // Steering is the player taking the angle back. Drop the automation but
-      // keep the lock, or flanking would cost a re-select every time.
-      if (this.autoEngageTargetId) this.cancelAutoEngage()
       this.movementInputStrength = Math.min(1, this.movement.length())
       this.movement.normalize()
       this.target.copy(this.playerRoot.position).addScaledVector(this.movement, 1.8)
@@ -2846,20 +2851,23 @@ class Gloamwood3DHunt {
         this.movement.set(0, 0, 0)
       }
     }
-    const hasMovementIntent = this.playerCombat.alive && this.movement.lengthSq() > 0.01 && !this.attackState.action
+    const hasMovementIntent = this.playerCombat.alive && this.movement.lengthSq() > 0.01
     if (hasMovementIntent) {
       const desiredFacing = gloamwoodMovementFacingRadians(this.movement.x, this.movement.z)
       const turn = stepGloamwoodTurnBeforeMove(this.lastFacing, desiredFacing, delta)
       this.lastFacing = turn.facingRadians
       this.facingErrorDegrees = turn.remainingErrorDegrees
-      this.turning = !turn.canTranslate
+      this.turning = turn.remainingErrorDegrees > 0.1
       this.playerRoot.rotation.y = this.lastFacing
       this.resolveObstacles(this.playerRoot.position)
     } else {
       this.facingErrorDegrees = 0
       this.turning = false
     }
-    this.moving = hasMovementIntent && !this.turning
+    // The model continues its turn while the body translates. Combat still
+    // applies its own target-facing contact gate; this only removes the input
+    // freeze that made backing out of a telegraph feel impossible.
+    this.moving = hasMovementIntent
     if (this.moving) {
       const next = this.playerRoot.position.clone().addScaledVector(this.movement, PLAYER_SPEED * this.moveSpeedMultiplier * this.movementInputStrength * delta)
       // Tested before it is taken, not corrected afterwards. A confine that
@@ -2885,7 +2893,7 @@ class Gloamwood3DHunt {
       return
     }
     if (this.attackState.action) return
-    this.setAction(this.turning ? 'Turn' : this.moving ? 'Run' : 'Idle')
+    this.setAction(this.moving ? 'Run' : this.turning ? 'Turn' : 'Idle')
   }
 
   /** Shortest reach in the current form's chain, so approach stops where the
@@ -2903,6 +2911,17 @@ class Gloamwood3DHunt {
     // order has to release that too. Clearing only the bookkeeping left the
     // chain running and one press still cleared a whole pack.
     this.primaryHeld = false
+  }
+
+  /** Stop the current basic chain when the player actively chooses movement. */
+  private cancelAttackForMovement() {
+    if (!this.attackState.action && !this.attackState.buffered) return
+    this.attackState = cancelFormalHuntBasicAttack(this.attackState)
+    this.primaryHeld = false
+    this.attackUntil = 0
+    this.attackStartedAt = 0
+    this.attackDurationSeconds = 0
+    this.leapBiteLandingResolved = false
   }
 
   /** Identity of whatever is locked right now, so a standing order can tell
@@ -3093,6 +3112,17 @@ class Gloamwood3DHunt {
       this.setAction('Idle', true)
     }
     if (!this.playerCombat.alive) return
+
+    // updateCombat runs before updatePlayer. Cancel here as well, so the frame
+    // in which a direction is pressed cannot still resolve a late melee hit or
+    // keep the player rooted before the movement pass receives that input.
+    if (hasPressedGloamwoodMovement(this.keys, this.inputBindings, this.touchMoveX, this.touchMoveZ)) {
+      // Combat is evaluated before movement. Cancel the standing order here as
+      // well, so even a very brief direction tap cannot be followed by the
+      // auto-engage path immediately starting another Bite.
+      this.cancelAutoEngage()
+      this.cancelAttackForMovement()
+    }
 
     const locked = this.lockedPrey()
     const lockedPosition = this.bossActive() && this.bossLocked ? this.bossState : locked
@@ -7324,8 +7354,22 @@ export function stepGloamwoodTurnBeforeMove(currentFacing: number, desiredFacing
   return {
     facingRadians,
     remainingErrorDegrees,
-    canTranslate: remainingErrorDegrees <= GLOAMWOOD_3D_MOVE_FACING_TOLERANCE_DEGREES,
+    // Translation follows player intent immediately. The remaining error is
+    // still exposed for animation/debug review, while combat keeps its own
+    // stricter target-facing test at the instant a blow connects.
+    canTranslate: true,
   }
+}
+
+function hasPressedGloamwoodMovement(
+  keys: ReadonlySet<string>,
+  bindings: GloamwoodInputBindings,
+  touchMoveX: number,
+  touchMoveZ: number,
+) {
+  const inputX = Number(keys.has(bindings.moveRight) || keys.has('ArrowRight')) - Number(keys.has(bindings.moveLeft) || keys.has('ArrowLeft')) + touchMoveX
+  const inputZ = Number(keys.has(bindings.moveDown) || keys.has('ArrowDown')) - Number(keys.has(bindings.moveUp) || keys.has('ArrowUp')) + touchMoveZ
+  return Math.abs(inputX) > 0.01 || Math.abs(inputZ) > 0.01
 }
 
 export function gloamwoodMovementFacingRadians(movementX: number, movementZ: number) {

@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  GLOAMWOOD_3D_MOVE_FACING_TOLERANCE_DEGREES,
   gloamwoodMovementFacingRadians,
   gloamwoodScreenMovementVector,
   stepGloamwoodTurnBeforeMove,
 } from '../src/gloamwood-3d-hunt'
 
-describe('Gloamwood 3D turn-before-move gate', () => {
+describe('Gloamwood 3D turn-while-moving control', () => {
   it('maps all four world movement directions to the model forward axis', () => {
     expect(gloamwoodMovementFacingRadians(1, 0)).toBeCloseTo(0)
     expect(gloamwoodMovementFacingRadians(0, 1)).toBeCloseTo(-Math.PI / 2)
@@ -35,10 +34,10 @@ describe('Gloamwood 3D turn-before-move gate', () => {
     expect(up.x * right.x + up.z * right.z).toBeCloseTo(0)
   })
 
-  it('blocks translation while a reverse direction is still turning', () => {
+  it('keeps translation available while a reverse direction is still turning', () => {
     const frame = stepGloamwoodTurnBeforeMove(0, Math.PI, 1 / 60)
-    expect(frame.canTranslate).toBe(false)
-    expect(frame.remainingErrorDegrees).toBeGreaterThan(GLOAMWOOD_3D_MOVE_FACING_TOLERANCE_DEGREES)
+    expect(frame.canTranslate).toBe(true)
+    expect(frame.remainingErrorDegrees).toBeGreaterThan(0)
   })
 
   it('allows translation immediately when already facing the requested direction', () => {
@@ -47,17 +46,18 @@ describe('Gloamwood 3D turn-before-move gate', () => {
     expect(frame.remainingErrorDegrees).toBe(0)
   })
 
-  it('finishes the turn before opening the translation gate', () => {
+  it('keeps smoothly reducing turn error without making the player wait to move', () => {
     let facing = -Math.PI * 0.75
     let frame = stepGloamwoodTurnBeforeMove(facing, Math.PI * 0.25, 1 / 60)
-    let blockedFrames = 0
-    while (!frame.canTranslate && blockedFrames < 180) {
-      blockedFrames += 1
+    let turningFrames = 0
+    while (frame.remainingErrorDegrees > 0.01 && turningFrames < 180) {
+      turningFrames += 1
+      expect(frame.canTranslate).toBe(true)
       facing = frame.facingRadians
       frame = stepGloamwoodTurnBeforeMove(facing, Math.PI * 0.25, 1 / 60)
     }
-    expect(blockedFrames).toBeGreaterThan(0)
-    expect(blockedFrames).toBeLessThan(180)
-    expect(frame.remainingErrorDegrees).toBeLessThanOrEqual(GLOAMWOOD_3D_MOVE_FACING_TOLERANCE_DEGREES)
+    expect(turningFrames).toBeGreaterThan(0)
+    expect(turningFrames).toBeLessThan(180)
+    expect(frame.remainingErrorDegrees).toBeLessThan(0.01)
   })
 })
