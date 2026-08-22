@@ -185,6 +185,12 @@ import {
   type GloamwoodMeatDrop,
 } from './gloamwood-meat'
 import {
+  createGloamwoodGeneCore,
+  stepGloamwoodGeneCores,
+  type GloamwoodGeneCore,
+  type GloamwoodGeneCoreSource,
+} from './gloamwood-gene-core'
+import {
   gloamwoodEliteBroodHealth,
   gloamwoodEliteBroodPositions,
   gloamwoodEliteBurstHits,
@@ -513,6 +519,15 @@ interface MutationParticle {
   attractTarget: THREE.Vector3
 }
 
+/** A rare pickup has a compact, bounded presentation bundle rather than a post-process. */
+interface GeneCoreVisual {
+  root: THREE.Group
+  crystal: THREE.Mesh
+  halo: THREE.Mesh
+  rings: THREE.Mesh[]
+  motes: THREE.Mesh[]
+}
+
 interface PreyVisual {
   root: THREE.Group
   body: THREE.Group
@@ -660,6 +675,8 @@ interface DebugState {
   preyModels: number
   /** Meat lying on the ground, so a kill that fed nobody is visible. */
   meatDrops: number
+  /** Unclaimed Elite/Boss Gene Cores; confirms reward collection in browser QA. */
+  geneCores: number
   preyModelError: string | null
   prey: Array<{
     id: string
@@ -970,6 +987,12 @@ class Gloamwood3DHunt {
   private meatDrops: GloamwoodMeatDrop[] = []
   private meatVisuals = new Map<string, THREE.Mesh>()
   private meatSequence = 0
+  /** Optional Elite and regional Boss rewards, collected by moving over them. */
+  private geneCores: GloamwoodGeneCore[] = []
+  private geneCoreVisuals = new Map<string, GeneCoreVisual>()
+  private geneCoreSequence = 0
+  /** Boss milestones wait here while their physical reward is still on ground. */
+  private pendingBossCoreMilestones = new Set<string>()
   private eliteBursts: Array<{
     burst: GloamwoodEliteBurst
     elapsed: number
@@ -2843,6 +2866,7 @@ class Gloamwood3DHunt {
       this.applySecondaryMotion()
     }
     this.updateMeat(delta)
+    this.updateGeneCores(delta)
     this.updateEliteBursts(delta)
     // `resolvePlayerContact` normally ends the run on the killing hit. Keep
     // the authoritative death-state check here as well: final completion must
@@ -3364,7 +3388,10 @@ class Gloamwood3DHunt {
     // sharpest decision in the game - and a player who has not been told simply
     // reads it as "my attack is weak now" and grinds through fifteen hits.
     if (damage.blocked && !damage.killed) this.combatMessage = t('hud.msg.blockedFront')
-    if (damage.killed) this.dropMeat(target)
+    if (damage.killed) {
+      this.dropMeat(target)
+      if ((target as GloamwoodValleyCreature).tier === 'elite') this.dropGeneCore(target, 'elite')
+    }
     if (damage.burst) this.spawnEliteBurst(damage.burst)
     if (damage.splits) this.spawnEliteBrood(target)
     if (damage.killed) {
@@ -3388,16 +3415,20 @@ class Gloamwood3DHunt {
     if (creature.tier !== 'boss') return
     const resolution = resolveGloamwoodValleyBossDefeat(this.valleyProgression, creature.region)
     const { milestone } = resolution
-    if (milestone) {
-      this.mutationState = recordGloamwoodMutationMilestone(this.mutationState, milestone.id)
-      this.logSession({ kind: 'phase', phase: milestone.id })
-    }
     this.valleyProgression = resolution.state
     if (resolution.victory) {
       this.completeRunVictory()
       return
     }
-    this.combatMessage = t('hud.msg.valleyBossDown', { name: this.preyName(target) })
+    // The pass unlocks on the authoritative defeat, but the existing mutation
+    // milestone waits for the visible Boss Core to be claimed. That turns what
+    // used to feel like an invisible bookkeeping event into a clear reward,
+    // without adding a sixth choice, a new skill, or a separate upgrade table.
+    if (milestone) {
+      this.pendingBossCoreMilestones.add(milestone.id)
+      this.dropGeneCore(target, 'boss', milestone.id)
+    }
+    this.combatMessage = t('hud.msg.bossCoreDropped', { name: this.preyName(target) })
   }
 
   /** Safety net for every way a valley creature can become dead. */
@@ -4849,7 +4880,11 @@ class Gloamwood3DHunt {
     // distance, which is further than the player can reach from where they are
     // standing. Measured in engine, three kills left three meals on the ground
     // and the player went from 55 health to 31 with two of them in sight.
-    const at = gloamwoodMeatDropPosition(target, this.playerRoot.position)
+    // Meat spills toward the player because it is recovery. A Gene Core is a
+    // trophy: leave it at the Elite/Boss centre so it is clearly visible and
+    // requires one intentional step forward rather than being vacuumed up by
+    // the attack's existing stand-off distance.
+    const at = { x: target.x, z: target.z }
     const drop = createGloamwoodMeatDrop(`meat-${this.meatSequence}`, target.kind, at.x, at.z)
     this.meatDrops.push(drop)
     const mesh = new THREE.Mesh(
@@ -4917,6 +4952,176 @@ class Gloamwood3DHunt {
       // A slow bob, so a piece lying in grass still reads as a thing to take.
       mesh.position.y = this.map.height(drop.x, drop.z) + 0.26 + Math.sin(drop.age * 3.1) * 0.06
       mesh.rotation.y += delta * 0.9
+    }
+  }
+
+  /** Leaves a gold core only for the fights that are optional or gate a region. */
+  private dropGeneCore(
+    target: GloamwoodNestPrey,
+    source: GloamwoodGeneCoreSource,
+    milestone?: string,
+  ) {
+    if (this.map.hasNest) return
+    this.geneCoreSequence += 1
+    const at = gloamwoodMeatDropPosition(target, this.playerRoot.position)
+    const core = createGloamwoodGeneCore(
+      `gene-core-${this.geneCoreSequence}`,
+      source,
+      target.kind,
+      at.x,
+      at.z,
+      milestone,
+    )
+    this.geneCores.push(core)
+    const visual = this.createGeneCoreVisual(core)
+    visual.root.position.set(core.x, this.map.height(core.x, core.z) + (source === 'boss' ? 0.7 : 0.48), core.z)
+    visual.root.rotation.y = this.geneCoreSequence * 0.77
+    this.scene.add(visual.root)
+    this.geneCoreVisuals.set(core.id, visual)
+    if (source === 'elite') this.combatMessage = t('hud.msg.eliteCoreDropped', { gene: this.geneName(core.kind) })
+  }
+
+  /**
+   * Three quiet layers make a rare pickup legible at a glance: a warm faceted
+   * core, a low ground rune, and orbiting rings/motes. This is intentionally real
+   * geometry with bounded transparent materials - no full-screen bloom, no
+   * shader, and never more than eight small meshes per reward.
+   */
+  private createGeneCoreVisual(core: GloamwoodGeneCore): GeneCoreVisual {
+    const boss = core.source === 'boss'
+    const size = boss ? 1.38 : 1
+    const root = new THREE.Group()
+    root.name = boss ? 'BossGeneCore' : 'EliteGeneCore'
+    const crystal = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.42 * size, 0),
+      new THREE.MeshStandardMaterial({
+        // The crystal needs to read as physical amber/bronze under the valley
+        // light, rather than a near-white additive effect. Low emissive lets
+        // the octahedron's faceted normals and terrain shadows do the work.
+        color: boss ? 0xc48734 : 0x8a551d,
+        emissive: boss ? 0x3a1303 : 0x210901,
+        emissiveIntensity: boss ? 0.52 : 0.32,
+        roughness: boss ? 0.44 : 0.58,
+        metalness: boss ? 0.52 : 0.38,
+        flatShading: true,
+      }),
+    )
+    crystal.castShadow = true
+    root.add(crystal)
+    // No vertical cone: in the elevated camera it read as an opaque fan/traffic
+    // cone over the ground. A thin circular rune makes the reward location
+    // clear while leaving the terrain, nearby corpse and combat telegraphs legible.
+    const halo = new THREE.Mesh(
+      new THREE.RingGeometry(0.72 * size, 1.12 * size, 32),
+      new THREE.MeshBasicMaterial({
+        color: boss ? 0xc58d3b : 0x80501e,
+        transparent: true,
+        opacity: boss ? 0.16 : 0.12,
+        depthWrite: false,
+        blending: THREE.NormalBlending,
+      }),
+    )
+    halo.rotation.x = -Math.PI / 2
+    halo.position.y = boss ? -0.62 : -0.42
+    halo.renderOrder = 1
+    root.add(halo)
+    const rings = [0, 1].map((index) => {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry((0.52 + index * 0.2) * size, 0.026 * size, 6, 20),
+        new THREE.MeshBasicMaterial({
+          color: index === 0 ? 0xd5a354 : 0x8a531d,
+          transparent: true,
+          opacity: boss ? 0.56 : 0.42,
+          depthWrite: false,
+          blending: THREE.NormalBlending,
+        }),
+      )
+      ring.rotation.x = Math.PI / 2 + (index ? 0.36 : -0.2)
+      ring.position.y = 0.08 + index * 0.26
+      ring.renderOrder = 3
+      root.add(ring)
+      return ring
+    })
+    const motes = Array.from({ length: boss ? 4 : 3 }, (_, index) => {
+      const mote = new THREE.Mesh(
+        new THREE.TetrahedronGeometry(0.065 * size, 0),
+        new THREE.MeshBasicMaterial({ color: 0xc88a38, transparent: true, opacity: 0.64, depthWrite: false }),
+      )
+      const angle = index / (boss ? 4 : 3) * Math.PI * 2
+      mote.position.set(Math.cos(angle) * 0.72 * size, 0.18 + index * 0.16, Math.sin(angle) * 0.72 * size)
+      mote.renderOrder = 4
+      root.add(mote)
+      return mote
+    })
+    return { root, crystal, halo, rings, motes }
+  }
+
+  private disposeGeneCoreVisual(visual: GeneCoreVisual) {
+    this.scene.remove(visual.root)
+    visual.root.traverse((node) => {
+      if (!(node instanceof THREE.Mesh)) return
+      node.geometry.dispose()
+      const materials = Array.isArray(node.material) ? node.material : [node.material]
+      for (const material of materials) material.dispose()
+    })
+  }
+
+  /** Applies the build reward only when the player has visibly claimed it. */
+  private updateGeneCores(delta: number) {
+    if (this.geneCores.length === 0) return
+    const frame = stepGloamwoodGeneCores(this.geneCores, delta, {
+      x: this.playerRoot.position.x,
+      z: this.playerRoot.position.z,
+      bodyRadius: gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily),
+    })
+    this.geneCores = frame.cores
+    for (const core of frame.collected) {
+      const visual = this.geneCoreVisuals.get(core.id)
+      if (visual) {
+        this.disposeGeneCoreVisual(visual)
+        this.geneCoreVisuals.delete(core.id)
+      }
+      this.nestState = {
+        ...this.nestState,
+        genes: { ...this.nestState.genes, [core.kind]: this.nestState.genes[core.kind] + core.bonus },
+      }
+      this.spawnDamageNumber(
+        new THREE.Vector3(core.x, this.map.height(core.x, core.z) + 1.25, core.z),
+        core.bonus,
+        'kill',
+      )
+      this.playSound('evolution-select')
+      if (core.milestone) {
+        this.pendingBossCoreMilestones.delete(core.milestone)
+        this.mutationState = recordGloamwoodMutationMilestone(this.mutationState, core.milestone)
+        this.logSession({ kind: 'phase', phase: core.milestone })
+      }
+      this.combatMessage = core.source === 'boss'
+        ? t('hud.msg.bossCoreClaimed', { gene: this.geneName(core.kind), bonus: core.bonus })
+        : t('hud.msg.eliteCoreClaimed', { gene: this.geneName(core.kind), bonus: core.bonus })
+    }
+    const alive = new Set(this.geneCores.map((core) => core.id))
+    for (const [id, visual] of this.geneCoreVisuals) {
+      if (!alive.has(id)) continue
+      const core = this.geneCores.find((entry) => entry.id === id)!
+      const boss = core.source === 'boss'
+      const pulse = 1 + Math.sin(core.age * (boss ? 3.4 : 2.8)) * (boss ? 0.1 : 0.065)
+      visual.root.position.y = this.map.height(core.x, core.z) + (boss ? 0.7 : 0.48) + Math.sin(core.age * 2.35) * 0.12
+      visual.root.rotation.y += delta * (boss ? 2.6 : 2)
+      visual.crystal.rotation.y += delta * (boss ? 3.9 : 3.1)
+      visual.crystal.scale.setScalar(pulse)
+      visual.halo.scale.set(pulse, 0.92 + pulse * 0.08, pulse)
+      ;(visual.halo.material as THREE.MeshBasicMaterial).opacity = (boss ? 0.16 : 0.12) * (0.82 + pulse * 0.18)
+      for (const [index, ring] of visual.rings.entries()) {
+        ring.rotation.z += delta * (index ? -1.8 : 2.25)
+        ring.scale.setScalar(pulse * (1 + index * 0.06))
+      }
+      for (const [index, mote] of visual.motes.entries()) {
+        const angle = core.age * (1.6 + index * 0.13) + index * 2.1
+        mote.position.x = Math.cos(angle) * (boss ? 0.92 : 0.7)
+        mote.position.z = Math.sin(angle) * (boss ? 0.92 : 0.7)
+        mote.position.y = 0.28 + (index / visual.motes.length) * (boss ? 1.45 : 0.95) + Math.sin(core.age * 3 + index) * 0.09
+      }
     }
   }
 
@@ -5596,6 +5801,10 @@ class Gloamwood3DHunt {
       this.mutationState.reached,
     )
     for (const milestone of reached) {
+      // The map can correctly observe a dead Boss before the player reaches the
+      // core it left behind. The gate is already authoritative, but the reward
+      // must remain a physical claim rather than a hidden auto-grant.
+      if (this.pendingBossCoreMilestones.has(milestone)) continue
       this.mutationState = recordGloamwoodMutationMilestone(this.mutationState, milestone)
       this.valleyProgression = recordGloamwoodValleyMilestone(this.valleyProgression, milestone)
       const milestoneDefinition = gloamwoodValleyMilestone(milestone)
@@ -7480,6 +7689,7 @@ class Gloamwood3DHunt {
         : null,
       preyModels: this.preyTemplates.size,
       meatDrops: this.meatDrops.length,
+      geneCores: this.geneCores.length,
       preyModelError: this.preyModelError ?? null,
       prey: this.nestState.prey.map((prey) => ({
         id: prey.id,

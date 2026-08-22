@@ -85,6 +85,18 @@ export const GLOAMWOOD_VALLEY_BOSS_STUN_IMMUNITY = 9
  */
 export const GLOAMWOOD_VALLEY_BOSS_PLAYER_REACH = 2.55
 
+/**
+ * One missed, fully telegraphed Boss pattern must matter more than a routine
+ * prey hit. These values deliberately rise by route depth, while leaving the
+ * readable shape, wind-up, attack window and recovery untouched: the answer
+ * remains movement, not trading health through the mechanic.
+ */
+export const GLOAMWOOD_VALLEY_BOSS_DAMAGE = {
+  tideCleaver: { 'blade-sweep': 18, 'river-charge': 22 },
+  cliffMaw: { 'stone-slam': 23, 'cliff-sweep': 21 },
+  sourceRoot: { 'root-slam': 26, 'root-lunge': 28, 'ring-burst': 31 },
+} as const
+
 export type GloamwoodValleyBossShape =
   | { kind: 'disc'; radius: number }
   | { kind: 'line'; length: number; halfWidth: number }
@@ -190,12 +202,12 @@ function tideCleaver(): GloamwoodValleyBossSpec {
       'blade-sweep': {
         id: 'blade-sweep', clip: 'BladeSweep',
         shape: { kind: 'disc', radius: reach.disc },
-        telegraphSeconds: 1.0, attackSeconds: 0.26, damage: 14, knockback: 1.35, trauma: 0.5,
+        telegraphSeconds: 1.0, attackSeconds: 0.26, damage: GLOAMWOOD_VALLEY_BOSS_DAMAGE.tideCleaver['blade-sweep'], knockback: 1.35, trauma: 0.5,
       },
       'river-charge': {
         id: 'river-charge', clip: 'RiverCharge',
         shape: { kind: 'line', length: reach.lineLength, halfWidth: reach.lineHalfWidth },
-        telegraphSeconds: 0.88, attackSeconds: 0.55, damage: 17, knockback: 1.7, trauma: 0.62,
+        telegraphSeconds: 0.88, attackSeconds: 0.55, damage: GLOAMWOOD_VALLEY_BOSS_DAMAGE.tideCleaver['river-charge'], knockback: 1.7, trauma: 0.62,
       },
     },
     // Two shapes, alternating, with the wide one first: the fight opens by
@@ -221,7 +233,7 @@ function cliffMaw(): GloamwoodValleyBossSpec {
       'stone-slam': {
         id: 'stone-slam', clip: 'Slam',
         shape: { kind: 'disc', radius: reach.disc },
-        telegraphSeconds: 0.95, attackSeconds: 0.28, damage: 18, knockback: 1.6, trauma: 0.66,
+        telegraphSeconds: 0.95, attackSeconds: 0.28, damage: GLOAMWOOD_VALLEY_BOSS_DAMAGE.cliffMaw['stone-slam'], knockback: 1.6, trauma: 0.66,
       },
       // The valley's teaching ring. It is the second boss on purpose: the
       // player has spent the first one learning to back off, and this is where
@@ -229,7 +241,7 @@ function cliffMaw(): GloamwoodValleyBossSpec {
       'cliff-sweep': {
         id: 'cliff-sweep', clip: 'Sweep',
         shape: { kind: 'ring', innerRadius: reach.ringInner, outerRadius: reach.ringOuter },
-        telegraphSeconds: 1.35, attackSeconds: 0.34, damage: 16, knockback: 1.1, trauma: 0.58,
+        telegraphSeconds: 1.35, attackSeconds: 0.34, damage: GLOAMWOOD_VALLEY_BOSS_DAMAGE.cliffMaw['cliff-sweep'], knockback: 1.1, trauma: 0.58,
       },
     },
     rotation: { 1: ['stone-slam', 'stone-slam', 'cliff-sweep'], 2: ['cliff-sweep', 'stone-slam', 'cliff-sweep', 'stone-slam'] },
@@ -254,19 +266,19 @@ function sourceRoot(): GloamwoodValleyBossSpec {
       'root-slam': {
         id: 'root-slam', clip: 'Slam',
         shape: { kind: 'disc', radius: reach.disc },
-        telegraphSeconds: 0.9, attackSeconds: 0.26, damage: 20, knockback: 1.5, trauma: 0.7,
+        telegraphSeconds: 0.9, attackSeconds: 0.26, damage: GLOAMWOOD_VALLEY_BOSS_DAMAGE.sourceRoot['root-slam'], knockback: 1.5, trauma: 0.7,
       },
       'root-lunge': {
         id: 'root-lunge', clip: 'Lunge',
         shape: { kind: 'line', length: reach.lineLength, halfWidth: reach.lineHalfWidth },
-        telegraphSeconds: 0.82, attackSeconds: 0.52, damage: 22, knockback: 1.85, trauma: 0.78,
+        telegraphSeconds: 0.82, attackSeconds: 0.52, damage: GLOAMWOOD_VALLEY_BOSS_DAMAGE.sourceRoot['root-lunge'], knockback: 1.85, trauma: 0.78,
       },
       // Held back for phase two, so the last fight of the run still has
       // something the player has not seen it do.
       'ring-burst': {
         id: 'ring-burst', clip: 'RingBurst',
         shape: { kind: 'ring', innerRadius: reach.ringInner, outerRadius: reach.ringOuter },
-        telegraphSeconds: 1.3, attackSeconds: 0.36, damage: 24, knockback: 1.2, trauma: 0.9,
+        telegraphSeconds: 1.3, attackSeconds: 0.36, damage: GLOAMWOOD_VALLEY_BOSS_DAMAGE.sourceRoot['ring-burst'], knockback: 1.2, trauma: 0.9,
         phaseTwoOnly: true,
       },
     },

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { GLOAMWOOD_PREY, type GloamwoodNestPrey } from '../src/gloamwood-3d-ecology'
 import {
+  GLOAMWOOD_VALLEY_BOSS_DAMAGE,
   GLOAMWOOD_VALLEY_BOSS_PLAYER_FLOOR,
   GLOAMWOOD_VALLEY_BOSS_SPECS,
   gloamwoodValleyBossClipForPhase,
@@ -128,6 +129,18 @@ describe('Every pattern has an answer', () => {
 })
 
 describe('The rotation', () => {
+  it('makes every fully telegraphed Boss hit consequential, with pressure rising by route depth', () => {
+    const damage = GLOAMWOOD_VALLEY_BOSS_SPECS.map((spec) => Object.values(spec.patterns).map((pattern) => pattern.damage))
+    expect(damage).toEqual([
+      Object.values(GLOAMWOOD_VALLEY_BOSS_DAMAGE.tideCleaver),
+      Object.values(GLOAMWOOD_VALLEY_BOSS_DAMAGE.cliffMaw),
+      Object.values(GLOAMWOOD_VALLEY_BOSS_DAMAGE.sourceRoot),
+    ])
+    expect(Math.min(...damage[0])).toBeGreaterThanOrEqual(18)
+    expect(Math.min(...damage[1])).toBeGreaterThan(Math.min(...damage[0]))
+    expect(Math.min(...damage[2])).toBeGreaterThan(Math.min(...damage[1]))
+  })
+
   it('holds a phase-two pattern back until phase two', () => {
     const spec = GLOAMWOOD_VALLEY_BOSS_SPECS[2]
     const held = Object.values(spec.patterns).filter((pattern) => pattern.phaseTwoOnly).map((pattern) => pattern.id)

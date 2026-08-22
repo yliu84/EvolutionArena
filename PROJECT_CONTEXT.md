@@ -1,6 +1,6 @@
 # Evolution Arena Lite — Project Context
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
 Repository: `https://github.com/yliu84/EvolutionArena.git`  
 Project path: `/Users/yangliu/Documents/EvolutionArenaLite`  
 Branch: `main`  
@@ -508,3 +508,35 @@ that observation for a dedicated encounter-pressure calibration rather than
 changing health or damage inside this milestone. Commit `f8077e6` was pushed
 to `main` on 2026-08-22; GitHub Pages workflow run 55 completed successfully
 and the public site was checked with a fresh random ecology seed.
+
+## Current implementation candidate — Goal 14A Elite & regional Boss rewards
+
+Goal 14A makes optional Elite and regional Boss fights visibly pay for their
+risk without adding a new skill, equipment/currency system or map work. An
+Elite drops a gold Gene Core that grants `+1` bonus Gene
+of its own family when the player walks over it. The Shallows and Gorge Bosses
+drop a larger Boss Core that grants `+2` same-family Genes and then releases
+their existing mutation milestone into the existing three-candidate overlay.
+The gate still opens on Boss defeat; only the build reward waits for physical
+collection. The terminal Headwater Boss gives victory only.
+
+Following owner playtest feedback, the three River Valley Bosses now deal about
+25–30% more damage on their already-fully-telegraphed patterns. Their health,
+reach, wind-ups, attack windows, recovery, movement and knockback are unchanged:
+dodging remains reliable, but standing through the mechanic is no longer the
+efficient answer.
+
+The focused Boss authority tests, the complete suite (111 files / 1,007 tests)
+and production build pass. A local desktop and simulated 844×390 Boss encounter
+loaded after the calibration with no console error; the first Boss showed a
+roughly 19-point actual landed hit through the established player-damage path.
+
+Core presentation is a bounded Three.js mesh bundle (rough amber-bronze
+faceted crystal with a restrained warm rim, rings, low ground rune and a few
+motes), not bloom, point lights, a shader or a new particle system. It is
+intentionally recognisable at a glance without adding new HUD cards or
+controls. See `docs/GOAL-14A-ELITE-BOSS-REWARDS.md`.
+
+This is an implementation candidate pending project-owner playtest. Do not
+claim its local or public acceptance/release until the reward loop is checked
+in a full Boss clear on desktop and phone landscape.
