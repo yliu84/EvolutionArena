@@ -191,10 +191,16 @@ import {
   type GloamwoodEliteBurst,
 } from './gloamwood-elite'
 import { gloamwoodOccludesCameraView } from './gloamwood-camera-occlusion'
+import {
+  gloamwoodHuntRhythmStopsAutoEngage,
+  resolveGloamwoodHuntRhythm,
+  type GloamwoodHuntRhythm,
+} from './gloamwood-hunt-rhythm'
 import { createGloamwoodMap, gloamwoodMapStep, type GloamwoodMapContract } from './gloamwood-map'
 import { buildGloamwoodValleyScene } from './gloamwood-valley-scene'
 import { createGloamwoodValleyMap } from './gloamwood-valley-map'
 import type { GloamwoodValleyCreature } from './gloamwood-valley-creatures'
+import { resolveGloamwoodValleyWeather, type GloamwoodValleyWeather } from './gloamwood-valley-weather'
 import {
   gloamwoodValleyBossClipForPhase,
   gloamwoodValleyBossSpecFor,
@@ -668,6 +674,7 @@ interface DebugState {
     rocks: number
     shrinePieces: number
     collisionObstacles: number
+    weather: string
     flatBackdrop: false
   }
 }
@@ -834,7 +841,7 @@ class Gloamwood3DHunt {
   private respawnAt: { x: number; z: number } | null = null
   private deathOverlay?: HTMLElement
   private valleyGroundHeight: ((x: number, z: number) => number) | null = null
-  private valley: { update(camera: { x: number; z: number }, elapsed: number, delta: number): void } | null = null
+  private valley: { update(camera: { x: number; z: number }, elapsed: number, delta: number): void; weather: GloamwoodValleyWeather } | null = null
   // Keyed by body rather than by family. One family can wear several bodies -
   // a hunter and a grazer, a pack member and the elite promoted from it - and
   // keying by family silently loaded whichever came last.
@@ -2948,6 +2955,20 @@ class Gloamwood3DHunt {
     }
   }
 
+  /** The Boss authority names its phase; this only maps it to an actionable
+   * player-facing beat. Ordinary prey keep the exact standing-order behaviour
+   * they already had. */
+  private lockedBossRhythm(): GloamwoodHuntRhythm {
+    if (this.bossActive() && this.bossLocked) {
+      return resolveGloamwoodHuntRhythm(true, this.bossState.state)
+    }
+    const prey = this.lockedPrey()
+    return resolveGloamwoodHuntRhythm(
+      Boolean(prey && gloamwoodValleyBossSpecFor(prey as GloamwoodValleyCreature)),
+      prey?.phase,
+    )
+  }
+
   /**
    * Close on the locked target along the current bearing and keep the chain
    * running. Never re-aims the approach, and never decides a hit: contact still
@@ -2962,6 +2983,16 @@ class Gloamwood3DHunt {
     if (this.currentLockIdentity() !== this.autoEngageTargetId) return this.cancelAutoEngage()
     const target = this.lockedTargetGeometry()
     if (!target) return this.cancelAutoEngage()
+
+    // A standing order can close distance and continue an existing chain, but
+    // it cannot decide to tank a telegraph for the player. Keep the lock and
+    // leave manual movement completely free; a direction press still cancels
+    // the order under Goal 9. Recovery re-opens the same one-button order.
+    if (gloamwoodHuntRhythmStopsAutoEngage(this.lockedBossRhythm())) {
+      this.primaryHeld = false
+      this.target.copy(this.playerRoot.position)
+      return
+    }
 
     const dx = target.x - this.playerRoot.position.x
     const dz = target.z - this.playerRoot.position.z
@@ -3740,15 +3771,22 @@ class Gloamwood3DHunt {
    * units instead of 58.
    */
   private async buildValleyScenery() {
-    const seed = Number(new URLSearchParams(window.location.search).get('mapSeed') ?? 0) || 0x5a11e
+    const params = new URLSearchParams(window.location.search)
+    const seed = Number(params.get('mapSeed') ?? 0) || 0x5a11e
+    const weather = resolveGloamwoodValleyWeather(
+      params.get('weather'),
+      `${seed}:${params.get('evolutionSeed') ?? 'gloamwood-first-run'}`,
+    )
     // The valley scene loads its own kit templates - the same seven plants and
     // three rocks, through the same loader - so the Gloamwood's tree and rock
     // stores stay empty on this map and `createTree` is never reached.
     const valley = await buildGloamwoodValleyScene({
       seed,
       anisotropy: Math.min(8, this.renderer.capabilities.getMaxAnisotropy()),
+      weather,
     })
     this.scene.add(valley.root)
+    this.scene.background = new THREE.Color(valley.weather.backgroundColor)
     // The scenery owns its own scatter. Registering its colliders here means a
     // rock or trunk that the player sees is the same rock or trunk the movement
     // resolver feels; no duplicate hand-placed collision map can drift away
@@ -3764,6 +3802,7 @@ class Gloamwood3DHunt {
         const corridor = gloamwoodValleyCorridorAt(camera.x, camera.z)
         valley.update({ x: camera.x, z: camera.z, s: corridor.s }, elapsed, fog)
       },
+      weather: valley.weather,
     }
   }
 
@@ -6482,6 +6521,7 @@ class Gloamwood3DHunt {
           x: this.bossState.x, z: this.bossState.z, top: GLOAMWOOD_BOSS.bodyRadius * 1.9,
           health: this.bossState.health, max: this.bossState.maxHealth, name: t('creature.boss'),
           tier: 'boss' as GloamwoodThreatTier, affix: undefined, phase: this.bossState.phase,
+          rhythm: resolveGloamwoodHuntRhythm(true, this.bossState.state),
         }
       : prey && prey.phase !== 'dead'
         ? (() => {
@@ -6493,6 +6533,7 @@ class Gloamwood3DHunt {
               tier: gloamwoodThreatTier({ tier: creature.tier, eliteAffix: creature.elite?.affix, boss: Boolean(valleyBoss) }),
               affix: creature.elite?.affix,
               phase: creature.bossPhase ?? 1,
+              rhythm: resolveGloamwoodHuntRhythm(Boolean(valleyBoss), prey.phase),
             }
           })()
         : null
@@ -6539,6 +6580,7 @@ class Gloamwood3DHunt {
     max: number
     name: string
     phase: 1 | 2
+    rhythm: GloamwoodHuntRhythm
   } | null) {
     const plate = this.bossPlate
     if (!plate) return
@@ -6554,10 +6596,16 @@ class Gloamwood3DHunt {
     setText('[data-g3d-boss-badge]', gloamwoodThreatMark('boss'))
     setText('[data-g3d-boss-eyebrow]', t('threat.boss.eyebrow'))
     setText('[data-g3d-boss-name]', boss.name)
-    setText('[data-g3d-boss-phase]', t('threat.boss.phase', { phase: boss.phase }))
+    const beat = boss.rhythm === 'evade'
+      ? t('boss.beat.evade')
+      : boss.rhythm === 'counter'
+        ? t('boss.beat.counter')
+        : t('boss.beat.pressure')
+    setText('[data-g3d-boss-phase]', `${t('threat.boss.phase', { phase: boss.phase })} · ${beat}`)
     const fill = plate.querySelector<HTMLElement>('[data-g3d-boss-fill]')
     if (fill) fill.style.width = `${Math.max(0, Math.min(1, boss.health / Math.max(1, boss.max))) * 100}%`
     plate.dataset.phase = String(boss.phase)
+    plate.dataset.rhythm = boss.rhythm
   }
 
   /**
@@ -6948,7 +6996,7 @@ class Gloamwood3DHunt {
     const mapStatus = this.map.status?.()
     setText('[data-g3d-remaining]', mapStatus ? t(mapStatus.key as never, mapStatus.params)
       : this.runPhase === 'boss'
-      ? `${this.bossPatternName(this.bossState.pattern)} · ${this.bossState.state === 'telegraph' ? t('enemy.telegraph') : this.bossState.state === 'attack' ? t('enemy.strike') : t('enemy.watch')}`
+      ? `${this.bossPatternName(this.bossState.pattern)} · ${this.bossState.state === 'telegraph' ? t('boss.beat.evade') : this.bossState.state === 'attack' ? t('boss.beat.evade') : this.bossState.state === 'recover' ? t('boss.beat.counter') : t('boss.beat.pressure')}`
       : !this.map.hasNest ? t('hud.fieldRemaining', { count: this.livePrey().length, kills: this.nestState.kills })
         : this.nestState.phase === 'dormant' ? t('hud.undisturbed') : this.nestState.phase === 'intermission' ? t('hud.incoming') : this.nestState.phase === 'cleared' ? t('hud.clearedKills', { kills: this.nestState.kills }) : t('hud.waveRemaining', { count: this.livePrey().length }))
     // Biomass against the thing it is buying. On its own it read as a score,
@@ -7296,6 +7344,7 @@ class Gloamwood3DHunt {
         rocks: this.rockCount,
         shrinePieces: this.shrinePieces,
         collisionObstacles: this.obstacles.length,
+        weather: this.valley?.weather.id ?? 'gloamwood-static',
         flatBackdrop: false,
       },
     }

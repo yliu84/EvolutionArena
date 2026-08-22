@@ -46,6 +46,11 @@ import {
   gloamwoodValleyWaterHalfWidth,
   gloamwoodValleyWaterHeight,
 } from './gloamwood-valley-terrain'
+import {
+  gloamwoodValleyWeatherAtmosphere,
+  resolveGloamwoodValleyWeather,
+  type GloamwoodValleyWeather,
+} from './gloamwood-valley-weather'
 
 /**
  * The valley, meshed.
@@ -84,6 +89,8 @@ const GROUND_STEP = 4
  * reach - and the branch that climbs looks down over everything.
  */
 const GROUND_REACH = 4.2
+/** One locally-following batch, deliberately below the cost of a single prop chunk. */
+const WEATHER_RAIN_DROP_COUNT = 64
 
 export interface GloamwoodValleySceneStats {
   props: number
@@ -106,6 +113,7 @@ export interface GloamwoodValleyScene {
   heightAt: GloamwoodValleyGroundSampler
   sun: THREE.DirectionalLight
   ambient: THREE.HemisphereLight
+  weather: GloamwoodValleyWeather
   stats: GloamwoodValleySceneStats
   /** Collision footprints derived from the exact props the player sees. */
   colliders: readonly GloamwoodValleyCollisionObstacle[]
@@ -138,9 +146,11 @@ export async function buildGloamwoodValleyScene(options: {
   seed: number
   propBudget?: number
   anisotropy: number
+  weather?: GloamwoodValleyWeather
 }): Promise<GloamwoodValleyScene> {
   const root = new THREE.Group()
   root.name = 'GloamwoodValley'
+  const weather = options.weather ?? resolveGloamwoodValleyWeather(undefined, options.seed)
   const foliageTime = { value: 0 }
   const disposables: Array<{ dispose(): void }> = []
 
@@ -194,6 +204,13 @@ export async function buildGloamwoodValleyScene(options: {
 
   const ambient = new THREE.HemisphereLight(0xbcd6c8, 0x2b3326, 1.15)
   root.add(ambient)
+  const rain = weather.rain
+    ? createCameraLocalRain(typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches ? 36 : WEATHER_RAIN_DROP_COUNT)
+    : null
+  if (rain) {
+    root.add(rain.root)
+    disposables.push(rain)
+  }
 
   const stats: GloamwoodValleySceneStats = {
     props: props.length,
@@ -209,6 +226,7 @@ export async function buildGloamwoodValleyScene(options: {
     root,
     sun,
     ambient,
+    weather,
     heightAt: ground.heightAt,
     stats,
     colliders,
@@ -218,12 +236,13 @@ export async function buildGloamwoodValleyScene(options: {
       for (const cell of cells) {
         cell.group.visible = drawAll || gloamwoodValleyCellDrawn(cell.key, camera.x, camera.z)
       }
-      const atmosphere = gloamwoodValleyAtmosphereAt(camera.s)
+      const atmosphere = gloamwoodValleyWeatherAtmosphere(gloamwoodValleyAtmosphereAt(camera.s), weather)
       fog.color.lerp(fogColor.setHex(atmosphere.fogColor), 0.04)
       fog.density += (atmosphere.fogDensity - fog.density) * 0.04
       sun.color.lerp(sunColor.setHex(atmosphere.sunColor), 0.04)
       sun.intensity += (atmosphere.sunIntensity - sun.intensity) * 0.04
-      ambient.intensity = 0.55 + atmosphere.sunIntensity * 0.3
+      ambient.intensity += (atmosphere.ambientIntensity - ambient.intensity) * 0.04
+      rain?.update(camera, elapsed)
     },
     sightlineState() {
       let occluders = 0
@@ -276,6 +295,68 @@ export async function buildGloamwoodValleyScene(options: {
       root.clear()
     },
   }
+}
+
+/**
+ * A small sheet of line segments follows the player instead of simulating rain
+ * across a 1,600-unit map. It costs one draw call, keeps no per-frame object
+ * allocations, and never interacts with collisions, target selection or fog.
+ */
+function createCameraLocalRain(dropCount: number) {
+  const geometry = new THREE.BufferGeometry()
+  const positions = new Float32Array(dropCount * 6)
+  const lateral = new Float32Array(dropCount * 2)
+  const speed = new Float32Array(dropCount)
+  const phase = new Float32Array(dropCount)
+  for (let index = 0; index < dropCount; index += 1) {
+    lateral[index * 2] = weatherNoise(index, 17) * 20 - 10
+    lateral[index * 2 + 1] = weatherNoise(index, 29) * 16 - 8
+    speed[index] = 10 + weatherNoise(index, 43) * 4
+    phase[index] = weatherNoise(index, 61) * 18
+  }
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  const material = new THREE.LineBasicMaterial({
+    color: 0xa8c7cf,
+    transparent: true,
+    opacity: 0.24,
+    depthWrite: false,
+    fog: false,
+  })
+  const lines = new THREE.LineSegments(geometry, material)
+  lines.name = 'RiverValleyCameraLocalRain'
+  const root = new THREE.Group()
+  root.name = 'RiverValleyRainWeather'
+  root.add(lines)
+
+  return {
+    root,
+    update(camera: { x: number; z: number }, elapsed: number) {
+      root.position.set(camera.x, 0, camera.z)
+      for (let index = 0; index < dropCount; index += 1) {
+        const offset = index * 6
+        const fall = (elapsed * speed[index] + phase[index]) % 18
+        const x = lateral[index * 2] - fall * 0.05
+        const y = 16 - fall
+        const z = lateral[index * 2 + 1] + fall * 0.035
+        positions[offset] = x
+        positions[offset + 1] = y
+        positions[offset + 2] = z
+        positions[offset + 3] = x - 0.13
+        positions[offset + 4] = y - 0.82
+        positions[offset + 5] = z + 0.09
+      }
+      geometry.attributes.position.needsUpdate = true
+    },
+    dispose() {
+      geometry.dispose()
+      material.dispose()
+    },
+  }
+}
+
+function weatherNoise(index: number, salt: number) {
+  const value = Math.sin((index + 1) * 12.9898 + salt * 78.233) * 43758.5453
+  return value - Math.floor(value)
 }
 
 /**

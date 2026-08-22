@@ -1152,6 +1152,8 @@ body.is-gloamwood-3d * {
 .g3d-boss-plate > i em { display: block; width: 100%; height: 100%; background: linear-gradient(90deg, #8e2f31, #da8140 62%, #ffe394); transition: width .14s linear; }
 .g3d-boss-plate[data-phase="2"] { border-color: rgba(255, 109, 79, .86); box-shadow: inset 0 0 0 1px rgba(154, 38, 31, .65), 0 14px 38px rgba(0, 0, 0, .36), 0 0 32px rgba(226, 62, 39, .31); }
 .g3d-boss-plate[data-phase="2"] > i em { background: linear-gradient(90deg, #c32f31, #ff7948 62%, #ffd782); }
+.g3d-boss-plate[data-rhythm="evade"] > b { color: #ff9c6b; text-shadow: 0 0 10px rgba(244, 80, 53, .48); }
+.g3d-boss-plate[data-rhythm="counter"] > b { color: #d9f0a5; text-shadow: 0 0 10px rgba(156, 221, 102, .4); }
 @media (max-width: 900px) and (orientation: landscape), (max-height: 520px) and (orientation: landscape) {
   .g3d-target-bar { width: 92px; padding-bottom: 9px; }
   .g3d-target-bar b { font-size: 9px; }

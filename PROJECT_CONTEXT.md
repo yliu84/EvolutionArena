@@ -415,7 +415,7 @@ frame counter remained unchanged for 1.2 seconds while Settings was open and
 resumed afterward. A post-release review found that the death prompt's Revive
 button also needed that explicit wake-up; it now restarts the loop, and a real
 browser recovery restored Health 0→100 while the frame counter advanced with no
-console error. The current full suite is 106 files / 982 tests and the
+console error. The current full suite is 107 files / 985 tests and the
 production build passes. This is a measurable desktop reduction, not yet a
 replacement for the outstanding real midrange-mobile 30-FPS test.
 
@@ -442,3 +442,29 @@ while the body finishes turning. Target lock, collision, and the authoritative
 attack distance and aim checks remain unchanged. See `docs/GOAL-9-AGILE-HUNT.md`.
 The project owner accepted the local playtest and requested GitHub Pages
 publication on 2026-08-21.
+
+## Latest accepted presentation milestone — Goal 10 light weather direction
+
+River Valley now has a presentation-only three-state weather direction:
+`dawn`, `mist` and `rain`. It is deterministic from the existing run inputs
+and can be explicitly reviewed with `?weather=dawn|mist|rain`. Weather tints
+the existing regional fog and lighting; it never changes collision, AI,
+damage, movement, target selection, evolution or map scatter. Rain is one
+camera-local line batch (64 drops on desktop, 36 on coarse-pointer devices),
+not a full-map particle simulation or post-process. Rain is deliberately a
+readable dusk rather than black night so Boss tells and mobile combat remain
+visible. See `docs/GOAL-10-WEATHER-ACCEPTANCE.md`. The project owner accepted
+the local rain playtest on 2026-08-21 and authorized release; the exact public
+deployment result is recorded by the GitHub Pages workflow.
+
+## Active implementation milestone — Goal 11 hunt rhythm
+
+Goal 11 keeps the existing single basic-attack input and all combat authority
+intact, but interprets established Boss phases for the standing order: during
+`telegraph`/`strike`/`attack` it stops automatic close-in and continuation;
+during `recover` it exposes an explicit counter window. Manual movement still
+cancels the order and always wins. The existing Boss plate now names the beat
+as “立即闪避 / 反击空档 / 保持距离” (with English equivalents), including on
+River Valley bosses. It does not alter damage, health, hit ranges, target
+selection, evolution, map geometry or creature models. See
+`docs/GOAL-11-HUNT-RHYTHM-ACCEPTANCE.md`.
