@@ -3232,4 +3232,4 @@ function terrainHeight(x, z) { ... }   // 纯函数，没有高度图
 - 做了什么：Boss 地面预警/特效渲染器从首屏逻辑拆出，只在既有权威状态首次进入 telegraph 或 strike 时请求；它属于表现层，加载失败不会阻塞移动、伤害或 Boss 继续出招。开局模型加载只请求普通生物；三只后段区域 Boss 的 4–7 MB GLB 改为玩家进入 42 世界单位范围时才请求。每个 body 仍只会请求一次，失败后继续保留已有 primitive fallback，不会逐帧重试。
 - 结果：普通开局实际载入 6 个常规模型模板；进入 Boss 调试战后，当前 Boss 正常成为第 7 个模板且 `preyModelError` 为空。生产构建为 309.49 kB River Valley 逻辑块、4.33 kB 延后 Boss-FX 块和 629.48 kB 可缓存 Three runtime；后者仍是唯一 Vite 500 kB 通用提示，不以删减正式依赖处理。
 - 验证：Boss/河谷/资源聚焦 4 文件 / 60 项通过；完整 Vitest 110 文件 / 1,000 项通过，生产构建、运行时资源审计和相对路径 itch 打包通过。itch 包为 70 文件、62,027,472 B 解压体积。1440×900 桌面与 844×390 手机横屏均一画布、无横向溢出、无 console 日志；横屏 Attack 为 82×82px。
-- 发布状态：项目所有者已于 2026-08-22 授权提交、推送和 GitHub Pages 发布；推送后的公开地址与工作流结果仍需实际核验。
+- 发布状态：已随提交 `2e93cab` 推送到 `main`。GitHub Pages workflow run 58 成功完成（build 53 秒、deploy 9 秒）；公开地址在 1440×900 和 844×390 实际重新加载，均无 console error/warning、无横向溢出，手机 Attack 为 82×82px。

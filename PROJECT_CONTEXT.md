@@ -632,5 +632,8 @@ production build, runtime asset audit and relative itch package pass (70 files,
 console logs or horizontal overflow; desktop opening loaded six ordinary model
 templates, and the Boss debug encounter loaded its seventh current-Boss body
 with no model error. On 2026-08-22 the project owner authorized this verified
-release for commit, push and GitHub Pages publication; the actual public URL
-must still be checked after the workflow completes.
+release for commit, push and GitHub Pages publication. Commit `2e93cab` was
+pushed to `main`; GitHub Pages workflow run 58 completed successfully. The
+public site loaded in desktop 1440×900 and mobile landscape 844×390 with one
+canvas, no horizontal overflow and no console warning/error; the visible mobile
+Attack control remained 82×82px.
