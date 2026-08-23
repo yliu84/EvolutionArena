@@ -132,16 +132,21 @@ export const GLOAMWOOD_SPOTTED_FORDBUG_PREY: GloamwoodModelledPreyConfig = {
  */
 export const GLOAMWOOD_SPORE_TOAD_PREY: GloamwoodModelledPreyConfig = {
   id: 'spore-toad',
-  url: '/assets/quality-3d/models/spore-toad-runtime-v1.glb?v=valley-swarm-v1',
+  // Bumped with the file, every time. The body was lifted off near-black, the
+  // sac made emissive, and the death turned into a flip onto its back - a
+  // browser holding an earlier GLB would show none of it.
+  url: '/assets/quality-3d/models/spore-toad-runtime-v1.glb?v=valley-swarm-v3',
   // The Swarm family's own radius, and the smallest body on the map. This one
   // is not scaled up the way the river hunter was: a Swarm creature arrives two
   // and three at a time and its job is to crowd, so reading as small beside a
   // 1.55 Ford Fang is the point rather than a compromise.
   footprintRadius: 0.64,
-  // Authored nose along -Z after a Y-up export: the auto-rig put its root at the
-  // nose, at the far end from the rear, which is the opposite of every other
-  // creature here. Measured from the rig rather than copied from a neighbour.
-  modelYaw: -Math.PI / 2,
+  // Same correction every other creature carries. It was set to -PI/2 from a
+  // derivation off the rig - the auto-rig put the root at the nose, so the nose
+  // was taken to run along -Z - and in engine the creature walked and struck
+  // backwards. The derivation was wrong and the neighbours' value was right;
+  // an axis convention is worth measuring in the game rather than on paper.
+  modelYaw: Math.PI / 2,
   clips: { idle: 'Idle', walk: 'Walk', attack: 'Lunge', hit: 'Hit', death: 'Death' },
 }
 

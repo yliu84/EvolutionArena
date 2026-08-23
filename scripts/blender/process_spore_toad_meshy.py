@@ -121,6 +121,79 @@ for image in bpy.data.images:
         image.scale(1024, 1024)
         image.pack()
 
+# --- Colour ----------------------------------------------------------------
+#
+# Measured off the baked map rather than judged: the sac is 22% of the texture
+# at RGB (5, 180, 192) and the body is the other 77% at RGB (19, 30, 28). That
+# body is 12% brightness - near black - and on the valley's green ground at a
+# 0.64 radius it reads as a shadow rather than as an animal. Reported as
+# "the body colour looks black".
+#
+# Two changes, and they are different jobs. The body is lifted so it is a dark
+# blue-green instead of a dark nothing. The sac is made *emissive*, because it
+# was never anything but bright paint - the contract says the body stays dark so
+# the sac carries the read, and that only works if the sac is actually light.
+# Lifting the whole creature to compensate would have thrown away the contrast
+# the design is built on.
+BODY_GAIN = 2.7
+BODY_FLOOR = 0.02
+EMISSIVE_STRENGTH = 1.6
+
+import numpy as np
+
+base_image = next((image for image in bpy.data.images
+                   if image.type == "IMAGE" and "BaseColor" in image.name), None)
+colour_report = {}
+if base_image is not None:
+    buffer = np.empty(len(base_image.pixels), dtype=np.float32)
+    base_image.pixels.foreach_get(buffer)
+    pixels = buffer.reshape(-1, 4)
+    rgb = pixels[:, :3]
+    # The sac is picked out by a percentile of its own distribution rather than
+    # a fixed threshold, because Blender hands these back in a different colour
+    # space than the PNG they were measured in and a hard number would be wrong
+    # in one of the two.
+    brightness = (rgb[:, 1] + rgb[:, 2]) * 0.5
+    cut = float(np.percentile(brightness, 76))
+    glow = brightness > cut
+    body = ~glow
+
+    before = rgb[body].mean(axis=0).tolist()
+    lifted = np.clip(rgb[body] * BODY_GAIN + BODY_FLOOR, 0.0, 1.0)
+    # Never let the body reach the sac. The whole read depends on one of them
+    # being the bright thing.
+    rgb[body] = np.minimum(lifted, cut * 0.85)
+    after = rgb[body].mean(axis=0).tolist()
+    pixels[:, :3] = rgb
+    base_image.pixels.foreach_set(pixels.reshape(-1))
+    base_image.pack()
+
+    emissive = bpy.data.images.new("Baked_Emissive", base_image.size[0], base_image.size[1])
+    lit = np.zeros_like(pixels)
+    lit[:, 3] = 1.0
+    lit[glow, :3] = rgb[glow]
+    emissive.pixels.foreach_set(lit.reshape(-1))
+    emissive.pack()
+
+    for material in mesh.data.materials:
+        if not material.use_nodes or material.node_tree is None:
+            continue
+        principled = next((n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+        if principled is None:
+            continue
+        texture = material.node_tree.nodes.new("ShaderNodeTexImage")
+        texture.image = emissive
+        texture.location = (principled.location.x - 420, principled.location.y - 320)
+        material.node_tree.links.new(principled.inputs["Emission Color"], texture.outputs["Color"])
+        principled.inputs["Emission Strength"].default_value = EMISSIVE_STRENGTH
+
+    colour_report = {
+        "sacShare": round(float(glow.mean()), 3),
+        "bodyBefore": [round(v, 3) for v in before],
+        "bodyAfter": [round(v, 3) for v in after],
+        "emissiveStrength": EMISSIVE_STRENGTH,
+    }
+
 # --- Clips -----------------------------------------------------------------
 armature.animation_data_create()
 while armature.animation_data.nla_tracks:
@@ -215,6 +288,10 @@ def merge(*parts):
 
 D = math.radians
 PITCH, YAW, PITCH_SIGN = probe_rotation_axes(SPINE, SPINE[-1], UP, SIDE)
+# Roll is whichever bone-local axis the probe did not claim: pitch moves the far
+# end vertically, yaw swings it sideways, and the third turns the body about its
+# own length. Derived rather than assumed, for the same reason the other two are.
+ROLL = next(axis for axis in range(3) if axis not in (PITCH, YAW))
 
 # Idle: a toad sitting. Almost all of the motion is a slow breath through the
 # body; the legs stay planted, because a squat animal that shifts its feet at
@@ -272,14 +349,48 @@ make_action("Hit", 22, [
     (22, {}),
 ])
 
-# Death: it settles rather than topples. A wide low animal has nowhere to fall.
-make_action("Death", 56, [
+# Death: it goes over onto its back.
+#
+# It used to settle in place, on the reasoning that a wide low animal has
+# nowhere to fall. True of the body and wrong about the read: a toad on its back
+# with its legs in the air is the one death on this map that cannot be mistaken
+# for anything else, and this creature is the smallest thing in the game - at a
+# 0.64 radius a settle is a dark shape getting slightly darker.
+#
+# The roll goes on the root, and it goes on last.
+#
+# On the root because every leg chain begins at the shoulder vertebra one bone
+# down - the resolver reports `frontRight` starting at the same bone the spine
+# does - so a roll written there is overwritten by whichever leg pose is merged
+# after it. The first attempt turned the creature twelve degrees instead of a
+# hundred and eighty for exactly that reason, and the bounding box barely moved.
+#
+# Last because `merge` is last-wins, and this is the one rotation in the clip
+# that must not be quietly replaced by another.
+#
+# Rolling at the root does not swing the body through an arc even though the
+# root sits at the nose: roll is rotation about the bone's own length, and that
+# line runs down the middle of the animal, so it turns over where it stands.
+ROLL_BONE = SPINE[:1]
+make_action("Death", 64, [
     (0, {}),
-    (20, merge(spread(SPINE, D(-10), PITCH, 0.7), spread(HEAD, D(-14), PITCH))),
-    (56, merge(
-        spread(SPINE, D(16), PITCH, 0.7), spread(HEAD, D(22), PITCH),
-        spread(FRONT_R, D(-30), PITCH, 0.8), spread(FRONT_L, D(-28), PITCH, 0.8),
-        spread(BACK_R, D(-26), PITCH, 0.8), spread(BACK_L, D(-29), PITCH, 0.8),
+    # A stagger first, so the flip is a consequence rather than an event.
+    (12, merge(
+        spread(SPINE, D(-14), PITCH, 0.7), spread(HEAD, D(-16), PITCH),
+        spread(SPINE, D(11), YAW, 0.7),
+    )),
+    (34, merge(
+        spread(FRONT_R, D(-24), PITCH, 0.8), spread(FRONT_L, D(-20), PITCH, 0.8),
+        spread(BACK_R, D(-18), PITCH, 0.8), spread(BACK_L, D(-22), PITCH, 0.8),
+        spread(ROLL_BONE, D(105), ROLL),
+    )),
+    (64, merge(
+        # Legs drawn up and slightly curled, which is what makes it read as
+        # dead rather than as a creature lying on its back.
+        spread(FRONT_R, D(-46), PITCH, 0.8), spread(FRONT_L, D(-42), PITCH, 0.8),
+        spread(BACK_R, D(-38), PITCH, 0.8), spread(BACK_L, D(-44), PITCH, 0.8),
+        spread(HEAD, D(12), PITCH),
+        spread(ROLL_BONE, D(180), ROLL),
     )),
 ])
 
@@ -321,9 +432,10 @@ print("EA_SPORE_TOAD_PROCESS=" + json.dumps({
     "scaleFactor": round(scale_factor, 4),
     "runtimeSize": [round(value, 3) for value in runtime_size],
     "axes": {"forward": FORWARD, "side": SIDE, "up": UP},
-    "boneAxes": {"pitch": PITCH, "yaw": YAW, "pitchSign": PITCH_SIGN},
+    "boneAxes": {"pitch": PITCH, "yaw": YAW, "roll": ROLL, "pitchSign": PITCH_SIGN},
     "roles": {"spine": SPINE, "hips": HIPS, "head": HEAD,
               "frontRight": FRONT_R, "frontLeft": FRONT_L,
               "backRight": BACK_R, "backLeft": BACK_L},
+    "colour": colour_report,
     "actions": sorted(action.name for action in bpy.data.actions),
 }, ensure_ascii=False))
