@@ -89,7 +89,7 @@ describe('River Valley creature-model loading', () => {
     // The old Promise.all gate meant one missing or slow GLB held every creature
     // on its low-poly fallback. Settled results preserve per-model fallback,
     // while the template helper mounts each successful body immediately.
-    expect(source).toContain('Promise.allSettled(configs.map((config) => this.loadModelledPreyTemplate(config)))')
+    expect(source).toContain('Promise.allSettled(configs.map((config) => this.ensureModelledPreyTemplate(config)))')
     expect(source).toContain('this.preyTemplates.set(config.id, { scene: gltf.scene, clips: gltf.animations, config })')
     expect(source).toContain('if (this.map.bodyFor(prey)?.id !== config.id) continue')
   })
@@ -97,6 +97,13 @@ describe('River Valley creature-model loading', () => {
   it('keeps a failed model observable without blocking the remaining bodies', () => {
     expect(source).toContain('Primitive fallback: ${summary.failedIds.join(\', \')}')
     expect(source).toContain('Some River Valley creature models could not load; their primitive fallbacks remain.')
+  })
+
+  it('defers heavyweight regional Boss bodies until the player approaches', () => {
+    expect(source).toContain('const GLOAMWOOD_BOSS_MODEL_PREFETCH_DISTANCE = 42')
+    expect(source).toContain("if (prey.tier === 'boss') continue")
+    expect(source).toContain('if (distance > GLOAMWOOD_BOSS_MODEL_PREFETCH_DISTANCE) return')
+    expect(source).toContain('void this.ensureModelledPreyTemplate(config).catch((error) => {')
   })
 })
 
@@ -195,5 +202,18 @@ describe('Goal 8 audio event boundaries', () => {
     expect(source).toContain("creature.tier === 'boss' ? 'boss-intro' : 'elite-intro'")
     expect(source).toContain("this.playSound('boss-intro')")
     expect(source).toContain("this.playSound('elite-intro')")
+  })
+})
+
+describe('Boss presentation loading boundary', () => {
+  const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
+
+  it('loads the Boss tell renderer only when a real telegraph or strike needs it', () => {
+    // The renderer is presentation-only. Delaying its code must never delay the
+    // authoritative Boss state machine, damage test or player movement.
+    expect(source).toContain("import('./gloamwood-boss-fx-scene')")
+    expect(source).toContain('if (entries.some((entry) => entry.frame !== null)) this.ensureBossFx()')
+    expect(source).toContain('if (this.disposed || this.bossFx || this.bossFxLoad || this.bossFxUnavailable) return')
+    expect(source).not.toMatch(/^import\s+\{\s*createGloamwoodBossFxScene/m)
   })
 })

@@ -3202,3 +3202,34 @@ function terrainHeight(x, z) { ... }   // 纯函数，没有高度图
 - 用户反馈：在 Goal 9 的灵活走位后，Boss 的范围、直线与环形预警均可躲开，但硬吃一招的伤害太低，战斗仍倾向站桩换血。
 - 修复：只提高既有、完整预警的 Boss 招式伤害约 25–30%：潮汐裂钳 `14/17 → 18/22`，崖口巨颚 `18/16 → 23/21`，源根 `20/22/24 → 26/28/31`。不改招式形状、范围、前摇、攻击窗口、恢复、移动、击退、普通怪或 Elite；因此读预警并走位仍是稳定解法。
 - 验证计划：回归测试锁定三只 Boss 的数值和按路线递增的压力；运行 Boss 权威测试、完整测试、生产构建及桌面/手机横屏试玩后再交由项目所有者确认。
+
+## 2026-08-22 · Goal 15A/15B itch.io Free Alpha 发布准备
+
+- 类型：发布资产留档与打包；不改游戏玩法、战斗、数值、模型、地图、输入、音频或 GitHub Pages 部署。
+- 授权：新增 `docs/ASSET-LICENSE-REGISTER.md`，把运行时模型分为原有 Coral Gecko 的 CC BY 4.0 衍生链、项目所有者私存的 Meshy Pro 2026-08-17 / 2026-08-18 批次，以及项目自生成的 Azure / Golden GLB。账单、订阅页面、模型库截图和原始下载均保持在仓库外；公开 Alpha 只显示必要的 Meshy CC BY credit。补全 Shell 的来源记录，移除其“等待 GLB”的过时状态。
+- 打包：新增 `npm run build:itch`（`DEPLOY_BASE=./`）和 `npm run package:itch`。后者先构建，再用 `scripts/verify-itch-build.mjs` 检查相对 HTML 资源路径、顶层 `index.html`、少于 1,000 文件、解压小于 500 MB、单文件小于 200 MB，最后生成被 Git 忽略的 `release/EvolutionArenaLite-itch-alpha.zip`。
+- 验证：实际 itch 构建为 128 个文件、120,096,474 B 解压体积、最大单文件 7,148,776 B；ZIP 自检通过。完整 Vitest 为 111 文件 / 1,007 项通过；标准生产构建也通过。实际浏览器在 1440×900 和 844×390 横屏从相对路径构建加载 River Valley、模型、HUD、雷达和触控按键，无页面横向溢出、无 console error/warning。仍保留既有 legacy bundle 大于 500 kB 提示。
+- 发布边界：此阶段只生成本地上传包，不上传 itch.io、不提交、不推送。公开 Alpha 仍需项目所有者决定上传，并需要真实中端手机 30 FPS 证据。
+
+## 2026-08-22 · Goal 15C 已弃用运行时资产清理与启动减负
+
+- 范围：项目所有者确认后，仅清理已经无法由正式入口到达的旧 Phaser 演示资源，以及 10 个未加载的 Goal 8 音频试听文件；不改 River Valley、怪物 GLB、地图、美术源文件、战斗数值、运行时音频或 Git 历史。
+- 入口：根入口固定加载 River Valley。历史 `maplab`、`quality`、`huntlab`、`nestlab`、`classic` 查询参数不再复活旧版本，统一安全地落到当前正式试玩。
+- 清理：删除 `map-lab-v2`、`map-lab-v3`、`map-lab-v4`、`quality-slice`、`monsters`、`hunt-slice` 共 54,109,487 B；音频来源和哈希继续留在 `public/assets/audio/goal8/SOURCES.md`，需要回溯时可由 Git 历史恢复。`docs/`、`art-source/`、`.git` 都未触碰。
+- 结果：itch 包由 128 个文件、120,096,474 B 解压体积降为 68 个文件、62,024,697 B；生成 ZIP 为 49 MB。构建转换模块由 132 降至 77，旧 legacy chunk 已消失。仍有一个当前 `gloamwood-3d-hunt` 包高于 Vite 500 kB 提示，后续应以拆分/按需加载处理，而不是继续盲删资产。
+- 验证：完整 Vitest 110 文件 / 998 项通过；普通生产构建和相对路径 itch 打包均通过。1440×900 桌面、844×390 横屏以及历史旧参数入口均实际加载 River Valley，无 console error/warning、无横向溢出。
+
+## 2026-08-22 · Goal 15D 正式资源完整性守卫与 Three.js 缓存拆分
+
+- 资源完整性：新增 `scripts/verify-runtime-assets.mjs`，从 `src/main.ts` 递归走正式 TypeScript 依赖图，提取模型、贴图和音频的所有字面 `assets/` 路径，并同时校验 `public/` 与构建后的 `dist/`。这替换了靠旧模块排除名单维持的扫描方式；退役源码不再干扰检查，但任何正式资源漏文件会阻止打包。`npm run package:itch` 已在压缩前执行此检查。
+- 拆分：适配 Vite 8 / Rolldown 的函数式 `manualChunks` 配置，把 Three.js、GLTFLoader 与 SkeletonUtils 分离为稳定的 `three-runtime` 缓存块。River Valley 启动仍等待全部首屏依赖，故没有改变模型加载顺序、地图、战斗或移动端体验；普通 UI/游戏逻辑更新不再让浏览器重新下载这组稳定依赖。
+- 结果：原 940 kB `gloamwood-3d-hunt` 文件变为 311 kB River Valley 逻辑块和 629 kB `three-runtime` 块。后者仍高于 Vite 500 kB 通用提示，记录为后续“按功能实测懒加载”工作，不能为了消警告删掉正式依赖。
+- 验证：资源审计覆盖 68 个可达源模块、36 项运行时资源，`public` 与 `dist` 均无遗漏；完整 Vitest 110 文件 / 998 项通过，生产构建与 itch 包通过。相对路径生产预览在 1440×900 和 844×390 均加载两个独立 JS 块、一个画布、无横向溢出、无 console 日志；横屏 Attack 为 82×82px。最新包为 69 个文件、62,024,855 B 解压体积。
+
+## 2026-08-22 · Goal 15E Boss 表现与模型按需预加载
+
+- 范围：只降低开局网络、解码与内存压力；不改 River Valley 地图、普通怪、Boss 状态机、攻击判定、伤害、AI、碰撞、进化、操作、音频或已有模型降级路径。
+- 做了什么：Boss 地面预警/特效渲染器从首屏逻辑拆出，只在既有权威状态首次进入 telegraph 或 strike 时请求；它属于表现层，加载失败不会阻塞移动、伤害或 Boss 继续出招。开局模型加载只请求普通生物；三只后段区域 Boss 的 4–7 MB GLB 改为玩家进入 42 世界单位范围时才请求。每个 body 仍只会请求一次，失败后继续保留已有 primitive fallback，不会逐帧重试。
+- 结果：普通开局实际载入 6 个常规模型模板；进入 Boss 调试战后，当前 Boss 正常成为第 7 个模板且 `preyModelError` 为空。生产构建为 309.49 kB River Valley 逻辑块、4.33 kB 延后 Boss-FX 块和 629.48 kB 可缓存 Three runtime；后者仍是唯一 Vite 500 kB 通用提示，不以删减正式依赖处理。
+- 验证：Boss/河谷/资源聚焦 4 文件 / 60 项通过；完整 Vitest 110 文件 / 1,000 项通过，生产构建、运行时资源审计和相对路径 itch 打包通过。itch 包为 70 文件、62,027,472 B 解压体积。1440×900 桌面与 844×390 手机横屏均一画布、无横向溢出、无 console 日志；横屏 Attack 为 82×82px。
+- 发布状态：项目所有者已于 2026-08-22 授权提交、推送和 GitHub Pages 发布；推送后的公开地址与工作流结果仍需实际核验。

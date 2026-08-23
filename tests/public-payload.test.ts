@@ -1,10 +1,10 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { QUALITY_3D_GLB_ASSETS } from '../src/quality-3d-glb-assets'
 import { GLOAMWOOD_MODELLED_BOSSES } from '../src/gloamwood-3d-modelled-boss'
 import { GLOAMWOOD_MODELLED_PREY_CONFIGS } from '../src/gloamwood-modelled-prey'
+import { verifyRuntimeAssets } from '../scripts/verify-runtime-assets.mjs'
 
 const MODEL_DIRECTORY = new URL('../public/assets/quality-3d/models/', import.meta.url)
 
@@ -54,24 +54,11 @@ describe('The served payload holds runtime assets only', () => {
 })
 
 describe('Every asset the code names is actually served', () => {
-  const root = fileURLToPath(new URL('../', import.meta.url))
-  const sources = [
-    ...readdirSync(new URL('../src/', import.meta.url)).filter((f) => f.endsWith('.ts')).map((f) => `src/${f}`),
-    'index.html',
-  ]
-
-  it('resolves every referenced path under public/', () => {
-    // References are written both with and without a leading slash. A first
-    // attempt at pruning orphaned art searched only for the leading-slash form,
-    // so it moved the MapLab 2 bakes out from under the tool that loads them.
-    const missing: string[] = []
-    for (const file of sources) {
-      const text = readFileSync(`${root}${file}`, 'utf8')
-      for (const match of text.matchAll(/['"`](\/?assets\/[A-Za-z0-9/._-]*\.(?:png|jpe?g|glb|webp))/g)) {
-        const relative = match[1].replace(/^\//, '')
-        if (!existsSync(`${root}public/${relative}`)) missing.push(`${file} -> ${relative}`)
-      }
-    }
-    expect(missing).toEqual([])
+  it('resolves every model, texture and audio path reachable from the shipped entry', () => {
+    const audit = verifyRuntimeAssets({ root: process.cwd() })
+    expect(audit.sourceFiles).toContain('src/gloamwood-3d-hunt.ts')
+    expect(audit.references.some(({ path }) => path.endsWith('river-valley-forest-music.ogg'))).toBe(true)
+    expect(audit.references.some(({ path }) => path.endsWith('coral-gecko-rigged-runtime-v2.glb'))).toBe(true)
+    expect(audit.missingPublic).toEqual([])
   })
 })

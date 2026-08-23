@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc && vite build",
+    "build:itch": "DEPLOY_BASE=./ npm run build",
+    "verify:assets": "node scripts/verify-runtime-assets.mjs --dist",
+    "package:itch": "node scripts/package-itch.mjs",
     "preview": "vite preview --host",
     "test": "vitest run",
     "validate:gltf": "node scripts/validate-glb.mjs"

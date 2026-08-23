@@ -14,22 +14,22 @@ describe('What a bare URL opens', () => {
     expect(isGloamwood3DEntry('?maplab=4&live=1')).toBe(true)
   })
 
-  it('keeps every frozen stack reachable by name', () => {
+  it('routes historical stack selectors to the shipped River Valley build', () => {
     for (const search of [
       '?maplab=1', '?maplab=2', '?maplab=3', '?maplab=4',
       '?huntlab=1', '?nestlab=1', '?quality=1', '?quality3d=1',
     ]) {
-      expect(isGloamwood3DEntry(search), search).toBe(false)
+      expect(isGloamwood3DEntry(search), search).toBe(true)
     }
   })
 
-  it('gives the classic prototype its own name, now that it lost the empty query', () => {
-    expect(isGloamwood3DEntry('?classic=1')).toBe(false)
+  it('does not revive the classic prototype from an old query', () => {
+    expect(isGloamwood3DEntry('?classic=1')).toBe(true)
   })
 
   it('is not confused by unrelated query parameters', () => {
     expect(isGloamwood3DEntry('?lang=zh&evolutionSeed=goal5')).toBe(true)
-    expect(isGloamwood3DEntry('?maplab=2&lang=en')).toBe(false)
+    expect(isGloamwood3DEntry('?maplab=2&lang=en')).toBe(true)
   })
 })
 

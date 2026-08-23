@@ -1,6 +1,8 @@
 # Shell stage-1 / 铁背守蜥 source record
 
-Status: **Meshy job pack, awaiting user-supplied GLB.** Do not start Blender cleanup, retopology or rigging until the downloaded mesh passes the silhouette gates below.
+Status: **Source supplied, processed and user-accepted on 2026-08-17.** The
+original downloaded Meshy export remains private; the browser runtime derivative
+is the auditable project artifact. Do not overwrite it with a later download.
 
 - Prepared: 2026-08-17
 - Identity: 岩盾一级 / 铁背守蜥 stage-1 (`ironback-warden` lineage, `shell` / `carapace` family)
@@ -12,14 +14,20 @@ Status: **Meshy job pack, awaiting user-supplied GLB.** Do not start Blender cle
 
 When Meshy finishes, drop the downloaded textured GLB into **this folder** (`docs/concepts/evolution-v2/shell-stage1/source/`). Keep the original Meshy filename, then record it, the SHA-256 and the selected license in the blank fields below. The source GLB is immutable. Derived cleanup/rig files must use separately named paths.
 
-- Downloaded:
-- Original Meshy filename:
-- Stored source:
-- SHA-256:
-- License selected in Meshy:
-- Required attribution: identify Meshy as the generation tool in public asset or game credits (same rule as coral-gecko / scarlet-gecko)
+- Generated: 2026-08-17 (Meshy My Models card retained privately by the project owner)
+- Original Meshy filename: retained in the project owner's private source archive
+- Stored source: private owner archive; not committed
+- Source SHA-256: retained with the private original download
+- Runtime derivative: `public/assets/quality-3d/models/stone-pangolin-rigged-runtime-v2.glb`
+- License selected in Meshy: paid Pro commercial-use plan
+- Evidence: the project owner retains the dated Meshy model card, active Pro
+  subscription view and invoice privately. Do not commit any of those records.
+- Public credit: not required for the paid asset under the recorded plan; the
+  game nevertheless credits Meshy for the separate CC BY source chain.
 
-Exact commercial-license/account evidence must be retained by the project owner before public release. This record does not invent terms that were not supplied with the download.
+Commercial-license/account evidence is retained privately by the project owner.
+The public-safe cross-project index is
+[`docs/ASSET-LICENSE-REGISTER.md`](../../../ASSET-LICENSE-REGISTER.md).
 
 ## Upload order
 

@@ -509,7 +509,7 @@ changing health or damage inside this milestone. Commit `f8077e6` was pushed
 to `main` on 2026-08-22; GitHub Pages workflow run 55 completed successfully
 and the public site was checked with a fresh random ecology seed.
 
-## Current implementation candidate — Goal 14A Elite & regional Boss rewards
+## Latest accepted gameplay milestone — Goal 14A Elite & regional Boss rewards
 
 Goal 14A makes optional Elite and regional Boss fights visibly pay for their
 risk without adding a new skill, equipment/currency system or map work. An
@@ -537,6 +537,100 @@ motes), not bloom, point lights, a shader or a new particle system. It is
 intentionally recognisable at a glance without adding new HUD cards or
 controls. See `docs/GOAL-14A-ELITE-BOSS-REWARDS.md`.
 
-This is an implementation candidate pending project-owner playtest. Do not
-claim its local or public acceptance/release until the reward loop is checked
-in a full Boss clear on desktop and phone landscape.
+The project owner accepted the reward loop and Boss damage calibration on
+2026-08-22. Commit `3d64c4a` was pushed to `main`; GitHub Pages workflow run 57
+completed successfully. The public build is the only release claim for this
+milestone; local URLs remain review tools.
+
+## Active release-preparation milestone — Goal 15A/15B itch.io Free Alpha
+
+Goal 15 prepares the existing River Valley build for a small itch.io Free Alpha;
+it does not add gameplay, creatures, maps, models, skills, analytics or payment.
+
+- `docs/ASSET-LICENSE-REGISTER.md` is the public-safe licensing and credit
+  index. Private Meshy invoices, subscription evidence, model cards and original
+  downloads remain outside the repository.
+- The 2026-08-15 Coral Gecko source chain is CC BY 4.0 and requires the Meshy
+  credit recorded there. Owner-provided dated model-library evidence establishes
+  the 2026-08-17 and 2026-08-18 Meshy model batches under a Pro subscription;
+  their commercial evidence remains private.
+- `npm run build:itch` makes a Vite build with `DEPLOY_BASE=./`, so both Vite
+  output and the existing `assetUrl` public-asset boundary resolve from an itch
+  ZIP rather than the domain root. `npm run package:itch` builds, verifies the
+  package constraints and writes an ignored ZIP under `release/`.
+- No archive is an upload approval. Public itch.io release remains blocked on a
+  successful package/browser verification, real midrange-phone performance
+  evidence and the owner's explicit upload/publish decision.
+
+## Goal 15C — Shipped-payload retirement and startup reduction
+
+The owner approved a bounded cleanup of the **frozen, unreachable** gameplay
+payload only. River Valley remains the sole game entry; historical `maplab`,
+`quality`, `huntlab`, `nestlab` and `classic` query selectors now safely open
+the current game instead of loading discontinued Phaser prototypes.
+
+- Removed `public/assets/map-lab-v2`, `map-lab-v3`, `map-lab-v4`,
+  `quality-slice`, `monsters` and `hunt-slice` (54,109,487 B), plus 10 inactive
+  Goal 8 audio trials. Provenance for the retired audio remains in
+  `public/assets/audio/goal8/SOURCES.md`; all removed material remains
+  recoverable from Git history.
+- The source-only historical modules and their archaeology/configuration tests
+  remain; no model, live map art, combat authority, game values or runtime
+  audio was removed. `docs/`, `art-source/` and `.git` history were explicitly
+  left intact.
+- The verified itch package fell from 128 files / 120,096,474 B extracted to
+  68 files / 62,024,697 B extracted; its generated ZIP is 49 MB. The build now
+  transforms 77 modules rather than 132 and no longer emits the legacy chunk.
+  One current `gloamwood-3d-hunt` chunk remains above Vite's generic 500 kB
+  advisory threshold and is the next optimization candidate.
+- Verification after the cleanup: full Vitest 110 files / 998 tests, standard
+  production build, and relative-path itch package all pass. Desktop 1440×900
+  and landscape 844×390 browser smoke tests loaded River Valley with no console
+  errors or warnings; historical legacy query URLs also reached River Valley.
+
+## Goal 15D — Runtime asset guard and cache-aware 3D split
+
+The public entry now has a build-time runtime-asset audit instead of relying on
+a manually maintained exclusion list. `scripts/verify-runtime-assets.mjs`
+walks TypeScript imports from `src/main.ts`, finds every literal runtime
+`assets/` URL for models, textures and audio, and requires it to exist in both
+`public/` and (after a production build) `dist/`. `package:itch` runs that
+check before it creates an archive.
+
+Vite 8/Rolldown now emits the stable Three.js, GLTFLoader and SkeletonUtils
+dependency as `three-runtime`, separately from current River Valley logic.
+This is a safe cache split: the first run still loads all required modules
+together, but ordinary game/UI updates no longer invalidate the roughly 629 kB
+minified 3D runtime. The previous 940 kB hunt file is now a 311 kB hunt chunk
+plus the 629 kB reusable runtime chunk. The latter is still above Vite's
+generic 500 kB advisory and should be reduced only through measured
+feature-level lazy loading, not by removing live dependencies.
+
+Current verification: 68 source modules / 36 named runtime assets all resolve
+in source and build; full Vitest 110 files / 998 tests, production build and
+itch package pass. The actual relative-path preview loaded both chunks at
+1440×900 and 844×390 with one canvas, no horizontal overflow, no console logs
+and an 82×82px landscape Attack control. The rebuilt itch package contains 69
+files and extracts to 62,024,855 B.
+
+## Goal 15E — Measured Boss presentation deferral
+
+This is a startup-demand reduction only. It does not change River Valley's
+combat authority, Boss state machines, damage, movement, collision, encounter
+timing, map, controls or model fallback. The Boss telegraph renderer is loaded
+only when an authoritative telegraph/strike first needs it; a load failure
+leaves the already-decided encounter playable. The three 4–7 MB regional Boss
+GLBs are no longer all requested during the opening scene: ordinary creature
+bodies still load as before, while the current Boss body starts loading within
+42 world units and wears its existing primitive fallback until decoding ends.
+
+The production hunt chunk is 309.49 kB minified and the deferred Boss-FX chunk
+is 4.33 kB; `three-runtime` remains a cacheable 629.48 kB dependency and is
+the only Vite generic size advisory. Full Vitest is 110 files / 1,000 tests;
+production build, runtime asset audit and relative itch package pass (70 files,
+62,027,472 B extracted). Browser smoke tests at 1440×900 and 844×390 have no
+console logs or horizontal overflow; desktop opening loaded six ordinary model
+templates, and the Boss debug encounter loaded its seventh current-Boss body
+with no model error. On 2026-08-22 the project owner authorized this verified
+release for commit, push and GitHub Pages publication; the actual public URL
+must still be checked after the workflow completes.

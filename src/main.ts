@@ -1,6 +1,5 @@
 import './style.css'
 import { applyDocumentLocale, t } from './i18n'
-import { isGloamwood3DEntry } from './entry-routing'
 
 function createGameLoadingState() {
   const container = document.querySelector<HTMLElement>('#game-container')
@@ -49,33 +48,29 @@ function escapeHtml(value: string) {
 
 let cleanup: (() => void) | undefined
 
-if (isGloamwood3DEntry()) {
-  const loadStartedAt = performance.now()
-  // The root element carries the class too: iOS Safari resolves page-level
-  // zoom gestures against <html>, which no body-scoped rule can reach.
-  document.documentElement.classList.add('is-gloamwood-3d')
-  // The boot screen is the first thing anyone sees and it renders before the
-  // hunt module is fetched, so the locale has to be settled here. Resolving it
-  // twice is harmless: applyDocumentLocale is a pure function of the URL, the
-  // saved choice and the browser.
-  applyDocumentLocale()
-  document.body.classList.add('is-maplab', 'is-v4-live', 'is-gloamwood-3d')
-  const loading = createGameLoadingState()
-  const loadHunt = import.meta.env.DEV && new URLSearchParams(window.location.search).get('failLoad') === '1'
-    // Dev-only fault injection for the failure screen. Developer text, not
-    // player copy, so it is not a translation key.
-    ? Promise.reject(new Error('QA fault injection: character or scene assets failed to load'))
-    : import('./gloamwood-3d-hunt')
-  loadHunt
-    .then(({ launchGloamwood3DHunt }) => launchGloamwood3DHunt())
-    .then((dispose) => {
-      cleanup = dispose
-      document.body.dataset.gameReadyMs = String(Math.round(performance.now() - loadStartedAt))
-      loading.remove()
-    })
-    .catch((error) => showGameLoadFailure(loading, error))
-} else {
-  void import('./legacy-main')
-}
+const loadStartedAt = performance.now()
+// The root element carries the class too: iOS Safari resolves page-level
+// zoom gestures against <html>, which no body-scoped rule can reach.
+document.documentElement.classList.add('is-gloamwood-3d')
+// The boot screen is the first thing anyone sees and it renders before the
+// hunt module is fetched, so the locale has to be settled here. Resolving it
+// twice is harmless: applyDocumentLocale is a pure function of the URL, the
+// saved choice and the browser.
+applyDocumentLocale()
+document.body.classList.add('is-maplab', 'is-v4-live', 'is-gloamwood-3d')
+const loading = createGameLoadingState()
+const loadHunt = import.meta.env.DEV && new URLSearchParams(window.location.search).get('failLoad') === '1'
+  // Dev-only fault injection for the failure screen. Developer text, not
+  // player copy, so it is not a translation key.
+  ? Promise.reject(new Error('QA fault injection: character or scene assets failed to load'))
+  : import('./gloamwood-3d-hunt')
+loadHunt
+  .then(({ launchGloamwood3DHunt }) => launchGloamwood3DHunt())
+  .then((dispose) => {
+    cleanup = dispose
+    document.body.dataset.gameReadyMs = String(Math.round(performance.now() - loadStartedAt))
+    loading.remove()
+  })
+  .catch((error) => showGameLoadFailure(loading, error))
 
 window.addEventListener('beforeunload', () => cleanup?.())

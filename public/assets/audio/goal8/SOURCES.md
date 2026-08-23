@@ -27,13 +27,14 @@ damage, hit confirmation, kills or progression.
   is no longer in the runtime payload after the owner found its sustained pad
   too monotonous and oppressive.
 
-## Retained, inactive River Valley atmosphere trial
+## Removed River Valley atmosphere trial
 
 - File: `river-valley-forest-ambience.mp3`
 - Work / author: **Forest Ambience** by TinyWorlds
 - Source: <https://opengameart.org/content/forest-ambience>
-- Licence: CC0. Retained for provenance, but not loaded alongside the active
-  music loop, so the forest bed remains one quiet layer.
+- Licence: CC0. Removed from the shipped payload because it was not loaded
+  alongside the active music loop; this source/hash record remains for
+  provenance.
 - SHA-256: `9850aa1d0d5d66bd9c5daf8bb77c6d852e01f2f4de22f283bd5621e8bed13b75`
 
 ## Active River Valley foley
@@ -71,13 +72,14 @@ damage, hit confirmation, kills or progression.
   active `player-hurt-creature-01.ogg`
   `65a6524d46bbf2acccb09b551fe7e3616dbd19f62266b5ea7e6313df29031df1`.
 
-## Retained, inactive Mixkit trial clips
+## Removed inactive Mixkit trial clips
 
 - Source / licence: Mixkit Sound Effects Free License, commercial use permitted;
   no attribution required. <https://mixkit.co/license/>
 - Source catalogue: <https://mixkit.co/free-sound-effects/whoosh/> and
   <https://mixkit.co/free-sound-effects/punch/>.
-- These original files are **not loaded or played** after the second style pass:
+- These original files were **not loaded or played** after the second style pass
+  and were removed from the shipped payload:
   - `attack-bite-air-woosh.wav` — **Air woosh**, item 1489 —
     `fdc4f87eb2c6d29ec3567b299fdc3b2aeea2432afe27801db80c496bda084499`
   - `attack-pounce-arrow-woosh.wav` — **Arrow whoosh**, item 1491 —
@@ -92,12 +94,13 @@ damage, hit confirmation, kills or progression.
   - `hit-player-game.wav` — **Small hit in a game**, item 2072 —
     `2da77832ddcce963fd18607c1be61f0f0439533c230efafa4f8803eaebee5afa`
 
-## Retained, inactive Kenney contact trial clips
+## Removed inactive Kenney contact trial clips
 
 - Source pack: **Kenney Impact Sounds** — <https://kenney.nl/assets/impact-sounds>
   — Creative Commons CC0.
-- These files are **not loaded or played** after the second style pass because
-  their generic percussion-like contact did not fit creature combat:
+- These files were **not loaded or played** after the second style pass because
+  their generic percussion-like contact did not fit creature combat, and were
+  removed from the shipped payload:
   - `hit-light-generic-01.ogg` — original `impactGeneric_light_000.ogg` —
     `f0e982611e97512fee5f777986b67e8b435434b601f94992ec044f7e89fb5acb`
   - `hit-heavy-punch-01.ogg` — original `impactPunch_heavy_001.ogg` —

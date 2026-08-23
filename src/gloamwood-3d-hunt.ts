@@ -218,7 +218,7 @@ import {
   gloamwoodValleyBossSpecFor,
 } from './gloamwood-valley-boss'
 import { gloamwoodBossFxFrame } from './gloamwood-boss-fx'
-import { createGloamwoodBossFxScene, type GloamwoodBossFxEntry } from './gloamwood-boss-fx-scene'
+import type { GloamwoodBossFxEntry, GloamwoodBossFxScene } from './gloamwood-boss-fx-scene'
 import { gloamwoodValleyCorpseGone } from './gloamwood-valley-respawn'
 import {
   createGloamwoodValleyProgression,
@@ -267,6 +267,11 @@ const WORLD_HALF_DEPTH = 18
 const PLAYER_SPEED = 6.2
 const GLOAMWOOD_BOSS_ARENA = { x: 0, z: 0, playerX: -6, playerZ: 3 } as const
 const GLOAMWOOD_BOSS_ARENA_RADIUS = 4.2
+/**
+ * Start the current regional Boss body before it wakes, without asking the
+ * opening scene to download and decode every later 4–7 MB Boss GLB.
+ */
+const GLOAMWOOD_BOSS_MODEL_PREFETCH_DISTANCE = 42
 /**
  * How far the player may stray from the arena during an arena fight.
  *
@@ -864,7 +869,14 @@ class Gloamwood3DHunt {
    * decided. Empty on a map with no bosses, and its own module so that nothing
    * in the damage path can reach it.
    */
-  private readonly bossFx = createGloamwoodBossFxScene()
+  /**
+   * Boss ground tells are pure presentation and are only needed once a regional
+   * Boss actually begins a telegraph. Keeping the renderer out of the opening
+   * module gets the first hunt on screen earlier without changing authority.
+   */
+  private bossFx?: GloamwoodBossFxScene
+  private bossFxLoad?: Promise<void>
+  private bossFxUnavailable = false
   /**
    * What each boss was doing last frame, kept for the effects alone.
    *
@@ -891,6 +903,10 @@ class Gloamwood3DHunt {
   // a hunter and a grazer, a pack member and the elite promoted from it - and
   // keying by family silently loaded whichever came last.
   private readonly preyTemplates = new Map<string, { scene: THREE.Group; clips: THREE.AnimationClip[]; config: GloamwoodModelledPreyConfig }>()
+  /** One GLB request per body, even while nearby-Boss checks run every frame. */
+  private readonly preyTemplateLoads = new Map<string, Promise<void>>()
+  /** A missing body stays on its deliberate primitive fallback without retry spam. */
+  private readonly unavailablePreyTemplates = new Set<string>()
   /** Short-lived painterly hit feedback. It never participates in combat authority. */
   private readonly feedbackSprites: FeedbackSprite[] = []
   private readonly feedbackTextures = new Map<FeedbackTextureKind, THREE.Texture>()
@@ -1181,7 +1197,6 @@ class Gloamwood3DHunt {
     this.playerRoot.add(this.characterRoot)
     this.scene.add(this.playerRoot)
     this.scene.add(this.nestRoot)
-    this.scene.add(this.bossFx.root)
     this.preloadFeedbackTextures()
     this.bakeSkillFxTextures()
   }
@@ -1285,6 +1300,8 @@ class Gloamwood3DHunt {
     document.removeEventListener('gestureend', this.suppressGesture)
     document.removeEventListener('visibilitychange', this.visibilityChanged)
     document.removeEventListener('fullscreenchange', this.fullscreenChanged)
+    this.bossFx?.dispose()
+    this.bossFx = undefined
     this.scene.traverse((node) => {
       if (!(node instanceof THREE.Mesh)) return
       node.geometry.dispose()
@@ -3891,11 +3908,11 @@ class Gloamwood3DHunt {
   }
 
   private async loadModelledPrey() {
-    // Only the bodies this map's creatures actually wear. A Gloamwood run does
-    // not pay for the valley's boss models, and a valley run that never enters
-    // a scree branch does not pay for the pebble.
+    // The opening only pays for ordinary bodies. Regional Boss bodies keep
+    // their deliberate primitive fallback until the player approaches them.
     const wanted = new Map<string, GloamwoodModelledPreyConfig>()
     for (const prey of this.nestState.prey) {
+      if (prey.tier === 'boss') continue
       const config = this.map.bodyFor(prey)
       if (config) wanted.set(config.id, config)
     }
@@ -3907,7 +3924,7 @@ class Gloamwood3DHunt {
     // Each body switches as soon as it has decoded. Waiting for the full batch
     // made a single bad or slow GLB leave *every* River Valley creature in its
     // primitive fallback, which looks exactly like the model feature vanished.
-    const results = await Promise.allSettled(configs.map((config) => this.loadModelledPreyTemplate(config)))
+    const results = await Promise.allSettled(configs.map((config) => this.ensureModelledPreyTemplate(config)))
     const summary = summariseGloamwoodPreyModelLoads(
       configs.map((config) => config.id),
       results.flatMap((result, index) => result.status === 'rejected' ? [configs[index].id] : []),
@@ -3916,6 +3933,31 @@ class Gloamwood3DHunt {
       this.preyModelError = `Primitive fallback: ${summary.failedIds.join(', ')}`
       console.warn('Some River Valley creature models could not load; their primitive fallbacks remain.', summary.failedIds)
     }
+  }
+
+  private ensureModelledPreyTemplate(config: GloamwoodModelledPreyConfig) {
+    if (this.preyTemplates.has(config.id) || this.unavailablePreyTemplates.has(config.id)) return Promise.resolve()
+    const existing = this.preyTemplateLoads.get(config.id)
+    if (existing) return existing
+    const request = this.loadModelledPreyTemplate(config)
+      .catch((error) => {
+        this.unavailablePreyTemplates.add(config.id)
+        throw error
+      })
+      .finally(() => this.preyTemplateLoads.delete(config.id))
+    this.preyTemplateLoads.set(config.id, request)
+    return request
+  }
+
+  private preloadNearbyBossModel(prey: GloamwoodNestPrey) {
+    if (prey.phase === 'dead') return
+    const distance = Math.hypot(prey.x - this.playerRoot.position.x, prey.z - this.playerRoot.position.z)
+    if (distance > GLOAMWOOD_BOSS_MODEL_PREFETCH_DISTANCE) return
+    const config = this.map.bodyFor(prey)
+    if (!config) return
+    void this.ensureModelledPreyTemplate(config).catch((error) => {
+      this.preyModelError = `Primitive fallback: ${config.id} (${error instanceof Error ? error.message : String(error)})`
+    })
   }
 
   private async loadModelledPreyTemplate(config: GloamwoodModelledPreyConfig) {
@@ -4682,6 +4724,7 @@ class Gloamwood3DHunt {
       // family ring is the prey action ring and would sit inside the real one
       // marking ground that is not where the blow lands.
       const bossSpec = gloamwoodValleyBossSpecFor(prey as GloamwoodValleyCreature)
+      if (bossSpec) this.preloadNearbyBossModel(prey)
       // The mark stays up through the blow, not just the wind-up.
       //
       // It used to vanish the instant the phase left 'telegraph' - and contact
@@ -4749,10 +4792,40 @@ class Gloamwood3DHunt {
       entries.push({ id: prey.id, x: prey.x, z: prey.z, groundY: this.map.height(prey.x, prey.z), frame })
     }
     if (entries.length === 0 && this.bossFxPhase.size === 0) return
+    if (!this.bossFx) {
+      // `frame` is non-null only for the actual telegraph/strike window. The
+      // preceding travel and idle time never need this presentation renderer.
+      // Import failures intentionally leave authority untouched: the same
+      // telegraph still deals its existing damage and the game remains playable.
+      if (entries.some((entry) => entry.frame !== null)) this.ensureBossFx()
+      return
+    }
     const trauma = this.bossFx.update(entries, delta)
     if (trauma > 0) {
       this.cameraTrauma = Math.min(1, this.cameraTrauma + trauma)
     }
+  }
+
+  private ensureBossFx() {
+    if (this.disposed || this.bossFx || this.bossFxLoad || this.bossFxUnavailable) return
+    this.bossFxLoad = import('./gloamwood-boss-fx-scene')
+      .then(({ createGloamwoodBossFxScene }) => {
+        const bossFx = createGloamwoodBossFxScene()
+        if (this.disposed) {
+          bossFx.dispose()
+          return
+        }
+        this.bossFx = bossFx
+        this.scene.add(bossFx.root)
+      })
+      .catch(() => {
+        // A presentation chunk must not become a run-ending network failure.
+        // Mark it once so a transient offline review does not retry every frame.
+        this.bossFxUnavailable = true
+      })
+      .finally(() => {
+        this.bossFxLoad = undefined
+      })
   }
 
   private spawnFootstepDust(side: -1 | 1) {

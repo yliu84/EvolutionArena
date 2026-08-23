@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { GLOAMWOOD_EXPLORATION_LAYOUT } from '../src/gloamwood-exploration-layout'
 import {
   GLOAMWOOD_NEST_CONFIGS,
@@ -21,11 +21,10 @@ describe('Gloamwood complete nest roster', () => {
     expect(new Set(GLOAMWOOD_NEST_CONFIGS.map((nest) => nest.subtitle)).size).toBe(8)
   })
 
-  it('ships every configured master asset as a substantial project-local image', () => {
+  it('keeps frozen V4 nest art out of the shipped player payload', () => {
     for (const config of GLOAMWOOD_NEST_CONFIGS) {
       const path = `public${config.art.path}`
-      expect(existsSync(path), path).toBe(true)
-      expect(statSync(path).size, path).toBeGreaterThan(100_000)
+      expect(existsSync(path), path).toBe(false)
     }
   })
 
