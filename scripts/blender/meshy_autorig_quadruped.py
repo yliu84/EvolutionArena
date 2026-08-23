@@ -92,10 +92,34 @@ def resolve_unnamed_quadruped(armature):
     if mirror_error(side) > spans[side] * 0.5:
         raise SystemExit("The feet do not mirror across any axis; this is not a bilateral quadruped")
 
+    # The divider between front and back, and between left and right.
+    #
+    # It was the root, on the assumption that a root sits between the legs the
+    # way a hips bone does. A Meshy rig is under no obligation to put it there:
+    # the Spore Toad's root landed at the nose, in front of all four feet, so
+    # every foot answered "not in front of the root" and all four came back
+    # classified as rear ones.
+    #
+    # Deliberately conservative rather than simply switching to the feet's own
+    # midpoint. Three shipped creatures resolve through this function and their
+    # Meshy sources are private downloads that are not in the repository, so the
+    # change cannot be regression-tested against them. Keeping the root wherever
+    # it already lies between the feet leaves those three provably untouched -
+    # if the root were outside, they would have failed the same way the toad
+    # did - and the midpoint is used only in the case that used to be an error.
+    def divider(axis):
+        low = min(foot.head_local[axis] for foot in feet)
+        high = max(foot.head_local[axis] for foot in feet)
+        anchor = root.head_local[axis]
+        if low < anchor < high:
+            return anchor
+        return sum(foot.head_local[axis] for foot in feet) / len(feet)
+
+    side_divide, forward_divide = divider(side), divider(forward)
     legs = {}
     for foot in feet:
-        is_right = foot.head_local[side] > root.head_local[side]
-        is_front = foot.head_local[forward] > root.head_local[forward]
+        is_right = foot.head_local[side] > side_divide
+        is_front = foot.head_local[forward] > forward_divide
         key = f"{'front' if is_front else 'back'}{'Right' if is_right else 'Left'}"
         if key in legs:
             raise SystemExit(f"Two feet classified as {key}; the rig is not a plain quadruped")

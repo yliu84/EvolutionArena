@@ -33,3 +33,6 @@ docs/concepts/**/*.png
 *.njsproj
 *.sln
 *.sw?
+
+# Blender writes these beside the scripts when one imports another.
+scripts/blender/__pycache__/

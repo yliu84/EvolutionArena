@@ -129,13 +129,12 @@ describe('What the map says it is made of', () => {
     expect(valley.lives).toBe(GLOAMWOOD_VALLEY_LIFE_CAP)
   })
 
-  it('has a body for every creature it places except the swarm', () => {
-    // Which is what makes the declaration above true rather than aspirational -
-    // and it names the one gap rather than hiding it. The Swarm family has no
-    // valley model yet, so fourteen creatures still wear code-built primitives
-    // whatever the flag says. Everything else - packs, grazers, elites and all
-    // three region bosses - is an authored body.
+  it('has a body for every creature it places, with no exceptions left', () => {
+    // This asserted "except the swarm" for as long as the Swarm family had no
+    // valley model and fourteen creatures wore code-built primitives. The Spore
+    // Toad closed it, and the exception is gone rather than widened: a map that
+    // declares its creatures modelled has to be made of them.
     const missing = valley.createCreatures().prey.filter((prey) => !valley.bodyFor(prey))
-    expect(new Set(missing.map((prey) => prey.kind))).toEqual(new Set(['swarm']))
+    expect(missing.map((prey) => `${prey.id}/${prey.kind}`)).toEqual([])
   })
 })

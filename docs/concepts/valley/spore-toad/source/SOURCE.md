@@ -1,7 +1,8 @@
 # Valley spore toad / 荧孢蟾 source record
 
-Status: **Meshy job pack, awaiting user-supplied GLB.** Do not start Blender
-cleanup, retopology or rigging until the download passes the silhouette gates.
+Status: **source accepted and processed to runtime on 2026-08-24.** All
+silhouette gates pass. Wired into the game as the Swarm family's body, which
+was the last unmodelled family on the valley map.
 
 - Prepared: 2026-08-24
 - Identity: 河谷群生族小怪 / 荧孢蟾 (`spore-toad`)
@@ -13,11 +14,13 @@ cleanup, retopology or rigging until the download passes the silhouette gates.
 Drop the downloaded textured GLB into **this folder**, keep the original Meshy
 filename, then fill the fields below. The source GLB is immutable.
 
-- Downloaded:
-- Original Meshy filename:
-- Stored source:
-- SHA-256:
-- License selected in Meshy:
+- Downloaded: 2026-08-24
+- Original Meshy filename: `Meshy_AI_Character_output (6).glb`
+- Stored source: `docs/concepts/valley/spore-toad/source/Meshy_AI_Character_output (6).glb`
+- SHA-256: `ba51ae05cb7a642d3f8d89af5cfe89fb7ba51c8dcdb337885806f94dde1aaa59`
+- License selected in Meshy: project-owner Meshy Pro plan; commercial-use evidence retained privately, as for the other valley creatures
+- Processing: `scripts/blender/process_spore_toad_meshy.py`; 18,522 -> 11,999 triangles, three maps down to 1024, Icosphere helper removed, five clips authored (Idle/Walk/Lunge/Hit/Death)
+- Acceptance: four separate planted legs counted from below, no tail, one connected back sac, calm face; debris audit 1 part / 0 specks / 0.00% box error; footprint half-extent 0.640 against the Swarm radius of 0.64
 - Register row: add to [`docs/ASSET-LICENSE-REGISTER.md`](../../../../ASSET-LICENSE-REGISTER.md) before any build ships it
 
 ## Upload order

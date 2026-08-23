@@ -130,9 +130,25 @@ export const GLOAMWOOD_SPOTTED_FORDBUG_PREY: GloamwoodModelledPreyConfig = {
  * the right answer rather than an accident. The Swarm family has no model yet
  * and keeps its primitives.
  */
+export const GLOAMWOOD_SPORE_TOAD_PREY: GloamwoodModelledPreyConfig = {
+  id: 'spore-toad',
+  url: '/assets/quality-3d/models/spore-toad-runtime-v1.glb?v=valley-swarm-v1',
+  // The Swarm family's own radius, and the smallest body on the map. This one
+  // is not scaled up the way the river hunter was: a Swarm creature arrives two
+  // and three at a time and its job is to crowd, so reading as small beside a
+  // 1.55 Ford Fang is the point rather than a compromise.
+  footprintRadius: 0.64,
+  // Authored nose along -Z after a Y-up export: the auto-rig put its root at the
+  // nose, at the far end from the rear, which is the opposite of every other
+  // creature here. Measured from the rig rather than copied from a neighbour.
+  modelYaw: -Math.PI / 2,
+  clips: { idle: 'Idle', walk: 'Walk', attack: 'Lunge', hit: 'Hit', death: 'Death' },
+}
+
 export const GLOAMWOOD_MODELLED_PREY: Partial<Record<GloamwoodPreyKind, GloamwoodModelledPreyConfig>> = {
   fang: GLOAMWOOD_FORD_FANG_PREY,
   shell: GLOAMWOOD_SPOTTED_FORDBUG_PREY,
+  swarm: GLOAMWOOD_SPORE_TOAD_PREY,
 }
 
 /**
@@ -269,6 +285,7 @@ export const GLOAMWOOD_MODELLED_PREY_CONFIGS: readonly GloamwoodModelledPreyConf
   GLOAMWOOD_SPOTTED_FORDBUG_PREY,
   GLOAMWOOD_TERRACE_GRAZER_PREY,
   GLOAMWOOD_PEBBLE_DUMPLING_PREY,
+  GLOAMWOOD_SPORE_TOAD_PREY,
   ...GLOAMWOOD_VALLEY_BOSS_BODIES,
 ]
 
