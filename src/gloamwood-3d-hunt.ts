@@ -236,6 +236,12 @@ import {
 } from './gloamwood-valley-progression'
 import { GLOAMWOOD_VALLEY, gloamwoodValleyCorridorAt, gloamwoodValleyRegionAt } from './gloamwood-valley-terrain'
 import {
+  gloamwoodRunEarnedSomething,
+  loadGloamwoodRunRecord,
+  recordGloamwoodRun,
+  saveGloamwoodRunRecord,
+} from './gloamwood-run-record'
+import {
   GLOAMWOOD_VALLEY_RADAR_NORTH_UP,
   gloamwoodValleyRadarLocalBranchEndpoints,
   gloamwoodValleyRadarLocalBranchPaths,
@@ -6312,6 +6318,31 @@ class Gloamwood3DHunt {
     this.showRunResult(false, reason)
   }
 
+  /**
+   * Folds the run that just ended into the record kept on this device.
+   *
+   * Called from the result screen because that is the only place a run is
+   * finished: reviving continues the same run, so the record counts runs rather
+   * than deaths.
+   */
+  private recordFinishedRun() {
+    const regions = this.map.hasNest ? [] : GLOAMWOOD_VALLEY.regions
+    const standing = gloamwoodValleyRegionAt(
+      gloamwoodValleyCorridorAt(this.playerRoot.position.x, this.playerRoot.position.z).s,
+    )
+    const merged = recordGloamwoodRun(loadGloamwoodRunRecord(window.localStorage), {
+      regionIndex: regions.findIndex((region) => region.id === standing?.id),
+      biomass: this.nestState.biomass,
+      kills: this.nestState.kills,
+      bossesFelled: this.nestState.prey
+        .filter((prey) => (prey as GloamwoodValleyCreature).tier === 'boss' && prey.phase === 'dead')
+        .map((prey) => prey.id),
+      familiesHunted: [...new Set(this.nestState.recentHunts)],
+    })
+    saveGloamwoodRunRecord(window.localStorage, merged.record)
+    return merged
+  }
+
   private showRunResult(victory: boolean, reason: string) {
     if (!this.resultOverlay) {
       const overlay = document.createElement('section')
@@ -6372,6 +6403,27 @@ class Gloamwood3DHunt {
         ]),
       '</dl>',
       valleyBuild,
+      // What the run left behind. Checked against the deployed build, storage
+      // held nothing at all - a player who died had no reason to open the page
+      // again, which is the first thing a public listing needs.
+      ...(this.map.hasNest ? [] : (() => {
+        const { record, gains } = this.recordFinishedRun()
+        const deepest = GLOAMWOOD_VALLEY.regions[record.deepestRegion]
+        return [
+          '<section class="g3d-result-record">',
+          `<span>${t('result.recordTitle', { runs: record.runs })}</span>`,
+          '<dl>',
+          ...(deepest ? [`<div${gains.deeper ? ' data-new="true"' : ''}><dt>${t('result.bestReached')}</dt><dd>${escapeGloamwoodHtml(t(`valley.region.${deepest.id}` as never))}</dd></div>`] : []),
+          `<div${gains.biomass ? ' data-new="true"' : ''}><dt>${t('result.bestBiomass')}</dt><dd>${record.bestBiomass}</dd></div>`,
+          `<div${gains.kills ? ' data-new="true"' : ''}><dt>${t('result.bestKills')}</dt><dd>${record.bestKills}</dd></div>`,
+          `<div><dt>${t('result.bossesFelled')}</dt><dd>${record.bossesFelled.length}/${GLOAMWOOD_VALLEY.bossSlots.length}</dd></div>`,
+          '</dl>',
+          gloamwoodRunEarnedSomething(gains)
+            ? `<strong>${t('result.newGround')}</strong>`
+            : `<small>${t('result.noNewGround')}</small>`,
+          '</section>',
+        ]
+      })()),
       `<button data-run-restart>${t('result.restart')}</button>`,
       '</div>',
     ].join('')
@@ -7168,6 +7220,10 @@ class Gloamwood3DHunt {
       `<button class="primary" type="button" data-g3d-settings-resume>${t('settings.resume')}</button>`,
       `<output class="g3d-performance-readout" data-g3d-performance hidden>${t('settings.perfWaiting')}</output>`,
       `<small data-g3d-settings-summary>${t('settings.summary')}</small>`,
+      // Required attribution, not decoration: the Coral Gecko source chain is
+      // CC BY 4.0, and docs/ASSET-LICENSE-REGISTER.md names this credit and
+      // requires it in game as well as on the public page.
+      `<small class="g3d-credits" data-g3d-credits>${t('settings.credits')}</small>`,
       '</section>',
       '<section data-g3d-settings-input hidden>',
       `<span>${t('input.eyebrow')}</span>`,

@@ -1841,3 +1841,43 @@ body.is-gloamwood-3d * {
   background: #23401f;
 }
 .gloamwood-death-prompt button:hover { filter: brightness(1.18); }
+
+/* The asset credit. Quiet, but it must survive a redesign of this panel: the
+   Coral Gecko source chain is CC BY 4.0 and the licence register requires it. */
+.g3d-credits {
+  display: block;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(210, 191, 132, .16);
+  color: #7f8f82;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+/* What the run left behind, under the bill for the run itself. Quieter than the
+   run's own numbers: it is the reason to come back, not the result. */
+.g3d-result-record {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(210, 191, 132, .18);
+}
+.g3d-result-record > span {
+  color: #8fa392;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+.g3d-result-record dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 8px 0 0;
+}
+.g3d-result-record dt { color: #8d9c8f; font-size: 9px; }
+.g3d-result-record dd { margin: 2px 0 0; color: #edf3e5; font-size: 13px; font-variant-numeric: tabular-nums; }
+/* A record beaten this run. The only thing on this panel that is allowed to
+   shout, because it is the one line answering "was that worth it". */
+.g3d-result-record [data-new="true"] dd { color: #e8c66c; }
+.g3d-result-record [data-new="true"] dt::after { content: " ▲"; color: #e8c66c; }
+.g3d-result-record > strong { display: block; margin-top: 10px; color: #e8c66c; font-size: 12px; }
+.g3d-result-record > small { display: block; margin-top: 10px; color: #7f8f82; font-size: 10px; }

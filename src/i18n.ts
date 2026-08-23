@@ -307,6 +307,14 @@ const STRINGS = {
   'evo.footer': { en: 'Your first evolved form applies immediately. Skill attacks stay off.', zh: '选择后立即进入一级形态；技能攻击仍保持关闭。' },
   'result.time': { en: 'Time', zh: '用时' },
   'result.prey': { en: 'Prey', zh: '猎物' },
+  // Worded to avoid a plural: "1 runs" is what the first run showed.
+  'result.recordTitle': { en: 'Best on this device · {runs} played', zh: '本机最佳 · 已玩 {runs} 局' },
+  'result.bestReached': { en: 'Furthest', zh: '最远到达' },
+  'result.bestBiomass': { en: 'Most biomass', zh: '最高生物质' },
+  'result.bestKills': { en: 'Most prey', zh: '最多猎杀' },
+  'result.bossesFelled': { en: 'Bosses felled', zh: '已击倒首领' },
+  'result.newGround': { en: 'New ground this run', zh: '这一局有新的进展' },
+  'result.noNewGround': { en: 'No new ground this run', zh: '这一局没有刷新记录' },
   'result.reached': { en: 'Reached', zh: '到达' },
   'result.evolution': { en: 'Evolution', zh: '进化' },
   'result.restart': { en: 'Start a new run', zh: '重新开始一局' },
@@ -334,6 +342,13 @@ const STRINGS = {
   'settings.openInput': { en: 'Key bindings', zh: '基础按键设置' },
   'settings.resume': { en: 'Resume hunting', zh: '继续狩猎' },
   'settings.perfWaiting': { en: 'PERF · waiting for a stable sample', zh: 'PERF · 等待稳定采样' },
+  // The asset licence register names this exact credit as required for the
+  // CC BY 4.0 source chain, and requires it on the public page and in game.
+  // See docs/ASSET-LICENSE-REGISTER.md.
+  'settings.credits': {
+    en: '3D assets include Meshy-generated source material. CC BY 4.0 source assets: Meshy.',
+    zh: '3D 素材包含由 Meshy 生成的源资产。CC BY 4.0 来源素材：Meshy。',
+  },
   'settings.summary': { en: 'Keyboard: Esc pause/resume · move W/A/S/D · lock Tab · attack Space', zh: '键盘：Esc 暂停/继续 · 移动 W/A/S/D · 锁定 Tab · 普攻 Space' },
   'input.eyebrow': { en: 'KEY BINDINGS', zh: 'KEY BINDINGS / 基础按键' },
   'input.title': { en: 'Pick an action, then press the new key', zh: '选择动作，再按下新按键' },
