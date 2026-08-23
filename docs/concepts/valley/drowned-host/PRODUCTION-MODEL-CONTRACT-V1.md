@@ -1,6 +1,27 @@
 # Valley Drowned Host Production Model Contract V1 — 溺囊
 
-Status: **job pack written, awaiting a user-supplied Meshy GLB.** Nothing generated, nothing rigged, nothing wired.
+Status: **rejected at concept review. Do not generate this form.**
+
+It reads as the player. The Coral Gecko the run starts in, and the Scarlet
+Gecko the Fang route evolves into, are both four-legged sprawling lizards with a
+tapering tail about a body long, scaled skin, a row of back spines and a blunt
+lizard head. So is this. The only difference is the glowing sac and the colour,
+and at the valley's camera distance in fog the texture is the first thing to go
+- while this family arrives two and three at a time, which puts three copies of
+the player's own silhouette around the player.
+
+The same objection kills the other two stock concepts for this slot: the
+Driftwood Mimic and the Reed Otterling are quadruped lizards too.
+
+The check that was missed: the candidate was compared against the other valley
+creatures - the olive river hunter, the orange dome beetle, the sandstone
+grazer, the walking rock - and never against the player, who is the one thing on
+screen at all times.
+
+What survives from this concept is the **glowing brood sac**, which is the
+family's identity and the reason it was picked: 荧孢群虫 is a bioluminescent
+spore swarm. It needs a body that is not a lizard to sit on. See the silhouette
+lock below.
 
 Standard: `evolution-arena-creature-production-v2.1`.
 
@@ -8,9 +29,13 @@ Canonical production target (primary Meshy image, 3/4):
 
 `docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/valley-drowned-host-concept.png`
 
-Extra reconstruction views: **none exist yet.** Ford Fang and Spotted Beetle each got a
-strict right profile plus its mirror; this form has only the 3/4. Run it as a
-single-image job, or produce the profiles first. Do not collage.
+Extra reconstruction views (separate files, never one collage):
+
+- right profile + its horizontal-flip left: lock length, tail ≈ body, sac as one mid-back hump
+- front: lock four planted legs and one central cyan eye
+- top: lock one connected dorsal sac; optional third extra slot only
+
+Meshy job pack: `source/SOURCE.md`
 
 Meshy job pack: `source/SOURCE.md`
 
@@ -48,6 +73,19 @@ Do not give it a frontal-damage rule. That belongs to Shell alone, and the
 attack circle it already carries is the smallest in the game on purpose.
 
 ## Non-negotiable silhouette
+
+**Rule zero, and the one this concept failed: it must not be a four-legged
+lizard.** That silhouette belongs to the player, in two of their three forms.
+The cheapest break is **no tail** - nothing else on this map is tailless except
+the walking rock - and a squat, wide, low body, which also reads as small, which
+it is: this is the smallest creature on the map at a 0.64 collision radius.
+
+A tailless amphibian carries all of it: four legs for the verified 27-bone
+quadruped rig, no tail, a wide low body, and brood sacs on the back, which is
+where the glow belongs and is what a Surinam toad actually looks like. A river
+valley is where you would find one.
+
+## Non-negotiable silhouette (superseded — kept for the sac description)
 
 - Exactly four planted legs with visible claws. Six legs fail; it is not an insect.
 - A single **glowing cyan sac cluster on the back**,reading as one mass of rounded
