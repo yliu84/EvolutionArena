@@ -84,8 +84,23 @@ describe('Shell stage-1 footprint', () => {
     expect(shell.radius).toBeGreaterThan(shellStageOne.radius)
     expect(shell.frontOffset).toBeGreaterThan(shellStageOne.frontOffset)
     expect(shell.rearOffset).toBeGreaterThan(shellStageOne.rearOffset)
-    // Swarm has no stage-2 body, so it must still take the stage default.
-    expect(getGloamwoodPlayerCollisionProfile(2, 'swarm')).toEqual(stageDefault)
+  })
+
+  it('gives the Swarm stage-2 body a footprint sized to its torso, not its stance', () => {
+    // This body is 2.06 across the bounding box and 1.21 across the torso: it
+    // stands on four spread spider legs. Sizing the radius from the stance would
+    // give the nimblest form in the game a footprint wider than the Fang
+    // stage-2 body, which is the opposite of what the route is.
+    const stageDefault = getGloamwoodPlayerCollisionProfile(2)
+    const swarm = getGloamwoodPlayerCollisionProfile(2, 'swarm')
+    const shell = getGloamwoodPlayerCollisionProfile(2, 'shell')
+    expect(swarm).not.toEqual(stageDefault)
+    // Narrowest of the three stage-2 forms, and narrower than the stage default.
+    expect(swarm.radius).toBeLessThan(stageDefault.radius)
+    expect(swarm.radius).toBeLessThan(shell.radius)
+    // But still bigger than its own stage-1 profile, or the second evolution
+    // would put a larger body inside a smaller footprint.
+    expect(swarm.radius).toBeGreaterThan(getGloamwoodPlayerCollisionProfile(1, 'swarm').radius)
   })
 
   it('keeps the wider Shell body clear of an obstacle the Fang body would pass', () => {

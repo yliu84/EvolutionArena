@@ -35,7 +35,11 @@ separately named paths.
 - Original Meshy filename: `Meshy_AI_model_Animation_Walking_withSkin (8).glb`
 - Stored source: `docs/concepts/evolution-v2/shell-stage2/source/Meshy_AI_model_Animation_Walking_withSkin (8).glb` (7,840,056 bytes)
 - SHA-256: `1cd240cd3616fa47164517f27e603dc3cdc810afa68f77aac0dfed75d1ffbde6`
-- License selected in Meshy: **not yet recorded — owner to fill in.** Do not assume; the Shell stage-1 job selected the private licence and that evidence is still unarchived (a release blocker carried in `PROJECT_CONTEXT.md`).
+- License selected in Meshy: covered by the project owner's active Meshy Pro
+  subscription. Evidence is a dated model-library card from 2026-08-23 supplied
+  by the owner on 2026-08-24, matching the treatment of every earlier batch in
+  `docs/ASSET-LICENSE-REGISTER.md`. The card and the billing record stay in the
+  owner's private archive.
 
 ### Accepted source — measurements, 2026-08-24
 

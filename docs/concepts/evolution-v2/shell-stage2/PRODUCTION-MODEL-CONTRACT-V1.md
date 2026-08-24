@@ -5,23 +5,24 @@ form in the game ("模型，走路，攻击都可以"), rejected the first attac
 Bite and Slam reading as one action, accepted the re-authored pass
 ("这一版好多了") and authorised commit and push to `main`.
 
-Identifiers deliberately stay `candidate` for now: the Chinese name 磐岳甲龙 is
-still unlocked, and promoting to `master` is a separate, explicit step the owner
-has not taken. Nothing in the runtime displays the name, so nothing depends on
-it.
+**Promoted to `master` on 2026-08-24** when the owner accepted this stretch of
+work ("差不多了，验收"). The Chinese name 磐岳甲龙 remains unlocked — that is a
+display-name decision, separate from the baseline identifier, and nothing in the
+runtime displays it. The `spore-stalker` precedent is the same: a master id with
+an unlocked Chinese name.
 
-Previously: **runtime candidate, integrated 2026-08-24.** The form is in the game: registered at stage 2 for family `shell`,
+The form is in the game: registered at stage 2 for family `shell`,
 running its own combat authority, footprint and material grade. Board-1 and
 board-2 were rejected, board-3 accepted, and the Meshy source passed both §3
 proportion gates. Sections 1-4 are measured and bind production; §5 is the
 locked design.
 
-Runtime identifiers (candidate, not master, until the owner accepts in play):
+Runtime identifiers:
 
-- form: `basalt-bulwark` / 磐岳甲龙 — **Chinese name still not locked**; nothing in
-  the runtime displays it, so no HUD string depends on it
-- character baseline: `basalt-bulwark-shell-second-evolution-candidate-v1`
-- combat profile: `basalt-bulwark-combat-candidate-v1`
+- form: `basalt-bulwark` / 磐岳甲龙 — **Chinese name not locked**; nothing in the
+  runtime displays it, so no HUD string depends on it
+- character baseline: `basalt-bulwark-shell-second-evolution-master-v1`
+- combat profile: `basalt-bulwark-combat-master-v1`
 - runtime model: `public/assets/quality-3d/models/basalt-bulwark-rigged-v1.glb`
 - contract: 20,659 triangles, 27 bones, nine named clips, 0 glTF errors/warnings
 

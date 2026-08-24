@@ -63,7 +63,14 @@ const GLOAMWOOD_PLAYER_FAMILY_COLLISION_PROFILES: Partial<
   // in under the stage profile's 0.62. The probes stay close to the Fang form's
   // because the extra length is almost all tail, and a tail tip is deliberately
   // not an authoritative body.
-  swarm: { 1: { radius: 0.56, frontOffset: 0.60, rearOffset: 0.68 } },
+  swarm: {
+    1: { radius: 0.56, frontOffset: 0.60, rearOffset: 0.68 },
+    // Swarm stage 2: 1.59 wide with a 1.47 torso at its 2.55 world height,
+    // against stage 1's 1.39 at 2.16. Radius follows measured half-width at the
+    // same fraction the stage-1 profile uses, so it stays the smallest footprint
+    // of the three stage-2 forms - which is what this route is.
+    2: { radius: 0.64, frontOffset: 0.62, rearOffset: 0.70 },
+  },
 }
 
 export function getGloamwoodPlayerCollisionProfile(

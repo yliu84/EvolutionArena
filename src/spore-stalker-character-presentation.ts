@@ -119,6 +119,12 @@ export const SPORE_STALKER_PRESENTATION = {
     // Measured from the runtime GLB, not estimated.
     lengthToHeight: 2.01,
     widthToHeight: 0.65,
+    // Measured over the upper 45% of the body, excluding the legs. Recorded
+    // when the stage-2 form was produced: a bounding-box width gate rejected
+    // that mesh at 0.809 before it was understood that the box measures this
+    // family's leg stance rather than its body. The two forms' torsos are
+    // within half a percent of each other.
+    torsoWidthToHeight: 0.472,
     attachmentCount: 0,
     dominantRead: 'narrow-high-stanced-glowing-flank',
   },

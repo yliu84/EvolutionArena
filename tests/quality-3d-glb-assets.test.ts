@@ -19,14 +19,14 @@ import { SCARLET_HUNTER_PRESENTATION } from '../src/scarlet-hunter-character-pre
 
 describe('quality 3D GLB vertical slice assets', () => {
   it('defines independent stage-0, first-evolution, second-evolution, wyvern and ancient assets', () => {
-    // Stage 1 carries all three bodies: Fang scarlet-gecko, Shell stone-pangolin
-    // and Swarm spore-stalker. Stage 2 now carries two: the Fang scarlet-hunter
-    // and the Shell basalt-bulwark. Swarm is the only family still without one.
-    expect(QUALITY_3D_GLB_ASSETS.map((asset) => asset.stage)).toEqual([0, 1, 2, 1, 2, 1, 3, 6])
-    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.formId)).size).toBe(8)
-    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.url)).size).toBe(8)
+    // All three produced families now carry both stages: Fang scarlet-gecko /
+    // scarlet-hunter, Shell stone-pangolin / basalt-bulwark, Swarm
+    // spore-stalker / lantern-lynx.
+    expect(QUALITY_3D_GLB_ASSETS.map((asset) => asset.stage)).toEqual([0, 1, 2, 1, 2, 1, 2, 3, 6])
+    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.formId)).size).toBe(9)
+    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.url)).size).toBe(9)
     // Every form still owns a distinct GLB; none may share a runtime file.
-    expect(QUALITY_3D_GLB_ASSETS).toHaveLength(8)
+    expect(QUALITY_3D_GLB_ASSETS).toHaveLength(9)
   })
 
   it('keys evolved forms by gene family so routes can own separate bodies', () => {
@@ -370,13 +370,25 @@ describe('Growing without becoming another animal', () => {
     expect(getQuality3DGLBAsset(2, 'shell')?.formId).not.toBe('scarlet-hunter')
   })
 
-  it('keeps a route with no stage-2 body in the one it has', () => {
-    // Swarm is the family that still has no stage-2 body. Asked for one, the
-    // resolver must hold it at its own stage-1 form rather than falling through
-    // to whatever else exists at stage 2 - a spore stalker evolving a second
-    // time must not turn into another route's animal.
-    expect(quality3DBodyStageForFamily(2, 'swarm')).toBe(1)
-    expect(getQuality3DGLBAsset(quality3DBodyStageForFamily(2, 'swarm'), 'swarm')?.formId).toBe('spore-stalker')
+  it('gives every produced family a second evolution of its own', () => {
+    // The gap this closes: a stage-2 request used to fall back to stage 1 for
+    // Shell and Swarm, so two of the three routes changed no body, no world
+    // height and no combat chain on the second evolution.
+    const expected = { fang: 'scarlet-hunter', shell: 'basalt-bulwark', swarm: 'lantern-lynx' } as const
+    for (const [family, formId] of Object.entries(expected)) {
+      expect(quality3DBodyStageForFamily(2, family as keyof typeof expected)).toBe(2)
+      expect(getQuality3DGLBAsset(2, family as keyof typeof expected)?.formId).toBe(formId)
+    }
+    // And none of them may answer with another route's animal.
+    const forms = Object.values(expected)
+    expect(new Set(forms).size).toBe(forms.length)
+  })
+
+  it('still holds an unproduced family in the body it has', () => {
+    // Three of the six families have no body at all. The resolver must keep
+    // them where they are rather than handing over another route's animal.
+    expect(quality3DBodyStageForFamily(2, 'wing')).toBe(0)
+    expect(quality3DBodyStageForFamily(1, 'venom')).toBe(0)
   })
 
   it('never answers with another route\'s body', () => {

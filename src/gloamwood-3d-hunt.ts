@@ -18,6 +18,8 @@ import { quality3DBodyStageForFamily, resolveQuality3DGLBAsset, type Quality3DFo
 import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presentation'
 import { SPORE_STALKER_PRESENTATION } from './spore-stalker-character-presentation'
 import { BASALT_BULWARK_PRESENTATION } from './basalt-bulwark-character-presentation'
+import { LANTERN_LYNX_PRESENTATION } from './lantern-lynx-character-presentation'
+import { amplifyGloamwoodAttackClip } from './gloamwood-attack-amplitude'
 import { applyDocumentLocale, getLocale, persistLocale, setLocale, t, type Locale } from './i18n'
 import { gloamwoodFamilyPortrait } from './gloamwood-family-portraits'
 import { gloamwoodMutationIcon } from './gloamwood-mutation-icons'
@@ -392,6 +394,7 @@ function gloamwoodFormBaseline(formId: string | undefined, stage: number) {
     'stone-pangolin': STONE_PANGOLIN_PRESENTATION,
     'spore-stalker': SPORE_STALKER_PRESENTATION,
     'basalt-bulwark': BASALT_BULWARK_PRESENTATION,
+    'lantern-lynx': LANTERN_LYNX_PRESENTATION,
     'scarlet-hunter': SCARLET_HUNTER_PRESENTATION,
     'scarlet-gecko': SCARLET_GECKO_PRESENTATION,
   } as const
@@ -464,6 +467,7 @@ function gloamwoodFormPresentation(formId: string | undefined) {
     'spore-stalker': SPORE_STALKER_PRESENTATION,
     'stone-pangolin': STONE_PANGOLIN_PRESENTATION,
     'basalt-bulwark': BASALT_BULWARK_PRESENTATION,
+    'lantern-lynx': LANTERN_LYNX_PRESENTATION,
     'scarlet-hunter': SCARLET_HUNTER_PRESENTATION,
     'scarlet-gecko': SCARLET_GECKO_PRESENTATION,
     'coral-gecko': CORAL_GECKO_PRESENTATION,
@@ -481,6 +485,28 @@ function gloamwoodFormPresentation(formId: string | undefined) {
  * accepted forms which never declared one keep exactly the rate they ship with
  * today - this makes the value reachable, it does not retune anything.
  */
+/**
+ * Upper bound on fitting a strike clip into its window.
+ *
+ * The worst offenders need about 1.8x. Beyond 2x a strike stops reading as a
+ * blow and starts reading as a stutter, and the right fix there is a shorter
+ * clip rather than faster playback.
+ */
+export const GLOAMWOOD_ATTACK_FIT_CEILING = 2
+
+/**
+ * The fitting rule, as a pure function so it can be measured against the real
+ * shipped clips rather than only exercised through a live scene.
+ */
+export function gloamwoodFittedAttackPlaybackRate(
+  declaredRate: number,
+  clipDurationSeconds: number,
+  windowSeconds: number,
+) {
+  if (!(clipDurationSeconds > 0) || !(windowSeconds > 0)) return declaredRate
+  return Math.min(GLOAMWOOD_ATTACK_FIT_CEILING, Math.max(declaredRate, clipDurationSeconds / windowSeconds))
+}
+
 function gloamwoodFormAttackPlaybackRate(formId: string | undefined, name: string) {
   const declared = (gloamwoodFormPresentation(formId)?.combat as {
     attackPlaybackRate?: Readonly<Record<string, number>>
@@ -499,6 +525,7 @@ export function gloamwoodFormCombatProfile(formId: string | undefined, stage: nu
     'spore-stalker': SPORE_STALKER_PRESENTATION,
     'stone-pangolin': STONE_PANGOLIN_PRESENTATION,
     'basalt-bulwark': BASALT_BULWARK_PRESENTATION,
+    'lantern-lynx': LANTERN_LYNX_PRESENTATION,
     'scarlet-hunter': SCARLET_HUNTER_PRESENTATION,
     'scarlet-gecko': SCARLET_GECKO_PRESENTATION,
     'coral-gecko': CORAL_GECKO_PRESENTATION,
@@ -2690,11 +2717,18 @@ class Gloamwood3DHunt {
           applyScarletGeckoSurfaceGrade(material)
           if (material.normalMap) material.normalScale.setScalar(SCARLET_GECKO_PRESENTATION.material.normalStrength)
           material.needsUpdate = true
-        } else if (asset.formId === 'spore-stalker') {
+        } else if (asset.formId === 'spore-stalker' || asset.formId === 'lantern-lynx') {
           // Graded by form for the same reason the branch above is: this hide is
           // a near-black teal that has to stay dark and take light, which is the
           // opposite of what the scarlet-gecko grade does.
-          const grade = SPORE_STALKER_PRESENTATION.material
+          //
+          // Both Swarm forms share it. Without this the stage-2 body fell into
+          // the generic branch below and took a 0.58-0.84 roughness clamp and a
+          // 0.55 environment intensity that were never chosen for it - the same
+          // class of silent substitution the combat profile used to make.
+          const grade = asset.formId === 'lantern-lynx'
+            ? LANTERN_LYNX_PRESENTATION.material
+            : SPORE_STALKER_PRESENTATION.material
           material.flatShading = false
           material.roughness = THREE.MathUtils.clamp(material.roughness, grade.minimumRoughness, grade.maximumRoughness)
           material.metalness = Math.min(material.metalness, grade.maximumMetalness)
@@ -2729,7 +2763,12 @@ class Gloamwood3DHunt {
       // The yaw/roll damping is a scarlet-gecko-specific repair for its source
       // Run's excessive torso sway. It must follow that form, not the stage, or
       // it flattens the authored motion of every other stage-1 body.
-      const clip = asset.formId === 'scarlet-gecko' ? stabilizeScarletGeckoLocomotionClip(sourceClip) : sourceClip
+      const stabilized = asset.formId === 'scarlet-gecko' ? stabilizeScarletGeckoLocomotionClip(sourceClip) : sourceClip
+      // The early forms' strikes measured far quieter than the late ones - the
+      // Fang stage-1 Bite moves twelve degrees across the whole body. Amplified
+      // here rather than re-exported because two of the four affected forms
+      // have no source in this repository to re-export from.
+      const clip = amplifyGloamwoodAttackClip(stabilized, asset.formId)
       this.actions.set(clip.name, this.mixer.clipAction(clip))
     }
     this.modelReady = true
@@ -3353,13 +3392,7 @@ class Gloamwood3DHunt {
     this.onboardingAttackStarted = true
     this.playSound(action === 'Bite' ? 'attack-bite' : action === 'Pounce' ? 'attack-pounce' : action === 'Claw' ? 'attack-claw' : 'attack-tail')
     this.attackStartedAt = now
-    this.attackDurationSeconds = action === 'Bite'
-      ? this.combatProfile.biteDurationSeconds
-      : action === 'Pounce'
-        ? this.combatProfile.pounceDurationSeconds
-        : action === 'Claw'
-          ? this.combatProfile.clawDurationSeconds
-          : this.combatProfile.tailSwipeDurationSeconds
+    this.attackDurationSeconds = this.attackWindowSeconds(action)
     this.attackUntil = now + this.attackDurationSeconds * 1000
     if (action === 'Pounce') this.leapBiteLandingResolved = false
     this.setAction(action, true)
@@ -5565,6 +5598,43 @@ class Gloamwood3DHunt {
     return this.combatProfile.tailSwipeContactSeconds
   }
 
+  /**
+   * Play a strike clip fast enough that it finishes inside its authority window.
+   *
+   * A one-shot action is stopped when `attackUntil` passes, so a clip longer
+   * than its window is simply cut. Measured across the whole cast, only the Fang
+   * hunter's TailSwipe ever completed: the rest played 56% to 84% of themselves,
+   * and what is lost is always the tail of the motion - the recovery and the
+   * settle back to rest. The player sees the strike stop mid-pose and crossfade
+   * to Idle from wherever it happened to be, which is most of why the attacks
+   * did not read as finished blows.
+   *
+   * Fitting is done here rather than by lengthening the windows because the
+   * windows are combat authority: damage, reach and the contact instant are
+   * timed against them and were playtested that way. This changes only how fast
+   * the animation is played back, and nothing about when damage lands.
+   *
+   * Clamped, because a clip needing more than double speed would read as a
+   * twitch; those are better fixed by shortening the clip at export, which is
+   * what the two stage-2 forms already do - their windows equal their clip
+   * lengths, so they come out at 1.0 and are untouched by this.
+   */
+  private fittedAttackPlaybackRate(name: string, clipDuration: number) {
+    return gloamwoodFittedAttackPlaybackRate(
+      gloamwoodFormAttackPlaybackRate(this.characterFormId, name),
+      clipDuration,
+      this.attackWindowSeconds(name as FormalHuntBasicAttackAction),
+    )
+  }
+
+  /** How long the authority gives this step. The clip has to fit inside it. */
+  private attackWindowSeconds(action: FormalHuntBasicAttackAction) {
+    if (action === 'Bite') return this.combatProfile.biteDurationSeconds
+    if (action === 'Pounce') return this.combatProfile.pounceDurationSeconds
+    if (action === 'Claw') return this.combatProfile.clawDurationSeconds
+    return this.combatProfile.tailSwipeDurationSeconds
+  }
+
   private setAction(name: string, force = false) {
     // The Shell form has no Pounce: short stout forelimbs cannot sell a leap, so
     // the contract replaces it with a planted Slam. Only the clip is redirected -
@@ -5595,7 +5665,7 @@ class Gloamwood3DHunt {
       : name === 'Run'
       ? presentation.animation.runPlaybackRate
       : name === 'Bite' || name === 'Pounce' || name === 'Claw' || name === 'TailSwipe'
-        ? gloamwoodFormAttackPlaybackRate(this.characterFormId, name)
+        ? this.fittedAttackPlaybackRate(name, next.getClip().duration)
         : 1
     if (name === 'Run') {
       stopGloamwoodActionsExcept(this.actions.values(), next)
@@ -5633,7 +5703,15 @@ class Gloamwood3DHunt {
       genes: { fang: 3, shell: 2, swarm: 6 },
       recentHunts: ['shell', 'swarm', 'swarm', 'fang', 'swarm', 'swarm'],
     }
-    this.evolutionState = openGloamwoodEvolutionOffer(this.evolutionState, this.nestState.genes, this.nestState.recentHunts)
+    // `openGloamwoodEvolutionOffer` refuses once anything has been selected,
+    // which is right for the first gate and useless for every later one. This
+    // helper could therefore only ever open evolution one: a reviewer driving it
+    // twice got a silent no-op the second time, and the run looked as though a
+    // second evolution had happened and changed nothing. It is the same call the
+    // road itself makes once a selection exists.
+    this.evolutionState = this.evolutionState.phase === 'selected'
+      ? openGloamwoodNextEvolutionOffer(this.evolutionState, this.nestState.genes, this.nestState.recentHunts)
+      : openGloamwoodEvolutionOffer(this.evolutionState, this.nestState.genes, this.nestState.recentHunts)
     this.showEvolutionOverlay()
   }
 
@@ -6848,6 +6926,7 @@ class Gloamwood3DHunt {
       { label: 'Shell I', stage: 1, family: 'shell' },
       { label: 'Shell II', stage: 2, family: 'shell' },
       { label: 'Swarm I', stage: 1, family: 'swarm' },
+      { label: 'Swarm II', stage: 2, family: 'swarm' },
     ]
     panel.innerHTML = [
       '<header><span>DEBUG</span><strong>Evolution Lab</strong><button type="button" data-mutation-lab-close aria-label="Close evolution lab">×</button></header>',

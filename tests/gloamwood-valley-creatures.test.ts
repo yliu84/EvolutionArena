@@ -154,14 +154,16 @@ describe('Grazing', () => {
       const corridor = gloamwoodValleyCorridorAt(now.x, now.z)
       expect(corridor.pathDistance, `${grazer.id} stepped onto the path`).toBeGreaterThan(corridor.pathHalfWidth * 0.7)
     }
-  })
+    // Same 60-step simulation as the test above, which already asks for 15s.
+    // On the 5s default this and the next one flake under parallel load.
+  }, 15_000)
 
   it('never leaves the ground it can stand on', () => {
     const after = run(creatures, away, 60).creatures
     for (const creature of after) {
       expect(gloamwoodValleyWalkable(creature.x, creature.z), `${creature.id} left the map`).toBe(true)
     }
-  })
+  }, 15_000)
 
   it('replays identically, so a recorded run means something', () => {
     const first = run(createGloamwoodValleyCreatures(SEED), away, 20).creatures

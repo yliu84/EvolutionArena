@@ -1,6 +1,6 @@
 # Evolution Arena Lite — Project Context
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
 Repository: `https://github.com/yliu84/EvolutionArena.git`  
 Project path: `/Users/yangliu/Documents/EvolutionArenaLite`  
 Branch: `main`  
@@ -439,7 +439,7 @@ replacement for the outstanding real midrange-mobile 30-FPS test.
 
 Open and unclosed, carried forward:
 
-- Meshy commercial licence evidence is still unarchived. The Shell job selected the private licence; record it in `docs/concepts/evolution-v2/shell-stage1/source/SOURCE.md`. This is a release blocker, not a technical one.
+- Meshy commercial licence evidence: the two stage-2 forms were closed on 2026-08-24 with owner-supplied dated model-library cards (2026-08-23 for `basalt-bulwark`, 2026-08-24 for `lantern-lynx`), recorded in `docs/ASSET-LICENSE-REGISTER.md` under the same treatment as every earlier batch. **Still open:** the Shell *stage-1* job selected the private licence and that specific evidence remains unarchived in `docs/concepts/evolution-v2/shell-stage1/source/SOURCE.md`. A release blocker, not a technical one.
 - A small static seam remains between two plates at the top of the Shell body. It is a mesh seam present in the rest pose, not a rigging fault, and is not resolvable at the 13.3% screen height the standard records.
 
 Per the user's standing instruction, do not modify the map environment, assets, shrine, lighting or vegetation; that is an independent workflow. Skills remain disabled.
@@ -660,8 +660,8 @@ evolution changes the body, the world height (1.80 to 2.55) and the combat chain
 
 - form: `basalt-bulwark` / 磐岳甲龙 — **Chinese name not locked**; no runtime
   string displays it
-- character baseline: `basalt-bulwark-shell-second-evolution-candidate-v1`
-- combat profile: `basalt-bulwark-combat-candidate-v1`
+- character baseline: `basalt-bulwark-shell-second-evolution-master-v1`
+- combat profile: `basalt-bulwark-combat-master-v1`
 - runtime model: `public/assets/quality-3d/models/basalt-bulwark-rigged-v1.glb`
 - contract: 20,659 triangles, 27 bones, nine named clips, 0 glTF errors/warnings,
   3.5 MB
@@ -702,6 +702,29 @@ Verification: 1,069 tests across 115 files, production build, runtime asset audi
 and glTF validator all pass. Desktop 1440x900 and mobile landscape 844x390 both
 load the form with `matchedFamily`/`matchedForm` true, grounded, one canvas, no
 horizontal overflow and no console errors.
+
+## Active content milestone — Swarm stage-2 body
+
+The Swarm second evolution exists in-game as `brood-hollow`, but the owner
+rejected the look on 2026-08-24: players found it ugly. The shipped mesh stays
+until a replacement source is accepted. Do not overwrite
+`public/assets/quality-3d/models/brood-hollow-rigged-v1.glb` from the new board.
+
+- contract: `docs/concepts/evolution-v2/swarm-stage2/PRODUCTION-MODEL-CONTRACT-V1.md`
+- Meshy pack: `docs/concepts/evolution-v2/swarm-stage2/source/SOURCE.md`
+- working id `brood-hollow` — **not locked**
+- world height **2.55**
+- architecture (revision 2): appealing big-cat / young-dragon; two large cyan
+  eyes; ruff of **four or five LARGE** glowing pods at neck and shoulders; sturdy
+  muscular sprinting legs; cream chest; tufted tail. Board-1's thin-legged
+  vented colony is withdrawn
+- gates: torso **w/h ≤ 0.52**, **l/h ≤ 2.10**, emissive ≤ 15%, confined to eyes,
+  ruff pods and tail tuft
+
+Current gate: **owner reviews the revision-2 3/4.** Board in
+`docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/swarm-stage2-brood-*.png`.
+Board-1 archived `superseded-board1-*`. Do not run Meshy until the 3/4 is
+accepted. Text-to-3D is forbidden. Do not upload board-1 or any `swarm-stage1-*`.
 
 ## Superseded plan — Shell stage-2 body
 
@@ -751,11 +774,6 @@ All three are the pattern this file already warns about twice:
 - `src/gloamwood-3d-collision.ts:50` — `shell` has only a stage-1 profile, so
   stage 2 falls back to the Fang stage-2 collision profile.
 
-Current gate: **owner reviews the revision-3 color-pass 3/4.** Board-1, board-2
-and the first board-3 grey-mass pass are archived. Current board is in
-`docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/shell-stage2-bulwark-*.png`.
-Checks: tree-trunk legs at about one third of height; upright shoulder and hip
-slabs break the silhouette; teal hide and yellow-green lichen show between
-slabs; cream throat and belly stay bright. Do not run Meshy until that 3/4 is
-accepted. Do not upload any superseded-board file. Text-to-3D is forbidden for
-this line. No code was changed for the board.
+Current gate: **closed.** Shell stage-2 shipped as `basalt-bulwark` on 2026-08-24.
+See "Delivered content milestone — Shell stage-2 body" above. Swarm stage-2 is
+now the active content milestone.

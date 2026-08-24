@@ -3,6 +3,7 @@ import { SCARLET_GECKO_PRESENTATION } from './scarlet-gecko-character-presentati
 import { SCARLET_HUNTER_PRESENTATION } from './scarlet-hunter-character-presentation'
 import { SPORE_STALKER_PRESENTATION } from './spore-stalker-character-presentation'
 import { BASALT_BULWARK_PRESENTATION } from './basalt-bulwark-character-presentation'
+import { LANTERN_LYNX_PRESENTATION } from './lantern-lynx-character-presentation'
 
 /**
  * Gene family a form belongs to. Stage 0 and the late-stage endpoints are shared
@@ -27,7 +28,7 @@ export const QUALITY_3D_PRODUCED_FAMILIES: readonly Quality3DFormFamily[] = ['fa
 
 export interface Quality3DGLBAsset {
   stage: 0 | 1 | 2 | 3 | 6
-  formId: 'coral-gecko' | 'scarlet-gecko' | 'scarlet-hunter' | 'stone-pangolin' | 'spore-stalker' | 'basalt-bulwark' | 'azure-wyvern' | 'golden-ancient'
+  formId: 'coral-gecko' | 'scarlet-gecko' | 'scarlet-hunter' | 'stone-pangolin' | 'spore-stalker' | 'basalt-bulwark' | 'lantern-lynx' | 'azure-wyvern' | 'golden-ancient'
   /** Undefined means the form is route-independent and serves every family. */
   family?: Quality3DFormFamily
   url: string
@@ -144,6 +145,25 @@ export const QUALITY_3D_GLB_ASSETS: readonly Quality3DGLBAsset[] = [
     'embedded',
     Math.PI / 2,
     SPORE_STALKER_PRESENTATION.asset.clips,
+    {
+      body: 'chest',
+      head: 'head',
+      feet: ['frontleg2', 'R_frontleg2', 'backleg2', 'R_backleg2'],
+      tail: ['tail1', 'tail2', 'tail3'],
+    },
+    'swarm',
+  ),
+  // Swarm stage 2, the last family to get a second evolution. Keeps the
+  // four-step chain and the leap; the payoff stays on the finisher.
+  asset(
+    2,
+    'lantern-lynx',
+    '/assets/quality-3d/models/lantern-lynx-rigged-v1.glb?v=swarm-stage2-v1',
+    LANTERN_LYNX_PRESENTATION.displayScale,
+    ['LanternLynxMesh', 'Hips', 'chest', 'head', 'frontleg', 'frontleg2', 'R_frontleg', 'R_frontleg2', 'backleg', 'backleg2', 'R_backleg', 'R_backleg2', 'tail', 'tail3'],
+    'embedded',
+    Math.PI / 2,
+    LANTERN_LYNX_PRESENTATION.asset.clips,
     {
       body: 'chest',
       head: 'head',

@@ -21,7 +21,7 @@ import { SCARLET_HUNTER_PRESENTATION } from './scarlet-hunter-character-presenta
  * Shell line grows upward and outward; it does not get longer.
  */
 export const BASALT_BULWARK_PRESENTATION = {
-  baselineId: 'basalt-bulwark-shell-second-evolution-candidate-v1',
+  baselineId: 'basalt-bulwark-shell-second-evolution-master-v1',
   // Only the legacy Quality 3D viewer reads this; the valley normalises by
   // measured world height. Chosen so that viewer shows the same 2.55/1.80 ratio
   // over the Shell stage-1 form that the valley does.
@@ -40,7 +40,7 @@ export const BASALT_BULWARK_PRESENTATION = {
   },
   combat: {
     ...STONE_PANGOLIN_PRESENTATION.combat,
-    profileId: 'basalt-bulwark-combat-candidate-v1',
+    profileId: 'basalt-bulwark-combat-master-v1',
     system: 'basic-attack',
     skillsEnabled: false,
     /**
