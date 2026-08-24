@@ -47,7 +47,17 @@ export const GLOAMWOOD_PLAYER_COLLISION_PROFILES = [
 const GLOAMWOOD_PLAYER_FAMILY_COLLISION_PROFILES: Partial<
   Record<GloamwoodPlayerFamily, Partial<Record<0 | 1 | 2, GloamwoodPlayerCollisionProfile>>>
 > = {
-  shell: { 1: { radius: 0.72, frontOffset: 0.74, rearOffset: 0.84 } },
+  shell: {
+    1: { radius: 0.72, frontOffset: 0.74, rearOffset: 0.84 },
+    // Shell stage 2 is the widest body in the game: 2.70 x 5.05 at its 2.55
+    // world height, against 1.59 x 4.58 at stage 1. Radius follows measured
+    // half-width at the same 0.906 fraction the stage-1 profile uses
+    // (1.35 * 0.906 = 1.22). The probes grow only with length, and the rear one
+    // deliberately lags it, because the stone club at the tail tip is display
+    // mass rather than an authoritative body - the same call the stage-1
+    // profile made about its plated tail.
+    2: { radius: 1.21, frontOffset: 0.82, rearOffset: 0.92 },
+  },
   // The Swarm stage-1 body is 1.40 wide and 4.34 long: the narrowest form in the
   // game but not the shortest. Radius follows measured half-width, so it comes
   // in under the stage profile's 0.62. The probes stay close to the Fang form's

@@ -68,7 +68,24 @@ describe('Shell stage-1 footprint', () => {
     // Other families and stages keep the accepted stage profile untouched.
     expect(getGloamwoodPlayerCollisionProfile(1)).toEqual(fang)
     expect(getGloamwoodPlayerCollisionProfile(0, 'shell')).toEqual(getGloamwoodPlayerCollisionProfile(0))
-    expect(getGloamwoodPlayerCollisionProfile(2, 'shell')).toEqual(getGloamwoodPlayerCollisionProfile(2))
+  })
+
+  it('gives the Shell stage-2 body a footprint of its own rather than the Fang stage-2 one', () => {
+    // 2.70 x 5.05 against the Fang stage-2 body's 2.03 x 4.91. Until this form
+    // existed, a stage-2 Shell fell back to the Fang stage profile, which is the
+    // third of the three stage-keyed branches recorded in the stage-2 contract.
+    const stageDefault = getGloamwoodPlayerCollisionProfile(2)
+    const shell = getGloamwoodPlayerCollisionProfile(2, 'shell')
+    expect(shell).not.toEqual(stageDefault)
+    expect(shell.radius).toBeGreaterThan(stageDefault.radius)
+    // It also has to be bigger than its own stage-1 profile, or the second
+    // evolution would put a much larger body inside a smaller footprint.
+    const shellStageOne = getGloamwoodPlayerCollisionProfile(1, 'shell')
+    expect(shell.radius).toBeGreaterThan(shellStageOne.radius)
+    expect(shell.frontOffset).toBeGreaterThan(shellStageOne.frontOffset)
+    expect(shell.rearOffset).toBeGreaterThan(shellStageOne.rearOffset)
+    // Swarm has no stage-2 body, so it must still take the stage default.
+    expect(getGloamwoodPlayerCollisionProfile(2, 'swarm')).toEqual(stageDefault)
   })
 
   it('keeps the wider Shell body clear of an obstacle the Fang body would pass', () => {

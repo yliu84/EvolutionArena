@@ -19,13 +19,14 @@ import { SCARLET_HUNTER_PRESENTATION } from '../src/scarlet-hunter-character-pre
 
 describe('quality 3D GLB vertical slice assets', () => {
   it('defines independent stage-0, first-evolution, second-evolution, wyvern and ancient assets', () => {
-    // Stage 1 now carries all three bodies: Fang scarlet-gecko, Shell
-    // stone-pangolin and Swarm spore-stalker.
-    expect(QUALITY_3D_GLB_ASSETS.map((asset) => asset.stage)).toEqual([0, 1, 2, 1, 1, 3, 6])
-    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.formId)).size).toBe(7)
-    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.url)).size).toBe(7)
+    // Stage 1 carries all three bodies: Fang scarlet-gecko, Shell stone-pangolin
+    // and Swarm spore-stalker. Stage 2 now carries two: the Fang scarlet-hunter
+    // and the Shell basalt-bulwark. Swarm is the only family still without one.
+    expect(QUALITY_3D_GLB_ASSETS.map((asset) => asset.stage)).toEqual([0, 1, 2, 1, 2, 1, 3, 6])
+    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.formId)).size).toBe(8)
+    expect(new Set(QUALITY_3D_GLB_ASSETS.map((asset) => asset.url)).size).toBe(8)
     // Every form still owns a distinct GLB; none may share a runtime file.
-    expect(QUALITY_3D_GLB_ASSETS).toHaveLength(7)
+    expect(QUALITY_3D_GLB_ASSETS).toHaveLength(8)
   })
 
   it('keys evolved forms by gene family so routes can own separate bodies', () => {
@@ -360,14 +361,21 @@ describe('Growing without becoming another animal', () => {
     expect(getQuality3DGLBAsset(2, 'fang')?.formId).toBe('scarlet-hunter')
   })
 
+  it('gives the Shell route its own stage-2 body', () => {
+    // Until this form shipped, a stage-2 Shell resolved back to stage 1 and the
+    // second evolution changed no body, no world height and no combat chain.
+    expect(quality3DBodyStageForFamily(2, 'shell')).toBe(2)
+    expect(getQuality3DGLBAsset(2, 'shell')?.formId).toBe('basalt-bulwark')
+    // And it must never be the Fang stage-2 animal.
+    expect(getQuality3DGLBAsset(2, 'shell')?.formId).not.toBe('scarlet-hunter')
+  })
+
   it('keeps a route with no stage-2 body in the one it has', () => {
-    // Stage 2 is authored only for the Fang line. Asked for a stage-2 Shell the
-    // resolver falls back to whatever exists at that stage, so a stone pangolin
-    // evolving a second time turned into a scarlet hunter - a different animal
-    // from a different route. Growing is not becoming something else.
-    expect(quality3DBodyStageForFamily(2, 'shell')).toBe(1)
+    // Swarm is the family that still has no stage-2 body. Asked for one, the
+    // resolver must hold it at its own stage-1 form rather than falling through
+    // to whatever else exists at stage 2 - a spore stalker evolving a second
+    // time must not turn into another route's animal.
     expect(quality3DBodyStageForFamily(2, 'swarm')).toBe(1)
-    expect(getQuality3DGLBAsset(quality3DBodyStageForFamily(2, 'shell'), 'shell')?.formId).toBe('stone-pangolin')
     expect(getQuality3DGLBAsset(quality3DBodyStageForFamily(2, 'swarm'), 'swarm')?.formId).toBe('spore-stalker')
   })
 

@@ -1,6 +1,6 @@
 # Evolution Arena Lite — Project Context
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 Repository: `https://github.com/yliu84/EvolutionArena.git`  
 Project path: `/Users/yangliu/Documents/EvolutionArenaLite`  
 Branch: `main`  
@@ -186,13 +186,27 @@ The first non-Fang player form, and the first creature produced specifically to 
 
 `QUALITY_3D_GLB_ASSETS` carries an optional `family`, and `resolveQuality3DGLBAsset(stage, family)` prefers the exact family, then a route-independent form, then the stage default. It returns `matchedFamily`, which debug state reports, so a route wearing another family's body is visible rather than silent.
 
-Before this, choosing Shell or Swarm silently loaded the Fang body: three evolution choices presented one creature. Fang and Shell now own separate bodies. Swarm stage-1 design is locked to concept B (`brood-stalker` / 荧囊猎蜥) and is waiting on a user-run Meshy Image-to-3D job; until that GLB is accepted it still borrows another body and still receives the procedural evolution accent, which is created only when a route has no body of its own.
+Before this, choosing Shell or Swarm silently loaded the Fang body: three evolution choices presented one creature. **All three families now own a separate stage-1 body**: `scarlet-gecko` (fang), `stone-pangolin` (shell) and `spore-stalker` (swarm).
 
-## Swarm first evolution — design locked, awaiting source
+**Stage 2 now carries two of three.** `fang` and `shell` have stage-2 assets; `swarm` is the only family still without one, and it is the next production target.
 
-The third stage-1 body. No runtime GLB yet.
+The paragraphs below describe the state **before** the Shell stage-2 form shipped on 2026-08-24. They are kept because the same trap is still live for `swarm`: only the family with no stage-2 body is affected now.
 
-- form: `brood-stalker` / 荧囊猎蜥 (Chinese name not locked for HUD strings)
+**Historical, and still true for `swarm`:** `quality3DBodyStageForFamily(2, 'shell'|'swarm')` therefore returns 1, and because `loadCharacter` receives that *body* stage rather than the requested one, a Shell or Swarm run's second evolution changes **nothing the player can see**: no body, no world height, no combat chain. Verified in a live browser on 2026-08-24 by taking `shell-bastion-core` twice from a clean run — the second evolution reported the same stage and the same `stone-pangolin` model as the first.
+
+`createEvolutionAccent()` was meant to be the placeholder for exactly this case and is now **dead code**. Its one call site is gated on `!characterFamilyMatched`, but `loadCharacter` always receives a stage where the family matches, so the flag is always `true` there. It was live while Swarm had no body; once all three families got a stage-1 body it stopped firing, and its absence looks identical to the bug it was hiding.
+
+`GLOAMWOOD_3D_FORM_WORLD_HEIGHTS.shell[2] = 2.55` is likewise unreachable dead data until a stage-2 Shell asset registers.
+
+The URL entry does **not** reproduce this; it fails differently. `?debug=1&evolutionRoute=shell&evolutionStage=2` calls `loadCharacter` with the raw requested stage, so `resolveQuality3DGLBAsset(2, 'shell')` falls through to `atStage[0]` and loads the **Fang** `scarlet-hunter` with `characterFamilyMatched: false` — a different animal from a different route. Use the debug API (`__EA_DEBUG__.openEvolutionGate` / `chooseEvolution`) to reproduce what a player actually sees.
+
+## Swarm first evolution — delivered
+
+The third stage-1 body. Shipped as `spore-stalker` (19,992 triangles, 27 bones, ten clips, `spore-stalker-swarm-first-evolution-master-v1`), registered at stage 1 for family `swarm`.
+
+Its contract at `docs/concepts/evolution-v2/swarm-stage1/PRODUCTION-MODEL-CONTRACT-V1.md` still reads "no source GLB yet" and still calls the form `brood-stalker`. That document was not updated when the model landed; the runtime registry and `src/spore-stalker-character-presentation.ts` are authoritative. Design record as originally locked:
+
+- form: `brood-stalker` / 荧囊猎蜥 (superseded id; runtime form is `spore-stalker`)
 - contract: `docs/concepts/evolution-v2/swarm-stage1/PRODUCTION-MODEL-CONTRACT-V1.md`
 - Meshy pack: `docs/concepts/evolution-v2/swarm-stage1/source/SOURCE.md`
 - primary image: `docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/swarm-stage1-concept-b-flank-sac-three-quarter.png`
@@ -637,3 +651,111 @@ pushed to `main`; GitHub Pages workflow run 58 completed successfully. The
 public site loaded in desktop 1440×900 and mobile landscape 844×390 with one
 canvas, no horizontal overflow and no console warning/error; the visible mobile
 Attack control remained 82×82px.
+
+## Delivered content milestone — Shell stage-2 body (`basalt-bulwark`)
+
+The Shell line's second evolution now exists and is in the game, closing the gap
+described under "Evolution models are keyed by gene family". A Shell run's second
+evolution changes the body, the world height (1.80 to 2.55) and the combat chain.
+
+- form: `basalt-bulwark` / 磐岳甲龙 — **Chinese name not locked**; no runtime
+  string displays it
+- character baseline: `basalt-bulwark-shell-second-evolution-candidate-v1`
+- combat profile: `basalt-bulwark-combat-candidate-v1`
+- runtime model: `public/assets/quality-3d/models/basalt-bulwark-rigged-v1.glb`
+- contract: 20,659 triangles, 27 bones, nine named clips, 0 glTF errors/warnings,
+  3.5 MB
+- measured body: **2.70 x 5.05 x 2.55** — the widest in the game against the Fang
+  stage-2 hunter's 2.03 x 4.91 x 2.55, and against its own stage-1 form's
+  1.59 x 4.58 x 1.80. Growth is +70% width, +42% height, +10% length
+- chain: `Bite -> Slam -> TailSwipe` (`碎岩咬 -> 山崩压 -> 磐锤横扫`), 15/21/24
+  damage over 0.64/1.02/1.26 s. Pounce stays absent; `Slam` remains a clip
+  redirect keyed on family. The stone club at the tail tip moves the payoff to
+  the finisher, which is the heaviest single blow in the game. Total damage per
+  committed second is 20.5, deliberate parity with the Fang stage-2 hunter's
+  20.5 — the two stage-2 forms hit equally hard, and this one does it in fewer,
+  slower, more punishing-to-whiff blows. The Shell line's compensation stays
+  mitigation
+- typed footprint: `GLOAMWOOD_PLAYER_FAMILY_COLLISION_PROFILES.shell[2]` is
+  `radius 1.21 / front 0.82 / rear 0.92`, radius following measured half-width
+- status: **owner-accepted in play on 2026-08-24 and released.** The first attack
+  pass was rejected — Bite and Slam read as one action — and the re-authored pass
+  was accepted. Identifiers stay `candidate` because the Chinese name is still
+  unlocked; promoting to `master` is a separate explicit step
+
+Three stage-keyed branches were defused rather than inherited. Two were fixed
+before the model existed (the material grade that nulls the normal map, and the
+combat profile selected by `stage >= 2`); the third, the collision profile, could
+only be sized from a measured body and landed with it. `gloamwoodFormCombatProfile`
+now returns `matchedForm`, reported in debug state beside `characterFamilyMatched`,
+so a body running another form's authority is visible rather than silent.
+
+New guards: `tests/quality-3d-glb-file-contract.test.ts` opens **every** shipped
+runtime GLB and asserts it really contains the clips, nodes and rig bones the
+registry claims, and that no Meshy `Icosphere` helper shipped. Nothing checked
+that before, so a Blender export that silently dropped a clip would have reached
+a player. `tests/basalt-bulwark-traversal.test.ts` sweeps the whole 1,590-unit
+route against the typed corridor widths, closing the traversal check that Shell
+stage 1 was accepted with still open.
+
+Verification: 1,069 tests across 115 files, production build, runtime asset audit
+and glTF validator all pass. Desktop 1440x900 and mobile landscape 844x390 both
+load the form with `matchedFamily`/`matchedForm` true, grounded, one canvas, no
+horizontal overflow and no console errors.
+
+## Superseded plan — Shell stage-2 body
+
+After the itch.io Free Alpha and the first external full clear, the owner chose
+content expansion on 2026-08-24 and picked **stage-2 bodies for the routes that
+lack them** over a third map.
+
+The reason is measured, not preferential. A run contains two evolutions, and
+only the Fang line's second one is visible: see "Evolution models are keyed by
+gene family" above. A third map is close to a one-for-one repeat of the River
+Valley programme — 5,498 lines of valley-specific code plus eight creature
+models, built 2026-08-18 to 2026-08-24 — and `docs/design/maps/README.md`
+states that the second map existed precisely to measure that cost. It also would
+not fix the gap; it would copy "two of three routes do nothing at the climax"
+onto a second map.
+
+Order: **Shell first**, then Swarm.
+
+- contract: `docs/concepts/evolution-v2/shell-stage2/PRODUCTION-MODEL-CONTRACT-V1.md`
+- Meshy pack (plus the concept-image prompts): `docs/concepts/evolution-v2/shell-stage2/source/SOURCE.md`
+- working names `basalt-bulwark` / 磐岳甲龙 — **not locked**, must not enter runtime strings
+- direction **B 立起**, chosen 2026-08-24, architecture revised after board-2: **mass is the subject**. Few huge megalith slabs (not small shingles); two upright standing-stone clusters over shoulders and hips; short tree-trunk legs at about **one third** of height; head forward at shoulder height; fused stone club. Board-1 kept the stage-1 animal. Board-2 separated by height and read light — both withdrawn. Player mitigation has no facing term, so a raised prow, ram or shield boss is a rejection.
+- world height **2.55**, chosen 2026-08-24 — the value already in `GLOAMWOOD_3D_FORM_WORLD_HEIGHTS.shell`, which simply becomes reachable
+
+**Hard source gate, arithmetic rather than taste.** The runtime scales by height
+alone, so stage-1 Shell proportions at 2.55 give 2.25 × 6.48 × 2.55 — 32% longer
+than the largest creature in the game. Stage 1 escaped this by holding height at
+1.80; stage 2 cannot, because height is the evolution read. The correction must
+come from the mesh: **`l/h ≤ 2.20` and `w/h ≥ 0.95`**, target body ≈ 2.42 × 5.61
+× 2.55. This cannot be rescued in Blender — normalising by height is exactly the
+step that converts elongation into footprint. A true side view is mandatory in
+the Meshy job; stage-1 attempt 2 came back at l/h 3.23 because the 3/4 view
+foreshortened the body.
+
+**Three stage-keyed branches will misfire silently the day this GLB registers.**
+All three are the pattern this file already warns about twice:
+
+- `src/gloamwood-3d-hunt.ts:2585` — the `if (stage === 2)` material grade sets
+  `material.normalMap = null`, deleting the plate relief that is this form's
+  entire identity. The comment directly below it records the same mistake
+  happening once already, to the gecko grade.
+- `src/gloamwood-3d-hunt.ts:449` — `if (stage >= 2)` hands Shell stage 2 the Fang
+  hunter's damage, reach and timings, and that chain opens with `Claw`, which no
+  Shell GLB declares: `setAction` would find no action and play nothing while the
+  authority still resolved damage. That is the defect that landed on Shell stage 1
+  after acceptance. `Pounce` is safe — its redirect to `Slam` is keyed on family.
+- `src/gloamwood-3d-collision.ts:50` — `shell` has only a stage-1 profile, so
+  stage 2 falls back to the Fang stage-2 collision profile.
+
+Current gate: **owner reviews the revision-3 color-pass 3/4.** Board-1, board-2
+and the first board-3 grey-mass pass are archived. Current board is in
+`docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/shell-stage2-bulwark-*.png`.
+Checks: tree-trunk legs at about one third of height; upright shoulder and hip
+slabs break the silhouette; teal hide and yellow-green lichen show between
+slabs; cream throat and belly stay bright. Do not run Meshy until that 3/4 is
+accepted. Do not upload any superseded-board file. Text-to-3D is forbidden for
+this line. No code was changed for the board.

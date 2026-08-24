@@ -17,6 +17,7 @@ import { gloamwoodMapFromEntry } from './entry-routing'
 import { quality3DBodyStageForFamily, resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
 import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presentation'
 import { SPORE_STALKER_PRESENTATION } from './spore-stalker-character-presentation'
+import { BASALT_BULWARK_PRESENTATION } from './basalt-bulwark-character-presentation'
 import { applyDocumentLocale, getLocale, persistLocale, setLocale, t, type Locale } from './i18n'
 import { gloamwoodFamilyPortrait } from './gloamwood-family-portraits'
 import { gloamwoodMutationIcon } from './gloamwood-mutation-icons'
@@ -390,6 +391,7 @@ function gloamwoodFormBaseline(formId: string | undefined, stage: number) {
   const byForm = {
     'stone-pangolin': STONE_PANGOLIN_PRESENTATION,
     'spore-stalker': SPORE_STALKER_PRESENTATION,
+    'basalt-bulwark': BASALT_BULWARK_PRESENTATION,
     'scarlet-hunter': SCARLET_HUNTER_PRESENTATION,
     'scarlet-gecko': SCARLET_GECKO_PRESENTATION,
   } as const
@@ -439,16 +441,76 @@ type GloamwoodCombatProfile = FormalHuntBasicAttackProfile & {
 /**
  * The combat authority for the body actually on screen.
  *
- * Stage still answers for forms that have no profile of their own - stage 0 and
- * the late-stage endpoints are route-independent - but a form that declares one
- * gets it.
+ * Every produced form is named. Stage is only the fallback for the
+ * route-independent late-stage endpoints, which have no profile of their own.
+ *
+ * The named branches are not decoration. `stage >= 2` used to answer for the
+ * Fang hunter by position, which meant the next form to reach stage 2 - the
+ * Shell line's, already contracted - would have silently fought with the
+ * hunter's damage, reach and timings, and inherited a `Pounce` step a plated
+ * body has no clip for. That exact defect already shipped once on Shell stage 1
+ * and was only found in play. `matchedForm` is reported in debug state for the
+ * same reason `matchedFamily` is: a body running another form's authority
+ * should be visible, not silent.
  */
-function gloamwoodFormCombatProfile(formId: string | undefined, stage: number): GloamwoodCombatProfile {
-  if (formId === 'spore-stalker') return SPORE_STALKER_PRESENTATION.combat
-  if (formId === 'stone-pangolin') return STONE_PANGOLIN_PRESENTATION.combat
-  if (stage >= 2) return SCARLET_HUNTER_PRESENTATION.combat
-  if (stage >= 1) return SCARLET_GECKO_PRESENTATION.combat
-  return CORAL_GECKO_PRESENTATION.combat
+/**
+ * Presentation for a form, or undefined when the form declares none.
+ *
+ * The route-independent late-stage endpoints have no presentation of their own;
+ * everything the player can currently evolve into does.
+ */
+function gloamwoodFormPresentation(formId: string | undefined) {
+  const byForm = {
+    'spore-stalker': SPORE_STALKER_PRESENTATION,
+    'stone-pangolin': STONE_PANGOLIN_PRESENTATION,
+    'basalt-bulwark': BASALT_BULWARK_PRESENTATION,
+    'scarlet-hunter': SCARLET_HUNTER_PRESENTATION,
+    'scarlet-gecko': SCARLET_GECKO_PRESENTATION,
+    'coral-gecko': CORAL_GECKO_PRESENTATION,
+  } as const
+  return formId && formId in byForm ? byForm[formId as keyof typeof byForm] : undefined
+}
+
+/**
+ * Playback rate for one attack clip on the body actually on screen.
+ *
+ * This read `SCARLET_HUNTER_PRESENTATION.combat.attackPlaybackRate` for **every
+ * form**, so the Fang stage-2 hunter's rates drove the coral gecko, both stage-1
+ * bodies and the Shell stage-2 body, and any rate a form authored for itself was
+ * dead data. Forms that declare none still fall back to that table, so the four
+ * accepted forms which never declared one keep exactly the rate they ship with
+ * today - this makes the value reachable, it does not retune anything.
+ */
+function gloamwoodFormAttackPlaybackRate(formId: string | undefined, name: string) {
+  const declared = (gloamwoodFormPresentation(formId)?.combat as {
+    attackPlaybackRate?: Readonly<Record<string, number>>
+  } | undefined)?.attackPlaybackRate
+  const own = declared?.[name]
+  if (own !== undefined) return own
+  const inherited = (SCARLET_HUNTER_PRESENTATION.combat.attackPlaybackRate as Readonly<Record<string, number>>)[name]
+  return inherited ?? 1
+}
+
+export function gloamwoodFormCombatProfile(formId: string | undefined, stage: number): {
+  profile: GloamwoodCombatProfile
+  matchedForm: boolean
+} {
+  const byForm = {
+    'spore-stalker': SPORE_STALKER_PRESENTATION,
+    'stone-pangolin': STONE_PANGOLIN_PRESENTATION,
+    'basalt-bulwark': BASALT_BULWARK_PRESENTATION,
+    'scarlet-hunter': SCARLET_HUNTER_PRESENTATION,
+    'scarlet-gecko': SCARLET_GECKO_PRESENTATION,
+    'coral-gecko': CORAL_GECKO_PRESENTATION,
+  } as const
+  const presentation = formId && formId in byForm ? byForm[formId as keyof typeof byForm] : undefined
+  if (presentation) return { profile: presentation.combat, matchedForm: true }
+  const profile = stage >= 2
+    ? SCARLET_HUNTER_PRESENTATION.combat
+    : stage >= 1
+      ? SCARLET_GECKO_PRESENTATION.combat
+      : CORAL_GECKO_PRESENTATION.combat
+  return { profile, matchedForm: false }
 }
 
 interface DustParticle {
@@ -594,6 +656,8 @@ interface DebugState {
   /** Route the player evolved into, and whether that route has its own body yet. */
   characterFamily: string
   characterFamilyMatched: boolean
+  /** Whether the body on screen has its own combat authority or borrowed one. */
+  combatProfileMatchedForm: boolean
   presentation: { baselineId: string; artStyle: string; triangles: number; modelUrl: string }
   activeClip: string
   attack: { visualOffset: number; liftOffset: number; pitchDegrees: number; yawDegrees: number; elapsedSeconds: number; leapBitePhase: string; landingEvents: number }
@@ -1050,6 +1114,10 @@ class Gloamwood3DHunt {
   private characterFamily?: Quality3DFormFamily
   /** False when the route had no authored model and borrowed another family's. */
   private characterFamilyMatched = true
+  /** False when the body on screen is running another form's combat authority. */
+  private combatProfileMatchedForm = true
+  /** Form id of the body on screen, so clip timing can be keyed on it. */
+  private characterFormId?: string
   private lockedPreyId: string | null = null
   private primaryHeld = false
   /**
@@ -2552,7 +2620,10 @@ class Gloamwood3DHunt {
     // stage-1 bodies ran the Fang gecko's damage, reach, timing and combo, so
     // the per-form combat blocks in their presentation modules were dead data
     // and every form fought identically no matter what it looked like.
-    this.combatProfile = gloamwoodFormCombatProfile(asset?.formId, stage)
+    this.characterFormId = asset?.formId
+    const combat = gloamwoodFormCombatProfile(asset?.formId, stage)
+    this.combatProfile = combat.profile
+    this.combatProfileMatchedForm = combat.matchedForm
     this.characterFamilyMatched = resolved.matchedFamily
     if (!asset) throw new Error(`Missing stage-${stage} GLB`)
     const gltf = await this.loader.loadAsync(assetUrl(asset.url))
@@ -2582,7 +2653,13 @@ class Gloamwood3DHunt {
       const materials = Array.isArray(node.material) ? node.material : [node.material]
       for (const material of materials) {
         if (!(material instanceof THREE.MeshStandardMaterial)) continue
-        if (stage === 2) {
+        // Keyed by form, not by stage, for the same reason the grade below it
+        // is: this one drops the normal map, which is right for the hunter's
+        // smooth toon surface and destructive for a body whose identity is
+        // plate relief. `stage === 2` and `scarlet-hunter` are the same set
+        // today, so this changes nothing now - it changes what happens when the
+        // Shell line's contracted stage-2 body arrives.
+        if (asset.formId === 'scarlet-hunter') {
           material.flatShading = false
           material.normalMap = null
           material.roughness = 0.82
@@ -5504,17 +5581,21 @@ class Gloamwood3DHunt {
       : this.activeClip
     const previous = this.actions.get(previousClipName)
     const oneShot = name === 'Bite' || name === 'Pounce' || name === 'Claw' || name === 'TailSwipe' || name === 'Hit' || name === 'Death'
-    const presentation = this.stage === 2
-      ? SCARLET_HUNTER_PRESENTATION
-      : this.stage === 1
-        ? SCARLET_GECKO_PRESENTATION
-        : CORAL_GECKO_PRESENTATION
+    // Keyed by form. Selecting the presentation by stage gave every stage-2 body
+    // the Fang hunter's locomotion rates, the same defect class as the three
+    // recorded in the Shell stage-2 contract.
+    const presentation = gloamwoodFormPresentation(this.characterFormId)
+      ?? (this.stage === 2
+        ? SCARLET_HUNTER_PRESENTATION
+        : this.stage === 1
+          ? SCARLET_GECKO_PRESENTATION
+          : CORAL_GECKO_PRESENTATION)
     const playbackRate = this.stage <= 1 && name === 'Pounce'
       ? CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.clipPlaybackRate
       : name === 'Run'
       ? presentation.animation.runPlaybackRate
-      : name === 'Pounce' || name === 'Claw' || name === 'TailSwipe'
-        ? SCARLET_HUNTER_PRESENTATION.combat.attackPlaybackRate[name]
+      : name === 'Bite' || name === 'Pounce' || name === 'Claw' || name === 'TailSwipe'
+        ? gloamwoodFormAttackPlaybackRate(this.characterFormId, name)
         : 1
     if (name === 'Run') {
       stopGloamwoodActionsExcept(this.actions.values(), next)
@@ -6765,6 +6846,7 @@ class Gloamwood3DHunt {
       { label: 'Fang I', stage: 1, family: 'fang' },
       { label: 'Fang II', stage: 2, family: 'fang' },
       { label: 'Shell I', stage: 1, family: 'shell' },
+      { label: 'Shell II', stage: 2, family: 'shell' },
       { label: 'Swarm I', stage: 1, family: 'swarm' },
     ]
     panel.innerHTML = [
@@ -7668,6 +7750,7 @@ class Gloamwood3DHunt {
       modelReady: this.modelReady,
       characterFamily: this.characterFamily ?? 'origin',
       characterFamilyMatched: this.characterFamilyMatched,
+      combatProfileMatchedForm: this.combatProfileMatchedForm,
       // Reported by form rather than by stage: three different bodies now share
       // stage 1, and a stage-keyed chain silently reports whichever one it was
       // written for. Looking the form up means adding a body cannot leave this
