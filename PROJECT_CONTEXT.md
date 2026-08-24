@@ -777,3 +777,42 @@ All three are the pattern this file already warns about twice:
 Current gate: **closed.** Shell stage-2 shipped as `basalt-bulwark` on 2026-08-24.
 See "Delivered content milestone — Shell stage-2 body" above. Swarm stage-2 is
 now the active content milestone.
+
+## itch.io package — rebuilt 2026-08-24 after the stage-2 forms landed
+
+All three produced families now resolve their own stage-2 body, verified from
+the registry rather than assumed: `fang` → `scarlet-hunter`, `shell` →
+`basalt-bulwark`, `swarm` → `lantern-lynx`. Nine registered assets.
+
+`npm run package:itch` rebuilt cleanly. The archive is
+`release/EvolutionArenaLite-itch-alpha.zip`, **58.2 MB compressed, 73 files,
+73,084,089 B extracted**, against the 70 files / 62,027,472 B recorded at Goal
+15E. The +3 files and +10.5 MB are exactly the three models added since: the
+Spore Toad (4.22 MB), `basalt-bulwark` (3.35 MB) and `lantern-lynx` (2.97 MB).
+The runtime-asset audit resolves 72 source modules and 39 named assets in both
+`public/` and `dist/`.
+
+Verified by serving the relative-path build rather than trusting the archive:
+`index.html` references `./assets/…` throughout, both new model GLBs serve at
+200, and the game loaded at 1440×900 with `lantern-lynx` at stage 2,
+`matchedFamily`/`matchedForm` true, grounded, one canvas, no horizontal overflow,
+no console errors and about 120 FPS.
+
+**Release approved by the project owner on 2026-08-24**, who will upload the
+archive to itch.io manually. Two items were raised before that decision and the
+owner chose to proceed with both open, so they are carried here as accepted risk
+rather than as blockers:
+
+- **Shell stage-1 Meshy licence evidence is still unarchived.** That job selected
+  the private licence and no dated model-library card has been recorded for it in
+  `docs/concepts/evolution-v2/shell-stage1/source/SOURCE.md`. Every other shipped
+  model now has its evidence recorded. Closing it needs one card from the owner's
+  Meshy library, the same artefact supplied for the other three.
+- **No real midrange-device 30 FPS reading exists.** The Goal 5 requirement is
+  still uncollected; the figures on record are development-machine numbers.
+
+The required credit line is unchanged and must appear on the itch page and in
+the in-game credits: *"3D assets include Meshy-generated source material.
+CC BY 4.0 source assets: Meshy."* The runtime already renders it in the Settings
+panel, checked by `tests/asset-credit.test.ts` against the register.
+
