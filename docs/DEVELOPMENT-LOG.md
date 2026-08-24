@@ -3486,4 +3486,5 @@ function terrainHeight(x, z) { ... }   // 纯函数，没有高度图
 - 用户在游戏里看过两版：第一版「模型，走路，攻击都可以」但攻击读不出区别；重做后「这一版好多了」，授权提交推送 `main`。
 - 标识符**仍停在 `candidate`**：中文名 磐岳甲龙 尚未锁定，升 `master` 是单独一步、用户没有说。运行时没有任何字符串显示这个名字，所以不影响任何东西。
 - 仍未关：**Meshy 授权条目仍是空的**（`shell-stage2/source/SOURCE.md`），已在素材登记表里标为发布阻塞项。一阶那笔至今没补，现在欠两笔。
+- 提交 `e61f432` 已推送 `main`；GitHub Pages workflow run **62 成功**。线上实测 `https://yliu84.github.io/EvolutionArena/` 加载磐岳甲龙：`model: basalt-bulwark` / `stage: 2` / `matchedFamily` 与 `matchedForm` 均为 true / 贴地 / 20,659 面 / 无 console 报错。**本地、仓库 blob、线上三份 GLB 逐字节相同**（3,508,512 字节，SHA-256 前缀 `cfb9642ef264ca99`）——按项目惯例，线上构建才是唯一的发布凭据。
 - 下一个生产目标：群生二阶——三个族群里最后一个没有第二次进化身体的。
