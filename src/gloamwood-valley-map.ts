@@ -105,6 +105,11 @@ export function createGloamwoodValleyMap(
     // Same distance as the Gloamwood's - 20.08 - at a bearing of about fifteen
     // degrees, which is what the folded route was laid out against.
     cameraOffset: { x: -15.7, y: 11.8, z: -4.2 },
+    // Measured, not chosen. See `bloomFogScale` on the contract: this frame is
+    // mostly distant geometry, so the composer's linear-space fog mixing showed
+    // up as a 19% brightness lift and a 19% saturation loss across the whole
+    // valley until it was corrected.
+    bloomFogScale: 0.55,
     hasNest: false,
     lives: GLOAMWOOD_VALLEY_LIFE_CAP,
     modelledCreatures: true,

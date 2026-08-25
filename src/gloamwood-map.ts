@@ -79,6 +79,29 @@ export interface GloamwoodMapContract {
    */
   cameraOffset: { x: number; y: number; z: number }
   /**
+   * What to multiply this map's fog density by while the bloom composer is
+   * drawing the frame.
+   *
+   * Three applies fog *after* tone mapping and after the sRGB conversion, so on
+   * the direct path the fog colour is mixed into a display-space value. With a
+   * composer in front, both of those steps move to the end of the chain, so the
+   * same mix happens against raw linear light and the tone mapper then sees an
+   * already-fogged image. The two are different operations and the gap grows
+   * with the fog factor - which means with distance.
+   *
+   * Measured, on frozen frames, against the direct render each map was authored
+   * against. The valley looks down 1590 units of route and its frame is mostly
+   * far geometry: uncompensated it came out 19% brighter and 19% less saturated,
+   * and 0.55 puts both back within 3% at two positions 40 units apart. The
+   * defence bowl is compact, its fog barely participates, and it was already
+   * within 3% - so it asks for no correction and gets none.
+   *
+   * Per map rather than global because the sign of the error depends on whether
+   * the fog is lighter or darker than what it is covering: thinning the defence
+   * map's fog moved it further from its authored look, not closer.
+   */
+  bloomFogScale?: number
+  /**
    * Whether this map runs the nest encounter.
    *
    * The Gloamwood's whole structure is one nest: waves, then a guardian, then

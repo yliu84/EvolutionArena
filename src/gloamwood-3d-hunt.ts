@@ -316,6 +316,47 @@ const GLOAMWOOD_ARENA_PLAYER_RADIUS = 7.6
 // Lives now belong to the map, which is the thing that knows how long it is.
 const GLOAMWOOD_BOSS_ARENA_CLEAR_RADIUS = 7.8
 const PLAYER_FEEDBACK_SETTINGS_KEY = 'evolution-arena-combat-feedback-v1'
+/**
+ * How far over 1.0 the additive skill-effect colours are pushed.
+ *
+ * Bloom thresholds against the linear buffer before tone mapping, so a hit
+ * spark authored as `0xffe7a8` peaks at a luminance of 0.81 there and can never
+ * glow, however hot it looks after ACES. At this gain the warm-white cores
+ * clear the 1.15 threshold with margin while the deep orange bodies
+ * (`0xff4a12`, luminance 0.26) stay under it - which is the read that was
+ * wanted anyway: a white-hot centre throwing light, cooling to plain orange at
+ * the edges.
+ */
+export const SKILL_FX_LIGHT_GAIN = 2.4
+
+/**
+ * The scene's tone mapping exposure.
+ *
+ * Deliberately hot, and left alone by the bloom work. Lowering it was the first
+ * attempt at making the composer path match the direct one, and it half worked:
+ * it could restore the brightness but recovered only a third of the lost
+ * saturation, because the actual culprit was fog rather than exposure. See
+ * `bloomFogScale` on the map contract.
+ */
+export const GLOAMWOOD_EXPOSURE = 1.38
+
+/**
+ * The gene core's over-range colours, hoisted so they can be checked.
+ *
+ * Whether one of these actually glows is a question about a number - its
+ * luminance against the bloom threshold - and answering it by looking at a
+ * screenshot of a reward that only drops off an elite is far harder than
+ * asserting it. `tests/gloamwood-bloom` does the arithmetic.
+ */
+export const GLOAMWOOD_GENE_CORE_LIGHT = {
+  /** The orbiting motes. These are the part that has to read from a distance. */
+  mote: [2.9, 1.75, 0.68],
+  /** The inner hoop. */
+  innerRing: [2.5, 1.62, 0.72],
+  /** The outer hoop, deliberately dimmer so the two do not read as one band. */
+  outerRing: [1.35, 0.82, 0.3],
+  moteOpacity: 0.85,
+} as const
 export const GLOAMWOOD_3D_CHARACTER_HEIGHTS = [1.8, 2.16, 2.55] as const
 const CAMERA_OFFSET = new THREE.Vector3(9.2, 11.8, 13.4)
 const CAMERA_LOOK_HEIGHT = 0.92
@@ -889,8 +930,10 @@ export async function launchGloamwood3DHunt() {
     // seconds apart: creatures move, foliage sways, and the difference those
     // make to the picture is larger than the effect being judged.
     ;(window as unknown as Record<string, unknown>).__gloamwoodBloom =
-      (enabled: boolean, settings?: Partial<GloamwoodBloomSettings>) =>
-        experience.setBloomForReview(enabled, settings)
+      (enabled: boolean, settings?: Partial<GloamwoodBloomSettings>, exposureScale?: number) =>
+        experience.setBloomForReview(enabled, settings, exposureScale)
+    ;(window as unknown as Record<string, unknown>).__gloamwoodFog =
+      (density?: number) => experience.fogDensityForReview(density)
   }
   try {
     await experience.start()
@@ -1358,7 +1401,7 @@ class Gloamwood3DHunt {
     this.scene.fog = new THREE.FogExp2(0x1b3329, 0.026)
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.38
+    this.renderer.toneMappingExposure = GLOAMWOOD_EXPOSURE
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.domElement.className = 'gloamwood-3d-canvas'
@@ -2235,16 +2278,23 @@ class Gloamwood3DHunt {
     const attract = new THREE.Vector3(x, y + 0.82, z)
     for (const spec of burst.particles) {
       const map = this.skillFxTextures.get(spec.texture)
+      // `glow` and `streak` are the two textures that were already drawn as
+      // light rather than as matter, and they are the only two that blend
+      // additively. Those get pushed over 1.0 so the bloom pass can find them:
+      // it thresholds against the linear buffer before tone mapping, and a
+      // colour that clamps at 1.0 there never glows however hot it looks.
+      //
+      // Dust, pebbles and plates are deliberately left alone. They are debris,
+      // and debris that blooms is a bug report.
+      const lit = spec.texture === 'glow' || spec.texture === 'streak'
       const common = {
         map,
-        color: spec.color,
+        color: lit ? new THREE.Color(spec.color).multiplyScalar(SKILL_FX_LIGHT_GAIN) : new THREE.Color(spec.color),
         transparent: true,
         opacity: 0,
         depthWrite: false,
         depthTest: spec.depthTest === true,
-        blending: spec.texture === 'glow' || spec.texture === 'streak'
-          ? THREE.AdditiveBlending
-          : THREE.NormalBlending,
+        blending: lit ? THREE.AdditiveBlending : THREE.NormalBlending,
         fog: false,
       } as const
       let object: THREE.Object3D
@@ -2342,7 +2392,7 @@ class Gloamwood3DHunt {
     for (const spec of rendingSparkBurst()) {
       const material = new THREE.SpriteMaterial({
         map: this.skillFxTextures.get(spec.texture),
-        color: spec.color,
+        color: new THREE.Color(spec.color).multiplyScalar(SKILL_FX_LIGHT_GAIN),
         transparent: true,
         opacity: 0,
         depthWrite: false,
@@ -2939,11 +2989,21 @@ class Gloamwood3DHunt {
    * a visible flicker every time a panel opened.
    */
   private present() {
-    if (this.bloom) {
-      this.bloom.render()
+    if (!this.bloom) {
+      this.renderer.render(this.scene, this.camera)
       return
     }
-    this.renderer.render(this.scene, this.camera)
+    // The fog is thinned for the duration of the composer's draw and put back
+    // straight after, rather than being scaled once when bloom is switched on.
+    // The valley eases its fog density toward a per-region target every frame,
+    // so a scale written into the fog itself would be re-applied on top of an
+    // already-scaled value and compound away to nothing within a second.
+    const fog = this.scene.fog instanceof THREE.FogExp2 ? this.scene.fog : null
+    const scale = this.map.bloomFogScale ?? 1
+    const authored = fog ? fog.density : 0
+    if (fog && scale !== 1) fog.density = authored * scale
+    this.bloom.render()
+    if (fog && scale !== 1) fog.density = authored
   }
 
   private readonly keyDown = (event: KeyboardEvent) => {
@@ -3030,9 +3090,21 @@ class Gloamwood3DHunt {
    * succeeded. Stepping the loop explicitly is the only honest way to inspect
    * time-dependent state there.
    */
-  setBloomForReview(enabled: boolean, settings?: Partial<GloamwoodBloomSettings>) {
+  fogDensityForReview(density?: number) {
+    const fog = this.scene.fog as THREE.FogExp2 | null
+    if (!fog) return null
+    if (density !== undefined) fog.density = density
+    return fog.density
+  }
+
+  setBloomForReview(
+    enabled: boolean,
+    settings?: Partial<GloamwoodBloomSettings>,
+    exposureScale?: number,
+  ) {
     this.bloom?.dispose()
     this.bloom = undefined
+    this.renderer.toneMappingExposure = GLOAMWOOD_EXPOSURE * (enabled ? exposureScale ?? 1 : 1)
     if (!enabled) return false
     this.bloom = createGloamwoodBloom(this.renderer, this.scene, this.camera, {
       ...GLOAMWOOD_BLOOM,
@@ -5426,15 +5498,36 @@ class Gloamwood3DHunt {
     halo.position.y = boss ? -0.62 : -0.42
     halo.renderOrder = 1
     root.add(halo)
+    /**
+     * The rings and motes are light; the crystal is not.
+     *
+     * These colours are deliberately over-range - `THREE.Color` components
+     * above 1.0 - because the bloom pass thresholds against the linear buffer
+     * before tone mapping, and anything that clamps at 1.0 there can never
+     * glow however bright it looks on screen. Amber is a cheap colour to do
+     * this with: the threshold is on luminance, which is 71% green, so a warm
+     * hue clears the bar at a much lower value than the portal's violet needed.
+     *
+     * Only the small things are pushed. The crystal keeps its low emissive so
+     * its facets and the terrain shadow still do the reading - the altar gem
+     * taught that lesson twice - and the wide ground rune keeps its 12%
+     * opacity, because a glowing disc on the floor is a light leak, not a
+     * trophy.
+     */
     const rings = [0, 1].map((index) => {
       const ring = new THREE.Mesh(
         new THREE.TorusGeometry((0.52 + index * 0.2) * size, 0.026 * size, 6, 20),
         new THREE.MeshBasicMaterial({
-          color: index === 0 ? 0xd5a354 : 0x8a531d,
+          color: new THREE.Color(...(index === 0
+            ? GLOAMWOOD_GENE_CORE_LIGHT.innerRing
+            : GLOAMWOOD_GENE_CORE_LIGHT.outerRing)),
           transparent: true,
           opacity: boss ? 0.56 : 0.42,
           depthWrite: false,
-          blending: THREE.NormalBlending,
+          // Additive, so the two hoops read as light rather than as painted
+          // wire. They are 0.026 units thick, so there is not enough of them
+          // on screen for additive to wash anything out.
+          blending: THREE.AdditiveBlending,
         }),
       )
       ring.rotation.x = Math.PI / 2 + (index ? 0.36 : -0.2)
@@ -5446,7 +5539,13 @@ class Gloamwood3DHunt {
     const motes = Array.from({ length: boss ? 4 : 3 }, (_, index) => {
       const mote = new THREE.Mesh(
         new THREE.TetrahedronGeometry(0.065 * size, 0),
-        new THREE.MeshBasicMaterial({ color: 0xc88a38, transparent: true, opacity: 0.64, depthWrite: false }),
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color(...GLOAMWOOD_GENE_CORE_LIGHT.mote),
+          transparent: true,
+          opacity: GLOAMWOOD_GENE_CORE_LIGHT.moteOpacity,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        }),
       )
       const angle = index / (boss ? 4 : 3) * Math.PI * 2
       mote.position.set(Math.cos(angle) * 0.72 * size, 0.18 + index * 0.16, Math.sin(angle) * 0.72 * size)

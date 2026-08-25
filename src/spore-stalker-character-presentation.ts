@@ -139,7 +139,20 @@ export const SPORE_STALKER_PRESENTATION = {
     maximumMetalness: 0.04,
     normalStrength: 1,
     environmentIntensity: 0.5,
-    emissiveIntensity: 1,
+    /**
+     * Over 1.0 on purpose, for the same reason as its stage-2 form.
+     *
+     * Bloom reads the linear buffer before tone mapping, and the sac at
+     * intensity 1 never reached the threshold, so the one feature this
+     * silhouette is built around threw no light. The lift is safe only because
+     * the emissive is a baked mask covering 5.7% of the texture; the hide
+     * itself is untouched and still has to earn its shape from the scene lights.
+     *
+     * Held equal to the stage-2 grade on purpose - `tests/lantern-lynx-form`
+     * asserts the two Swarm forms share one grade, which is the guard against
+     * a stage-keyed lookup quietly handing this body the Shell's numbers.
+     */
+    emissiveIntensity: 2,
   },
 } as const
 

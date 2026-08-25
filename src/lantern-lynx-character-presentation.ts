@@ -150,7 +150,30 @@ export const LANTERN_LYNX_PRESENTATION = {
     // Directional lights, so `envMapIntensity` scales the contribution of an
     // environment map that does not exist. It is a no-op here for every form.
     environmentIntensity: 0.5,
-    emissiveIntensity: 1,
+    /**
+     * Over 1.0 on purpose, and only safe because the emissive is a mask.
+     *
+     * Bloom thresholds against the linear buffer before tone mapping, so a
+     * mask peaks around 0.66 luminance there and throws no light at all - the
+     * four shoulder lanterns this form is named for were just pale paint. At 2
+     * the pods reach about 1.3 and clear the 1.15 threshold.
+     *
+     * Measured, and it is a compromise. The mask is not evenly bright: the tail
+     * tuft is the hottest part of it and the shoulder pods the coolest, so
+     * there is no single multiplier that lights the pods without starting to
+     * flatten the tuft. 2.2 lit the pods well and took the tuft to a white
+     * lump; 1.6 kept the tuft and left the pods below the threshold. Fixing it
+     * properly means re-baking the mask so the pods are as hot as the tuft,
+     * which is an asset change, not a number.
+     *
+     * A global emissive lift at this value would flatten the animal, because
+     * emissive does not vary with the surface normal. It does not here: the
+     * mask covers 8.5% of the texture - the eyes, the four pods and the tail
+     * tuft - and those are the parts that are *supposed* to be light rather
+     * than form. The other 91.5% still takes the scene lighting exactly as
+     * before.
+     */
+    emissiveIntensity: 2,
     emissiveMaskCoverage: 0.085,
   },
 } as const
