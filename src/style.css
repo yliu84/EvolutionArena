@@ -1122,6 +1122,21 @@ body.is-gloamwood-3d * {
 .g3d-target-bar[data-tier="elite"] i em { background: linear-gradient(90deg, #43a77e, #c7dd80); }
 /* One boss plate, only while the player has it locked. It makes an encounter
    read as a set-piece without permanently occupying the centre of the map. */
+/* The altar's health, which is the one number this mode is lost by. Sits under
+   the boss plate rather than beside it: both can be on screen at once on a boss
+   wave, and the altar must not be the one that gets pushed off. */
+.g3d-altar-plate { position: absolute; top: 74px; left: 50%; display: flex; align-items: center; gap: 9px; box-sizing: border-box; width: min(340px, 62vw); padding: 6px 12px 9px; border: 1px solid rgba(255, 192, 112, .34); border-radius: 12px; color: #f6ecd8; background: linear-gradient(180deg, rgba(38, 26, 12, .82), rgba(14, 12, 8, .78)); box-shadow: 0 6px 20px rgba(0, 0, 0, .34); backdrop-filter: blur(6px); pointer-events: none; transform: translateX(-50%); }
+.g3d-altar-plate > span { color: #ffc070; font-size: 17px; text-shadow: 0 0 10px rgba(255, 168, 74, .5); }
+.g3d-altar-plate > div { min-width: 0; }
+.g3d-altar-plate small { display: block; color: #d8c39a; font-size: 8px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+.g3d-altar-plate strong { display: block; font-size: 13px; font-weight: 800; letter-spacing: .03em; }
+.g3d-altar-plate i { position: absolute; right: 12px; bottom: 4px; left: 12px; overflow: hidden; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, .13); }
+.g3d-altar-plate em { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #ffd79a, #ffb457); transition: width .18s ease-out, background .3s ease; }
+.g3d-altar-plate[data-health="mid"] em { background: linear-gradient(90deg, #ffc27a, #e8902f); }
+.g3d-altar-plate[data-health="low"] em { background: linear-gradient(90deg, #ff9d7a, #e0432c); }
+.g3d-altar-plate[data-health="low"] > span { animation: g3d-altar-alarm .8s ease-in-out infinite; }
+@keyframes g3d-altar-alarm { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
 .g3d-boss-plate {
   position: absolute;
   top: max(18px, env(safe-area-inset-top));

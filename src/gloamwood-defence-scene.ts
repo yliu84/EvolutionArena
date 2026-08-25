@@ -27,7 +27,15 @@ import { GLOAMWOOD_DEFENCE, gloamwoodDefenceHeight, gloamwoodDefenceWalkable } f
  * which is what keeps the drawn surface and the collision rules the same shape.
  */
 
-const GROUND_QUAD = 1
+/**
+ * Ground resolution.
+ *
+ * Halved from 1.0 when the bowl gained worn ground and moss: vertex colour can
+ * only be as detailed as the vertices carrying it, and at one unit a path edge
+ * was a staircase. 0.5 puts the mesh at about 21k vertices on a 52 x 104 map,
+ * which is a rounding error next to one creature.
+ */
+const GROUND_QUAD = 0.5
 
 export interface GloamwoodDefenceScene {
   root: THREE.Group
@@ -42,39 +50,86 @@ export interface GloamwoodDefenceScene {
 }
 
 /**
- * Value noise, so the ground is not a flat wash.
- *
- * The first build painted each region one colour, which under the Gloamwood's
- * lighting rig - hemisphere 3.2, directional 7.35, tuned for a textured terrain
- * - came out as pale grey-green with no way to tell the road from the bowl.
- * Cheap grain plus a darker base fixes both, and costs one attribute.
+ * Cheap value noise. Two octaves, because one reads as stripes.
  */
-function grain(x: number, z: number) {
-  const value = Math.sin(x * 0.71 + z * 1.31) * 43758.5453
-  const second = Math.sin(x * 1.93 - z * 0.47) * 12793.113
+function grain(x: number, z: number, scale = 1) {
+  const value = Math.sin(x * 0.71 * scale + z * 1.31 * scale) * 43758.5453
+  const second = Math.sin(x * 1.93 * scale - z * 0.47 * scale) * 12793.113
   return ((value - Math.floor(value)) * 0.65 + (second - Math.floor(second)) * 0.35) - 0.5
 }
 
+function patches(x: number, z: number) {
+  return grain(x, z, 0.34) * 0.6 + grain(x, z, 1.0) * 0.28 + grain(x, z, 3.1) * 0.12
+}
+
 /**
- * Vertex colour by what the ground *is*, so the three regions read apart
- * without a texture.
+ * How trodden this point is, 0 to 1.
  *
- * The owner's brief was that the fighting ground has to be legible. Tinting the
- * road, the bowl and the bank differently does more for that at this camera
- * height than any amount of scattered detail.
+ * Everything that ever walks this map goes from the road mouth to the altar
+ * along one line, so that line is bare earth. It is the cheapest kind of
+ * ground detail there is - it comes out of the layout rather than being
+ * decorated on - and it doubles as a sign: a player who has never seen the map
+ * can read where the traffic goes.
+ */
+function trodden(x: number, z: number) {
+  const { altar, road } = GLOAMWOOD_DEFENCE
+  if (z < road.endZ - 1 || z > altar.z + altar.radius) return 0
+  const along = Math.max(0, Math.min(1, (z - road.endZ) / Math.max(0.001, altar.z - road.endZ)))
+  // Fans out from the mouth and narrows again at the altar steps, which is the
+  // shape a crowd funnelling onto one target actually wears into the ground.
+  const halfWidth = 3.6 + Math.sin(along * Math.PI) * 3.2
+  const across = Math.abs(x) / halfWidth
+  if (across > 1) return 0
+  const edge = 1 - across * across
+  return edge * (0.35 + 0.65 * Math.sin(Math.min(1, along + 0.15) * Math.PI * 0.85))
+}
+
+/**
+ * Vertex colour by what the ground *is*, so the regions read apart without a
+ * texture.
  *
- * The values are deliberately dark. They are multiplied by a rig bright enough
- * to blow out anything mid-toned, and the first pass at roughly twice these
- * numbers rendered as one flat pale surface across all three regions.
+ * The first build painted each region one flat tone and rendered as a pale wash
+ * under this rig; darker values with grain fixed the wash but left the bowl,
+ * in the owner's words, 只有一片绿. Flat colour over 530 square units is flat
+ * colour however well judged.
+ *
+ * So there are four things happening here now, and none of them costs a draw
+ * call or a byte of texture: two octaves of patch noise, a moss-dark band at
+ * the rim where the bank shades it, dry lighter ground toward the middle, and a
+ * trodden path worn from the road mouth to the altar. Detail that a player can
+ * still see past, which was the whole brief for this bowl.
  */
 function groundTint(x: number, z: number, target: THREE.Color) {
-  const speckle = grain(x, z) * 0.045
+  const speckle = patches(x, z) * 0.055
   if (gloamwoodDefenceWalkable(x, z)) {
     if (z <= GLOAMWOOD_DEFENCE.road.endZ) {
-      // Bare trodden earth: warm, and clearly not the grass it opens onto.
-      return target.setRGB(0.169 + speckle, 0.115 + speckle * 0.8, 0.062 + speckle * 0.5)
+      // Bare trodden earth, with ruts.
+      const rut = grain(x * 1.6, z * 0.4, 2.2) * 0.05
+      return target.setRGB(
+        0.169 + speckle + rut,
+        0.115 + speckle * 0.8 + rut * 0.7,
+        0.062 + speckle * 0.5 + rut * 0.4,
+      )
     }
-    return target.setRGB(0.077 + speckle * 0.7, 0.156 + speckle, 0.062 + speckle * 0.7)
+    const { arena } = GLOAMWOOD_DEFENCE
+    const fromCentre = Math.hypot(x - arena.x, z - arena.z) / arena.radius
+    // Moss gathers where the bank shades the rim; the open middle dries out.
+    const moss = Math.max(0, fromCentre - 0.55) / 0.45
+    const dry = Math.max(0, 0.7 - fromCentre) * 0.5
+    const grass = {
+      r: 0.077 + speckle * 0.7 + dry * 0.09 - moss * 0.018,
+      g: 0.156 + speckle + dry * 0.055 - moss * 0.03,
+      b: 0.062 + speckle * 0.7 + dry * 0.02 - moss * 0.012,
+    }
+    // The worn path, blended over the grass rather than replacing it, so its
+    // edges are ragged instead of a stencil.
+    const wear = trodden(x, z) * (0.72 + patches(x * 2.1, z * 2.1) * 0.5)
+    const earth = { r: 0.163, g: 0.116, b: 0.068 }
+    return target.setRGB(
+      grass.r + (earth.r - grass.r) * wear,
+      grass.g + (earth.g - grass.g) * wear,
+      grass.b + (earth.b - grass.b) * wear,
+    )
   }
   // The bank darkens as it climbs, which is what makes the rim of the bowl read
   // as a wall rather than as a change of grass.

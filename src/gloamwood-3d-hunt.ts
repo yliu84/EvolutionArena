@@ -1225,6 +1225,7 @@ class Gloamwood3DHunt {
   private damageLayer?: HTMLElement
   private targetBar?: HTMLElement
   private bossPlate?: HTMLElement
+  private altarPlate?: HTMLElement
   /**
    * Floating damage readouts. Pure presentation: each entry is spawned from an
    * already-resolved authoritative result and never feeds back into combat.
@@ -6900,6 +6901,24 @@ class Gloamwood3DHunt {
     ].join('')
     this.bossPlate = bossPlate
     this.container.append(bossPlate)
+
+    // The altar's own bar, and it needs to be a bar. The mode is lost by one
+    // number and until now that number lived only as a figure on the status
+    // line, which the owner did not see at all. A run is lost by something
+    // happening behind the player while they look up the road, so the thing
+    // being lost has to be readable without being read.
+    if (this.map.id === 'defence') {
+      const altarPlate = document.createElement('section')
+      altarPlate.className = 'g3d-altar-plate'
+      altarPlate.setAttribute('aria-live', 'polite')
+      altarPlate.innerHTML = [
+        '<span>\u25C7</span>',
+        '<div><small data-g3d-altar-eyebrow></small><strong data-g3d-altar-value></strong></div>',
+        '<i><em data-g3d-altar-fill></em></i>',
+      ].join('')
+      this.altarPlate = altarPlate
+      this.container.append(altarPlate)
+    }
     this.fullscreenToggle = hud.querySelector<HTMLButtonElement>('[data-g3d-fullscreen]') ?? undefined
     // Already launched from a home-screen icon: there is no browser chrome to hide.
     if (this.fullscreenToggle && gloamwoodStandaloneDisplay()) this.fullscreenToggle.hidden = true
@@ -7101,6 +7120,24 @@ class Gloamwood3DHunt {
       label: radar.querySelector('[data-g3d-dradar-label]')!,
       toView,
     }
+  }
+
+  private updateAltarPlate() {
+    const plate = this.altarPlate
+    if (!plate) return
+    const run = (this.map as { defenceRun?: () => GloamwoodDefenceState }).defenceRun?.()
+    if (!run) return
+    const fraction = run.altarMaxHealth > 0 ? run.altarHealth / run.altarMaxHealth : 0
+    const fill = plate.querySelector<HTMLElement>('[data-g3d-altar-fill]')
+    if (fill) fill.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`
+    // Three bands rather than a gradient: the player is reading this out of the
+    // corner of an eye during a fight, and a colour change is what carries at
+    // that glance.
+    plate.setAttribute('data-health', fraction > 0.6 ? 'high' : fraction > 0.3 ? 'mid' : 'low')
+    const eyebrow = plate.querySelector<HTMLElement>('[data-g3d-altar-eyebrow]')
+    if (eyebrow) eyebrow.textContent = t('hud.altarEyebrow')
+    const value = plate.querySelector<HTMLElement>('[data-g3d-altar-value]')
+    if (value) value.textContent = `${run.altarHealth} / ${run.altarMaxHealth}`
   }
 
   private updateDefenceRadar() {
@@ -7992,6 +8029,7 @@ class Gloamwood3DHunt {
   private updateHud() {
     this.updateValleyRadar()
     this.updateDefenceRadar()
+    this.updateAltarPlate()
     if (!this.hud) return
     const playerRatio = this.playerCombat.health / this.playerCombat.maxHealth
     const setText = (selector: string, value: string) => {

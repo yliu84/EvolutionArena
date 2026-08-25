@@ -184,6 +184,7 @@ const STRINGS = {
   'hud.msg.backToHunt': { en: 'Back into the hunt', zh: '重新投入狩猎' },
   'hud.nestWave': { en: 'Nest · wave {wave} of {waves}', zh: '巢穴 · 第 {wave} 波 / 共 {waves} 波' },
   'hud.nestBreath': { en: 'Nest · next wave incoming', zh: '巢穴 · 下一波正在来' },
+  'hud.altarEyebrow': { en: 'Altar', zh: '祭坛' },
   'radar.defenceLabel': { en: 'Approach map', zh: '进攻路线图' },
   'radar.defenceWave': { en: 'Wave {wave}/{waves}', zh: '第 {wave}/{waves} 波' },
   'radar.defenceNext': { en: 'Next wave in {seconds}s', zh: '下一波 {seconds} 秒' },
