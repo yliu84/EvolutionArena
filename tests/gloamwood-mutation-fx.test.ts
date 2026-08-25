@@ -24,11 +24,19 @@ describe('mutation skill-particle feedback', () => {
   it('draws sporehaze as a persistent low haze, not a pulsing skill ring', () => {
     const layout = sporeHazeLayout(4.2)
     expect(layout.radius).toBeCloseTo(4.2 * 1.22, 5)
-    expect(layout.patches[0].size).toBeGreaterThan(layout.radius * 1.8)
-    expect(Math.max(...layout.patches.map((patch) => Math.hypot(patch.local[0], patch.local[2]) + patch.size * 0.5))).toBeGreaterThan(4.2)
     expect(layout.hazeOpacity).toBeLessThan(0.22)
-    expect(layout.patches.every((patch) => patch.local[1] < 0.4)).toBe(true)
-    expect(layout.patches.length).toBeGreaterThanOrEqual(4)
+    // The mist is one disc that follows the terrain, not a pile of flat quads.
+    // The quads sat at the player's own ground height, so anywhere the ground
+    // rose inside the aura it won the depth test and sliced the mist off along
+    // a contour - a hard edge with nothing beyond it. Enough rings to bend over
+    // a slope, and enough segments that the rim reads as a circle.
+    expect(layout.mistRings).toBeGreaterThanOrEqual(4)
+    expect(layout.mistSegments).toBeGreaterThanOrEqual(16)
+    // It floats clear of the grass but nowhere near far enough to stop being
+    // ground mist; lifting it until it cleared every slope was the other way to
+    // fix the edge, and it turns the mist into a cloud around the animal's back.
+    expect(layout.mistLift).toBeGreaterThan(0)
+    expect(layout.mistLift).toBeLessThan(0.3)
     // Many small points of light, not a few big soft ones. The previous shape
     // was six sprites a metre across drawn with the mist's own gradient, and at
     // the game's camera distance they read as pale bubbles parked around the

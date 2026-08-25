@@ -828,7 +828,7 @@ interface DebugState {
   onboarding: { phase: GloamwoodOnboardingStep['phase']; step: number; totalSteps: number; title: string }
   settings: { paused: boolean; shake: boolean; flash: boolean; volume: number; muted: boolean }
   audio: GloamwoodAudioSnapshot & { lastEvent: GloamwoodSoundEvent | null; eventCount: number; recentEvents: GloamwoodSoundEvent[] }
-  visualFeedback: { activeSprites: number; activeParticles: number; activeDecals: number; sporeHaze: number; slowAuraRadius: number }
+  visualFeedback: { activeSprites: number; activeParticles: number; activeDecals: number; sporeHaze: number; sporeMistDrop: number; slowAuraRadius: number }
   input: { bindings: GloamwoodInputBindings; rebinding: GloamwoodInputAction | null }
   performance: {
     fps: number
@@ -998,7 +998,13 @@ class Gloamwood3DHunt {
   private readonly mutationBodyAttachments: THREE.Object3D[] = []
   private sporeHaze: {
     root: THREE.Group
-    patches: THREE.Mesh[]
+    /** A ground-following disc; its vertex heights are refreshed as it moves. */
+    mist: {
+      mesh: THREE.Mesh
+      geometry: THREE.BufferGeometry
+      material: THREE.ShaderMaterial
+      lift: number
+    }
     /** One mesh holding every spore; the cloud is animated in its shader. */
     motes: {
       mesh: THREE.Mesh
@@ -1007,6 +1013,8 @@ class Gloamwood3DHunt {
     }
     texture: THREE.CanvasTexture
     previewBoost: number
+    /** Where the heights were last sampled, so a standing player costs nothing. */
+    centre: THREE.Vector2
   } | null = null
   private readonly sporeHazePlane = new THREE.PlaneGeometry(1, 1)
   private readonly shadowMaterials: THREE.MeshBasicMaterial[] = []
@@ -5027,13 +5035,58 @@ class Gloamwood3DHunt {
     const hazeOpacity = (SPORE_HAZE.hazeOpacity + haze.previewBoost * 0.08) * breathe
     const moteOpacity = (SPORE_HAZE.moteOpacity + haze.previewBoost * 0.06) * breathe
     const time = performance.now() * 0.001
-    for (const patch of haze.patches) {
-      patch.rotation.z += Number(patch.userData.spin ?? 0) * delta
-      const material = patch.material
-      if (material instanceof THREE.MeshBasicMaterial) material.opacity = hazeOpacity
-    }
+    haze.mist.material.uniforms.uTime.value = time
+    haze.mist.material.uniforms.uOpacity.value = hazeOpacity
+    this.settleSporeMistOnGround(haze, x, z)
     haze.motes.material.uniforms.uTime.value = time
     haze.motes.material.uniforms.uOpacity.value = moteOpacity
+  }
+
+  /**
+   * Drop every mist vertex onto the terrain under it.
+   *
+   * Re-sampled only once the player has walked far enough for it to matter.
+   * `map.height` on the valley is a route lookup rather than an array read, and
+   * this is a few hundred calls; doing it every frame for a standing player
+   * would be paying that bill for a picture that cannot have changed.
+   */
+  /** The mist's vertical span, for the debug read-out. */
+  private sporeMistDrop() {
+    const haze = this.sporeHaze
+    if (!haze) return 0
+    const attribute = haze.mist.geometry.attributes.position as THREE.BufferAttribute
+    let low = Infinity
+    let high = -Infinity
+    for (let index = 0; index < attribute.count; index += 1) {
+      const y = attribute.getY(index)
+      low = Math.min(low, y)
+      high = Math.max(high, y)
+    }
+    return high - low
+  }
+
+  private settleSporeMistOnGround(
+    haze: NonNullable<typeof this.sporeHaze>,
+    x: number,
+    z: number,
+  ) {
+    if (Math.abs(haze.centre.x - x) < 0.2 && Math.abs(haze.centre.y - z) < 0.2) return
+    haze.centre.set(x, z)
+    const attribute = haze.mist.geometry.attributes.position as THREE.BufferAttribute
+    const drop = haze.mist.geometry.attributes.aDrop as THREE.BufferAttribute
+    const ground = this.map.height(x, z)
+    for (let index = 0; index < attribute.count; index += 1) {
+      const localX = attribute.getX(index)
+      const localZ = attribute.getZ(index)
+      // Local, because the root is already parked at the player's own ground
+      // height - what is stored is the difference between the terrain here and
+      // the terrain under the animal.
+      const delta = this.map.height(x + localX, z + localZ) - ground
+      attribute.setY(index, delta + haze.mist.lift)
+      drop.setX(index, delta)
+    }
+    attribute.needsUpdate = true
+    drop.needsUpdate = true
   }
 
   private createSporeHaze(radius: number) {
@@ -5047,36 +5100,106 @@ class Gloamwood3DHunt {
     const texture = new THREE.CanvasTexture(canvas)
     texture.colorSpace = THREE.SRGBColorSpace
     const root = new THREE.Group()
-    const patches: THREE.Mesh[] = []
-    for (const patch of layout.patches) {
-      const material = new THREE.MeshBasicMaterial({
-        map: texture,
-        color: layout.color,
-        transparent: true,
-        opacity: layout.hazeOpacity,
-        depthWrite: false,
-        depthTest: true,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2,
-        side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending,
-        fog: false,
-        // Tone-mapped, unlike the version before it. `toneMapped: false` writes
-        // a display-referred colour straight out, which was harmless while the
-        // renderer drew to the canvas and is not once a composer puts a linear
-        // HDR buffer in between: the mist landed there at a value the bloom
-        // pass treats as light, and a glowing mist is just fog with a halo.
-      })
-      const mesh = new THREE.Mesh(this.sporeHazePlane, material)
-      mesh.position.set(...patch.local)
-      mesh.scale.set(patch.size, patch.size * 0.72, 1)
-      mesh.rotation.set(-Math.PI / 2, 0, 0)
-      mesh.userData.spin = patch.spin
-      mesh.renderOrder = 2
-      root.add(mesh)
-      patches.push(mesh)
+    /**
+     * The mist: one disc whose vertices sit on the terrain.
+     *
+     * It used to be seven flat quads parked at the player's own ground height.
+     * On level ground that looks fine; on anything else the terrain rises
+     * through them, wins the depth test, and slices the mist off along a
+     * contour - the owner saw it as a hard straight edge with nothing beyond it.
+     * Raising the quads until they cleared the ground was tried and fixes the
+     * edge by making the mist float around the animal's back, which is not
+     * mist. So the disc samples `map.height` at every vertex instead, and the
+     * heights are refreshed as the player walks.
+     */
+    const rings = layout.mistRings
+    const segments = layout.mistSegments
+    const mistPositions: number[] = [0, 0, 0]
+    const mistFalloff: number[] = [0]
+    for (let ring = 1; ring <= rings; ring += 1) {
+      const t = ring / rings
+      for (let segment = 0; segment < segments; segment += 1) {
+        const angle = (segment / segments) * Math.PI * 2
+        mistPositions.push(Math.cos(angle) * layout.radius * t, 0, Math.sin(angle) * layout.radius * t)
+        mistFalloff.push(t)
+      }
     }
+    const mistIndices: number[] = []
+    for (let segment = 0; segment < segments; segment += 1) {
+      mistIndices.push(0, 1 + segment, 1 + ((segment + 1) % segments))
+    }
+    for (let ring = 0; ring < rings - 1; ring += 1) {
+      const inner = 1 + ring * segments
+      const outer = inner + segments
+      for (let segment = 0; segment < segments; segment += 1) {
+        const next = (segment + 1) % segments
+        mistIndices.push(inner + segment, outer + segment, outer + next)
+        mistIndices.push(inner + segment, outer + next, inner + next)
+      }
+    }
+    const mistGeometry = new THREE.BufferGeometry()
+    mistGeometry.setAttribute('position', new THREE.Float32BufferAttribute(mistPositions, 3))
+    mistGeometry.setAttribute('aFalloff', new THREE.Float32BufferAttribute(mistFalloff, 1))
+    // Refreshed with the heights: how far this vertex sits from the player's own
+    // level, so the shader can fade the mist out rather than drape it down a
+    // bank. Measured walking the valley, the disc bends as much as eight units
+    // over its five-unit radius where the route runs along a wall.
+    mistGeometry.setAttribute('aDrop', new THREE.Float32BufferAttribute(new Float32Array(mistFalloff.length), 1))
+    mistGeometry.setIndex(mistIndices)
+    const mistMaterial = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uTime: { value: 0 },
+        uOpacity: { value: layout.hazeOpacity },
+        uColor: { value: new THREE.Color(layout.color) },
+      },
+      vertexShader: `
+        attribute float aFalloff;
+        attribute float aDrop;
+        varying float vFalloff;
+        varying float vDrop;
+        varying vec2 vLocal;
+        void main() {
+          vFalloff = aFalloff;
+          vDrop = aDrop;
+          vLocal = position.xz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform float uOpacity;
+        uniform vec3 uColor;
+        varying float vFalloff;
+        varying float vDrop;
+        varying vec2 vLocal;
+        void main() {
+          // Densest in the middle, gone at the rim, and never a hard edge.
+          float body = 1.0 - smoothstep(0.15, 1.0, vFalloff);
+          // ...and gone again wherever the ground has run away from the player's
+          // own level. Ground mist that climbs a bank reads as a sheet hung over
+          // it; fading it out is both truer and cheaper than clamping the
+          // geometry, which would only put the slicing back.
+          body *= 1.0 - smoothstep(0.7, 1.9, abs(vDrop));
+          // Slow unevenness so it does not read as a painted disc. Driven off
+          // radius rather than off two angular harmonics - the portal already
+          // proved that two low harmonics beat into a visible pinwheel.
+          float drift = length(vLocal);
+          float curl = sin(drift * 1.6 - uTime * 0.5) * 0.5 + 0.5;
+          float wisp = sin(drift * 2.9 + uTime * 0.31 + vLocal.x * 0.4) * 0.5 + 0.5;
+          float texture = 0.62 + 0.38 * (curl * 0.6 + wisp * 0.4);
+          gl_FragColor = vec4(uColor, body * texture * uOpacity);
+        }
+      `,
+    })
+    const mist = new THREE.Mesh(mistGeometry, mistMaterial)
+    mist.frustumCulled = false
+    mist.renderOrder = 2
+    root.add(mist)
     /**
      * The spores: many small points of light, on one billboarded mesh.
      *
@@ -5204,16 +5327,22 @@ class Gloamwood3DHunt {
     root.add(moteMesh)
     const motes = { mesh: moteMesh, geometry: moteGeometry, material: moteMaterial }
     this.scene.add(root)
-    return { root, patches, motes, texture, previewBoost: 0 }
+    return {
+      root,
+      mist: { mesh: mist, geometry: mistGeometry, material: mistMaterial, lift: layout.mistLift },
+      motes,
+      texture,
+      previewBoost: 0,
+      centre: new THREE.Vector2(Number.NaN, Number.NaN),
+    }
   }
 
   private disposeSporeHaze() {
     const haze = this.sporeHaze
     if (!haze) return
     this.scene.remove(haze.root)
-    for (const patch of haze.patches) {
-      if (patch.material instanceof THREE.Material) patch.material.dispose()
-    }
+    haze.mist.geometry.dispose()
+    haze.mist.material.dispose()
     haze.motes.geometry.dispose()
     haze.motes.material.dispose()
     haze.texture.dispose()
@@ -8628,7 +8757,16 @@ class Gloamwood3DHunt {
         activeSprites: this.feedbackSprites.length,
         activeParticles: this.rendingParticles.length + this.rendingSurfaces.length + this.mutationParticles.length,
         activeDecals: 0,
-        sporeHaze: this.sporeHaze?.patches.length ?? 0,
+        // The spore count rather than a patch count: the mist is one mesh now,
+        // so counting it only ever reported 1 or 0, and what is worth reporting
+        // is whether the drift is actually there.
+        sporeHaze: this.sporeHaze ? SPORE_HAZE.moteCount : 0,
+        // How far the mist bends from its highest vertex to its lowest. Zero on
+        // level ground and non-zero on a slope, which is the difference between
+        // a disc that follows the terrain and the flat quads that used to get
+        // sliced in half by it - a defect that is invisible in a still frame
+        // taken anywhere flat.
+        sporeMistDrop: round(this.sporeMistDrop()),
         slowAuraRadius: this.mutationEffects.slowAuraRadius ?? 0,
       },
       input: { bindings: { ...this.inputBindings }, rebinding: this.rebindingAction },

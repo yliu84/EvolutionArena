@@ -85,7 +85,19 @@ export const SPORE_HAZE = {
   moteOpacity: 0.9,
   height: 0.18,
   radiusScale: 1.22,
-  patchCount: 6,
+  /**
+   * The mist is one ground-following disc, not a pile of flat quads.
+   *
+   * The quads were placed at the player's own ground height and left flat, so
+   * anywhere the terrain rose more than a few centimetres inside the aura the
+   * ground won the depth test and sliced the mist off along a contour - a hard
+   * straight edge with nothing on the far side of it. A disc whose vertices
+   * each sample the terrain cannot do that.
+   */
+  mistRings: 7,
+  mistSegments: 30,
+  /** How far above the ground each vertex floats. Enough to clear grass. */
+  mistLift: 0.12,
   /**
    * Spores, and there are a lot of them now.
    *
@@ -104,20 +116,6 @@ export const SPORE_HAZE = {
 
 export function sporeHazeLayout(radius: number) {
   const span = Math.max(1.4, radius) * SPORE_HAZE.radiusScale
-  const patches: Array<{ local: [number, number, number]; size: number; spin: number }> = [
-    { local: [0, SPORE_HAZE.height, 0], size: span * 2.02, spin: 0.04 },
-  ]
-  for (let index = 0; index < SPORE_HAZE.patchCount; index += 1) {
-    const angle = (index / SPORE_HAZE.patchCount) * TAU + 0.18
-    const dist = span * (0.52 + (index % 3) * 0.16)
-    patches.push({
-      local: [Math.cos(angle) * dist, SPORE_HAZE.height + (index % 2) * 0.04, Math.sin(angle) * dist],
-      // Broader and flatter than before, and overlapping, so the patches fuse
-      // into one field of mist instead of reading as separate discs.
-      size: span * (1.35 + (index % 3) * 0.3),
-      spin: (index % 2 === 0 ? 1 : -1) * 0.08,
-    })
-  }
   const motes: Array<{
     local: [number, number, number]
     size: number
@@ -156,7 +154,9 @@ export function sporeHazeLayout(radius: number) {
     hazeOpacity: SPORE_HAZE.hazeOpacity,
     moteOpacity: SPORE_HAZE.moteOpacity,
     moteRise: SPORE_HAZE.moteRise,
-    patches,
+    mistRings: SPORE_HAZE.mistRings,
+    mistSegments: SPORE_HAZE.mistSegments,
+    mistLift: SPORE_HAZE.mistLift,
     motes,
   }
 }
