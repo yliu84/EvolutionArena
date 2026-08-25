@@ -235,13 +235,47 @@ function buildAltar(disposables: Array<{ dispose(): void }>) {
 }
 
 /**
- * The portal, and the only thing on the map that is allowed to be loud.
+ * A soft round sprite for the drifting motes.
  *
- * It is where every wave comes from and it sits 48 units up the road, at the
- * far end of a descending corridor. A plain torus at that distance was a small
- * dark shape; what the owner asked for is what the layout needs anyway - the
- * player should be able to read "something is coming" from the altar without
- * turning the camera.
+ * `PointsMaterial` without a map draws hard squares, which at this size read as
+ * scattered white confetti rather than as anything coming out of a rift. One
+ * 64px radial gradient fixes it and costs nothing.
+ */
+function moteTexture() {
+  const canvas = document.createElement('canvas')
+  canvas.width = 64
+  canvas.height = 64
+  const context = canvas.getContext('2d')
+  if (context) {
+    const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32)
+    gradient.addColorStop(0, 'rgba(255,255,255,1)')
+    gradient.addColorStop(0.35, 'rgba(226,180,255,0.75)')
+    gradient.addColorStop(1, 'rgba(150,80,220,0)')
+    context.fillStyle = gradient
+    context.fillRect(0, 0, 64, 64)
+  }
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.needsUpdate = true
+  return texture
+}
+
+/**
+ * The portal: a broken stone arch with a rift turning inside it.
+ *
+ * The first build was a smooth torus over an additive disc, and the owner's
+ * read was correct twice over. A perfect ring lit that brightly is a flat
+ * cartoon donut with no form in it, and the shader's two low angular harmonics
+ * - `sin(angle * 3)` against `sin(angle * -2)` - beat into a visible four-lobed
+ * pinwheel, which is the "four-coloured circle" it looked like.
+ *
+ * So: the arch is built from irregular stone segments with varied lean and
+ * size, which is what gives it form under a strong light; and the rift is wound
+ * as a single tight spiral driven mostly by radius, because one arm wrapped
+ * many times reads as smooth motion where a handful of arms reads as a fan.
+ *
+ * It is also drawn with normal blending rather than additive. Additive cannot
+ * occlude, so the forest showed straight through the gate and it read as a hoop
+ * with a smudge behind it instead of as a hole. The dark core is what sells it.
  *
  * Violet, matching the Warden, because everything that comes out of it is
  * hostile and the altar's amber is the other half of that pair.
@@ -250,27 +284,63 @@ function buildPortal(disposables: Array<{ dispose(): void }>) {
   const group = new THREE.Group()
   group.name = 'DefencePortal'
   const { portal } = GLOAMWOOD_DEFENCE
-  const base = gloamwoodDefenceHeight(portal.x, portal.z)
-  group.position.set(portal.x, base, portal.z)
+  group.position.set(portal.x, gloamwoodDefenceHeight(portal.x, portal.z), portal.z)
 
-  const archGeometry = new THREE.TorusGeometry(3.6, 0.42, 10, 30)
-  const archMaterial = new THREE.MeshStandardMaterial({
-    color: 0x3d2450, emissive: 0x7c3fa8, emissiveIntensity: 1.6, roughness: 0.44, metalness: 0,
+  const RIFT_RADIUS = 3.5
+  const CENTRE_Y = 4.1
+
+  // Ruined masonry rather than a ring: nine blocks around the top two-thirds of
+  // the circle, each with its own size and lean, and two heavy feet.
+  // Pale weathered stone, not the dark purple the first pass used. Against a
+  // forest this dark, a dark arch simply disappeared and left the rift floating
+  // with a few loose blocks beside it.
+  const stone = new THREE.MeshStandardMaterial({ color: 0x9a8fa4, roughness: 0.9, metalness: 0 })
+  const stoneLit = new THREE.MeshStandardMaterial({
+    color: 0xa295ae, emissive: 0x5c2585, emissiveIntensity: 0.75, roughness: 0.82, metalness: 0,
   })
-  const arch = new THREE.Mesh(archGeometry, archMaterial)
-  arch.position.y = 3.7
-  arch.castShadow = true
+  disposables.push(stone, stoneLit)
+  const arch = new THREE.Group()
+  const SEGMENTS = 9
+  for (let index = 0; index < SEGMENTS; index += 1) {
+    // Top two-thirds only, so the arch stands on the ground rather than
+    // floating as a closed hoop.
+    const angle = Math.PI * (0.08 + (index / (SEGMENTS - 1)) * 0.84)
+    const wobble = Math.sin(index * 2.7) * 0.22
+    // Chunky enough to touch their neighbours: the arc is about 11 units long
+    // over nine blocks, so anything under 1.25 wide leaves the ring in pieces.
+    const width = 1.5 + Math.sin(index * 1.9) * 0.26
+    const depth = 1.15 + Math.cos(index * 2.3) * 0.2
+    const geometry = new THREE.BoxGeometry(width, 1.85 + wobble, depth)
+    const block = new THREE.Mesh(geometry, index % 3 === 0 ? stoneLit : stone)
+    block.position.set(
+      Math.cos(angle) * (RIFT_RADIUS + 0.85),
+      CENTRE_Y + Math.sin(angle) * (RIFT_RADIUS + 0.85),
+      0,
+    )
+    block.rotation.z = angle - Math.PI / 2 + wobble * 0.35
+    block.rotation.y = wobble * 0.5
+    block.castShadow = true
+    block.receiveShadow = true
+    arch.add(block)
+    disposables.push(geometry)
+  }
+  for (const side of [-1, 1]) {
+    const geometry = new THREE.BoxGeometry(2.4, 2.9, 1.9)
+    const foot = new THREE.Mesh(geometry, stone)
+    foot.position.set(side * (RIFT_RADIUS + 0.85), 1.45, 0)
+    foot.rotation.z = side * 0.06
+    foot.castShadow = true
+    foot.receiveShadow = true
+    arch.add(foot)
+    disposables.push(geometry)
+  }
   group.add(arch)
-  disposables.push(archGeometry, archMaterial)
 
-  // The gate itself: a disc that fades from a bright core to nothing at the rim,
-  // so it reads as a hole rather than as a coloured plate.
-  const sheetGeometry = new THREE.CircleGeometry(3.5, 34)
-  const sheetMaterial = new THREE.ShaderMaterial({
+  const riftGeometry = new THREE.CircleGeometry(RIFT_RADIUS, 48)
+  const riftMaterial = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
     uniforms: { uTime: { value: 0 } },
     vertexShader: `
       varying vec2 vUv;
@@ -282,68 +352,85 @@ function buildPortal(disposables: Array<{ dispose(): void }>) {
     fragmentShader: `
       uniform float uTime;
       varying vec2 vUv;
+
       void main() {
         vec2 centred = vUv - 0.5;
         float radius = length(centred) * 2.0;
         float angle = atan(centred.y, centred.x);
-        // Two counter-rotating bands, so the surface reads as turning rather
-        // than as a static gradient that happens to pulse.
-        float swirl = sin(angle * 3.0 + uTime * 1.7 - radius * 6.0) * 0.5 + 0.5;
-        float counter = sin(angle * -2.0 + uTime * 1.1 + radius * 4.0) * 0.5 + 0.5;
-        float body = smoothstep(1.0, 0.15, radius);
-        float core = smoothstep(0.75, 0.0, radius);
-        float intensity = body * (0.28 + swirl * 0.34 + counter * 0.2) + core * 0.55;
-        vec3 tint = mix(vec3(0.42, 0.16, 0.68), vec3(0.83, 0.62, 1.0), core + swirl * 0.25);
-        gl_FragColor = vec4(tint * intensity, intensity * 0.92);
+
+        // One arm wound many times, not several arms. A low angular harmonic
+        // beats against its neighbour and shows up as a fan; winding a single
+        // arm through the radius reads as smooth rotation.
+        float spiral = sin(angle - radius * 15.0 + uTime * 2.4) * 0.5 + 0.5;
+        float fine = sin(angle * 2.0 - radius * 27.0 + uTime * 3.6) * 0.5 + 0.5;
+        float streaks = spiral * 0.72 + fine * 0.28;
+
+        // Dark at the centre, brightest in a band, gone at the rim: a hole with
+        // light around its lip rather than a lit disc.
+        float lip = smoothstep(0.08, 0.62, radius) * smoothstep(1.0, 0.66, radius);
+        float throat = smoothstep(0.7, 0.0, radius);
+
+        vec3 deep = vec3(0.045, 0.012, 0.09);
+        vec3 glow = vec3(0.62, 0.24, 0.95);
+        vec3 hot = vec3(0.93, 0.76, 1.0);
+        vec3 colour = deep;
+        colour = mix(colour, glow, lip * (0.45 + streaks * 0.55));
+        colour = mix(colour, hot, lip * streaks * streaks * 0.5);
+
+        // Opaque through the middle so the forest behind cannot be seen, easing
+        // off only at the very rim where the stone takes over.
+        float alpha = mix(0.97, 0.0, smoothstep(0.86, 1.0, radius));
+        gl_FragColor = vec4(colour + throat * deep * 2.0, alpha);
       }
     `,
   })
-  const sheet = new THREE.Mesh(sheetGeometry, sheetMaterial)
-  sheet.position.y = 3.7
-  group.add(sheet)
-  disposables.push(sheetGeometry, sheetMaterial)
+  const rift = new THREE.Mesh(riftGeometry, riftMaterial)
+  rift.position.y = CENTRE_Y
+  group.add(rift)
+  disposables.push(riftGeometry, riftMaterial)
 
-  // Motes drifting up out of the gate. Cheap, and they are what makes it read
-  // as active from the far end of the road.
-  const moteCount = 44
+  const moteCount = 52
   const motePositions = new Float32Array(moteCount * 3)
   const motePhase: number[] = []
   for (let index = 0; index < moteCount; index += 1) {
-    motePhase.push(Math.random() * Math.PI * 2)
-    motePositions[index * 3] = (Math.random() - 0.5) * 6.4
-    motePositions[index * 3 + 1] = Math.random() * 7
-    motePositions[index * 3 + 2] = (Math.random() - 0.5) * 1.4
+    motePhase.push((index / moteCount) * Math.PI * 2 + Math.sin(index * 3.1) * 0.6)
+    motePositions[index * 3] = 0
+    motePositions[index * 3 + 1] = 0
+    motePositions[index * 3 + 2] = 0
   }
   const moteGeometry = new THREE.BufferGeometry()
   moteGeometry.setAttribute('position', new THREE.BufferAttribute(motePositions, 3))
+  const moteMap = moteTexture()
   const moteMaterial = new THREE.PointsMaterial({
-    color: 0xc79bff, size: 0.28, transparent: true, opacity: 0.85,
-    depthWrite: false, blending: THREE.AdditiveBlending,
+    map: moteMap, color: 0xd9aaff, size: 0.42, transparent: true, opacity: 0.9,
+    depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
   })
   const motes = new THREE.Points(moteGeometry, moteMaterial)
   group.add(motes)
-  disposables.push(moteGeometry, moteMaterial)
+  disposables.push(moteGeometry, moteMaterial, moteMap)
 
-  const spill = new THREE.PointLight(0x9d5bd6, 16, 26, 2)
-  spill.position.y = 3.7
+  const spill = new THREE.PointLight(0x9d5bd6, 15, 28, 2)
+  spill.position.set(0, CENTRE_Y, 1.4)
   group.add(spill)
 
   return {
     group,
     update(elapsed: number) {
-      sheetMaterial.uniforms.uTime.value = elapsed
-      arch.rotation.z = elapsed * 0.16
-      const pulse = 0.5 + Math.sin(elapsed * 2.1) * 0.5
-      archMaterial.emissiveIntensity = 1.3 + pulse * 0.7
-      spill.intensity = 13 + pulse * 6
+      riftMaterial.uniforms.uTime.value = elapsed
+      const pulse = 0.5 + Math.sin(elapsed * 1.7) * 0.5
+      stoneLit.emissiveIntensity = 0.4 + pulse * 0.35
+      spill.intensity = 12 + pulse * 6
       const attribute = moteGeometry.attributes.position as THREE.BufferAttribute
       for (let index = 0; index < moteCount; index += 1) {
         const phase = motePhase[index]
-        // Rise, then wrap. The lateral drift keeps them from reading as a
-        // column of identical dots.
-        const height = ((elapsed * 0.85 + phase) % 7)
-        attribute.setY(index, height)
-        attribute.setX(index, Math.sin(elapsed * 0.6 + phase * 2.3) * 2.6)
+        // Spiralling out of the throat and rising, then wrapping. Reading the
+        // motion as "coming out of it" is the whole job.
+        const life = ((elapsed * 0.42 + index / moteCount) % 1)
+        const spin = phase + life * 5.2
+        const spread = life * RIFT_RADIUS * 0.92
+        attribute.setX(index, Math.cos(spin) * spread)
+        attribute.setY(index, CENTRE_Y + Math.sin(spin) * spread * 0.55 + life * 2.6)
+        attribute.setZ(index, Math.sin(spin * 0.7) * 0.9 + life * 1.6)
       }
       attribute.needsUpdate = true
     },
