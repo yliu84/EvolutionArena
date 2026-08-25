@@ -8,9 +8,13 @@ import {
   createGloamwoodDefencePrey,
   createGloamwoodDefenceState,
   damageGloamwoodDefenceAltar,
+  gloamwoodDefenceDamageScale,
+  gloamwoodDefenceHealthScale,
+  gloamwoodDefencePreyWave,
   gloamwoodDefenceSpawnPoint,
   gloamwoodDefenceSpeedMultiplier,
   gloamwoodDefenceTarget,
+  separateGloamwoodDefencePrey,
   stepGloamwoodDefence,
   summariseGloamwoodDefenceRun,
   type GloamwoodDefenceState,
@@ -292,9 +296,116 @@ describe('bosses actually come through the portal', () => {
   })
 
   it('outclasses an ordinary creature by a wide margin', () => {
-    const ordinary = createGloamwoodDefencePrey('shell', 0)
+    // Against the toughest ordinary creature the run produces - a Carapace
+    // spawned in the last wave - not against a wave-one one, or the margin
+    // flatters itself.
+    const toughest = createGloamwoodDefencePrey('shell', 0, GLOAMWOOD_DEFENCE_RUN.waves)
     for (const boss of Object.values(GLOAMWOOD_DEFENCE_BOSSES)) {
-      expect(boss.health).toBeGreaterThan(ordinary.maxHealth * 3)
+      expect(boss.health, 'a boss is not clearly a boss').toBeGreaterThan(toughest.maxHealth)
     }
+    expect(GLOAMWOOD_DEFENCE_BOSSES['thornheart-warden'].health)
+      .toBeGreaterThan(toughest.maxHealth * 3)
+  })
+})
+
+describe('a creature gets tougher the later it arrives', () => {
+  it('scales health hard and damage gently', () => {
+    // The owner played a run and found it too easy: only the count and the mix
+    // escalated, so a Fang in wave eleven was a Fang in wave one.
+    expect(gloamwoodDefenceHealthScale(1)).toBe(1)
+    expect(gloamwoodDefenceDamageScale(1)).toBe(1)
+    const lastHealth = gloamwoodDefenceHealthScale(GLOAMWOOD_DEFENCE_RUN.waves)
+    const lastDamage = gloamwoodDefenceDamageScale(GLOAMWOOD_DEFENCE_RUN.waves)
+    expect(lastHealth).toBeGreaterThan(2.2)
+    // Damage stays flat by comparison. A defence mode punishes damage
+    // escalation harder than a duel does - the player is pinned to a line with
+    // up to ten things on it - and the owner's standing brief is that attacks
+    // must not spike.
+    expect(lastDamage).toBeLessThan(1.8)
+    expect(lastDamage).toBeLessThan(lastHealth)
+  })
+
+  it('leaves the player double figures of hits even in the last wave', () => {
+    const damage = GLOAMWOOD_PREY.fang.damage
+      * GLOAMWOOD_DEFENCE_RUN.playerDamageScale
+      * gloamwoodDefenceDamageScale(GLOAMWOOD_DEFENCE_RUN.waves)
+    expect(130 / damage).toBeGreaterThan(9)
+  })
+
+  it('bakes the spawning wave into the creature, not the current one', () => {
+    const early = createGloamwoodDefencePrey('fang', 0, 1)
+    const late = createGloamwoodDefencePrey('fang', 1, 11)
+    expect(late.maxHealth).toBeGreaterThan(early.maxHealth * 2)
+    // Health is a field on the creature, so one that survives into the next
+    // wave keeps the toughness it spawned with rather than growing.
+    expect(early.maxHealth).toBe(Math.round(GLOAMWOOD_PREY.fang.maxHealth))
+  })
+
+  it('reads the wave back off an id, for both creatures and bosses', () => {
+    expect(gloamwoodDefencePreyWave(createGloamwoodDefencePrey('swarm', 4, 7).id)).toBe(7)
+    expect(gloamwoodDefencePreyWave(createGloamwoodDefenceBossPrey('thornheart-warden', 0).id)).toBe(12)
+    expect(gloamwoodDefencePreyWave(createGloamwoodDefenceBossPrey('bladeshell', 0).id)).toBe(3)
+    // Anything unrecognised must not throw or scale wildly.
+    expect(gloamwoodDefencePreyWave('nonsense')).toBe(1)
+  })
+
+  it('escalates bosses about as much as it escalates the rank and file', () => {
+    // Bosses carry their own authored ladder rather than the wave multiplier,
+    // so the two must stay in the same neighbourhood or one of them is doing
+    // all the work.
+    const bossGrowth = GLOAMWOOD_DEFENCE_BOSSES['thornheart-warden'].health
+      / GLOAMWOOD_DEFENCE_BOSSES.bladeshell.health
+    const ordinaryGrowth = gloamwoodDefenceHealthScale(12) / gloamwoodDefenceHealthScale(3)
+    expect(Math.abs(bossGrowth - ordinaryGrowth)).toBeLessThan(1)
+  })
+})
+
+describe('a small creature never disappears inside a big one', () => {
+  const at = (id: string, x: number, z: number, bodyRadius: number) => ({
+    ...createGloamwoodDefencePrey('fang', 0, 1),
+    id,
+    x,
+    z,
+    bodyRadius,
+  })
+
+  it('pushes overlapping bodies apart', () => {
+    // The owner could not see or hit an escort while a boss stood on it.
+    const separated = separateGloamwoodDefencePrey(
+      [at('boss', 0, 0, 3.9), at('bug', 0.4, 0, 0.5)],
+      (entry) => entry.bodyRadius ?? 0.5,
+    )
+    const gap = Math.hypot(separated[1].x - separated[0].x, separated[1].z - separated[0].z)
+    expect(gap).toBeGreaterThan(3.9 + 0.5 - 0.2)
+  })
+
+  it('moves the light one and leaves the heavy one where it stood', () => {
+    const separated = separateGloamwoodDefencePrey(
+      [at('boss', 0, 0, 3.9), at('bug', 0.4, 0, 0.5)],
+      (entry) => entry.bodyRadius ?? 0.5,
+    )
+    const bossMoved = Math.hypot(separated[0].x, separated[0].z)
+    const bugMoved = Math.hypot(separated[1].x - 0.4, separated[1].z)
+    expect(bugMoved).toBeGreaterThan(bossMoved * 3)
+  })
+
+  it('survives two bodies at exactly the same point', () => {
+    // Coincident spawns are the case that divides by zero.
+    const separated = separateGloamwoodDefencePrey(
+      [at('a', 5, 5, 1), at('b', 5, 5, 1)],
+      () => 1,
+    )
+    for (const entry of separated) {
+      expect(Number.isFinite(entry.x)).toBe(true)
+      expect(Number.isFinite(entry.z)).toBe(true)
+    }
+    expect(Math.hypot(separated[1].x - separated[0].x, separated[1].z - separated[0].z)).toBeGreaterThan(0.5)
+  })
+
+  it('leaves the dead alone, so a corpse is not shoved around', () => {
+    const corpse = { ...at('dead', 0, 0, 1), phase: 'dead' as const }
+    const separated = separateGloamwoodDefencePrey([corpse, at('live', 0.2, 0, 1)], () => 1)
+    expect(separated[0].x).toBe(0)
+    expect(separated[0].z).toBe(0)
   })
 })

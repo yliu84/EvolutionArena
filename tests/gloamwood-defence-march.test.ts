@@ -25,7 +25,10 @@ function march(playerAt: { x: number; z: number }, seconds: number) {
   const frames = Math.round(seconds * 60)
   for (let frame = 0; frame < frames; frame += 1) {
     state = map.stepCreatures(state, 1 / 60, player, []).state
-    const first = state.prey.find((prey) => prey.id === 'defence-0')
+    // Found rather than named: ids carry the spawning wave now, and a test
+    // that hardcodes one breaks for a reason that has nothing to do with the
+    // rule it guards.
+    const first = state.prey.find((prey) => prey.tier !== 'boss')
     if (first) samples.push({ t: frame / 60, id: first.id, x: first.x, z: first.z })
   }
   return { state, samples }

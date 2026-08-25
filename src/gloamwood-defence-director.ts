@@ -106,6 +106,28 @@ export const GLOAMWOOD_DEFENCE_RUN = {
    * the player.
    */
   playerDamageScale: 0.6,
+  /**
+   * How much tougher a creature is by the last wave than by the first.
+   *
+   * The owner played a run and found it too easy, and was right about why:
+   * only the *count* and the *mix* escalated. A Fang in wave eleven had exactly
+   * the health and the bite of a Fang in wave one, so a player who could hold
+   * the line at wave two could hold it at wave eleven by doing the same thing
+   * slightly longer.
+   *
+   * Health carries most of the curve and damage very little, deliberately. The
+   * owner's earlier brief still stands - "怪的攻击不能太高，否则玩家很快就会死"
+   * - and a defence mode punishes damage escalation harder than a duel does,
+   * because the player is pinned to a line with up to ten things on it. Tougher
+   * creatures make a wave take longer to clear, which is what lets more of them
+   * reach the altar; that is the pressure, not bigger numbers on the player's
+   * health bar.
+   *
+   * Applied per creature from the wave it *spawned* in, not the wave that is
+   * current - something that survives into the next wave must not grow.
+   */
+  healthPerWave: 0.145,
+  damagePerWave: 0.055,
   /** Seconds of quiet between a wave clearing and the next stepping through. */
   intermissionSeconds: 6,
   /**
@@ -211,6 +233,35 @@ export function createGloamwoodDefenceState(): GloamwoodDefenceState {
 
 export function gloamwoodDefenceWave(index: number) {
   return GLOAMWOOD_DEFENCE_WAVES.find((wave) => wave.index === index)
+}
+
+/** How much health a creature spawned in this wave carries, as a multiplier. */
+export function gloamwoodDefenceHealthScale(wave: number) {
+  return 1 + Math.max(0, wave - 1) * GLOAMWOOD_DEFENCE_RUN.healthPerWave
+}
+
+/** How hard it hits, as a multiplier. Much flatter than health, on purpose. */
+export function gloamwoodDefenceDamageScale(wave: number) {
+  return 1 + Math.max(0, wave - 1) * GLOAMWOOD_DEFENCE_RUN.damagePerWave
+}
+
+/**
+ * Which wave a creature came from, read back off its id.
+ *
+ * Carried in the id rather than in a field because `GloamwoodNestPrey` is the
+ * shared shape every map fills in, and a number only this mode uses has no
+ * business in it. The id already round-trips through the runtime untouched,
+ * which is the property that matters.
+ */
+export function gloamwoodDefencePreyWave(id: string) {
+  const match = /^defence-w(\d+)-/.exec(id)
+  if (match) return Number(match[1])
+  const boss = /^defence-boss-(.+)$/.exec(id)
+  if (boss) {
+    const found = GLOAMWOOD_DEFENCE_WAVES.find((wave) => wave.boss === boss[1])
+    return found?.index ?? 1
+  }
+  return 1
 }
 
 /**
@@ -361,17 +412,19 @@ export function gloamwoodDefenceSpawnPoint(sequence: number) {
 export function createGloamwoodDefencePrey(
   kind: GloamwoodPreyKind,
   sequence: number,
+  wave: number,
   bodyRadius?: number,
 ): GloamwoodNestPrey {
   const spec = GLOAMWOOD_PREY[kind]
   const at = gloamwoodDefenceSpawnPoint(sequence)
+  const health = Math.round(spec.maxHealth * gloamwoodDefenceHealthScale(wave))
   return {
-    id: `defence-${sequence}`,
+    id: `defence-w${wave}-${sequence}`,
     kind,
     phase: 'chase',
     phaseElapsed: 0,
-    health: spec.maxHealth,
-    maxHealth: spec.maxHealth,
+    health,
+    maxHealth: health,
     x: at.x,
     z: at.z,
     // Facing down the road. The altar is at +Z and the runtime's zero is +X.
@@ -491,6 +544,67 @@ export function gloamwoodDefenceProgress(state: GloamwoodDefenceState) {
     boss: gloamwoodDefenceWave(state.wave)?.boss,
     altarFraction: state.altarMaxHealth > 0 ? state.altarHealth / state.altarMaxHealth : 0,
   }
+}
+
+/**
+ * Push overlapping creatures apart so a small one is never inside a big one.
+ *
+ * The owner played a run and could not see or hit the escort while a boss was
+ * on top of them. `stepPrey` holds every creature on an action ring around its
+ * target and nothing has ever separated creatures from each other - which is
+ * fine on maps where the biggest thing is a Carapace, and not fine here, where
+ * a boss is 3.9 units across and its escort is 0.5.
+ *
+ * Mass is by radius, so a boss barely moves and a Swarm bug gets shoved clear.
+ * Deliberately *not* a physics pass: two iterations of a positional nudge, run
+ * after everything has stepped, which is enough to stop bodies occupying the
+ * same space without giving creatures momentum they never had.
+ */
+export function separateGloamwoodDefencePrey(
+  prey: readonly GloamwoodNestPrey[],
+  radiusOf: (entry: GloamwoodNestPrey) => number,
+  iterations = 2,
+): GloamwoodNestPrey[] {
+  const moved = prey.map((entry) => ({ ...entry }))
+  for (let pass = 0; pass < iterations; pass += 1) {
+    for (let a = 0; a < moved.length; a += 1) {
+      if (moved[a].phase === 'dead') continue
+      for (let b = a + 1; b < moved.length; b += 1) {
+        if (moved[b].phase === 'dead') continue
+        const first = moved[a]
+        const second = moved[b]
+        const wanted = radiusOf(first) + radiusOf(second)
+        let dx = second.x - first.x
+        let dz = second.z - first.z
+        let distance = Math.hypot(dx, dz)
+        if (distance >= wanted) continue
+        if (distance < 1e-4) {
+          // Exactly coincident: pick a direction rather than dividing by zero.
+          dx = Math.cos(a * 2.399)
+          dz = Math.sin(a * 2.399)
+          distance = 1
+        }
+        const overlap = wanted - distance
+        const firstMass = radiusOf(first)
+        const secondMass = radiusOf(second)
+        const total = firstMass + secondMass
+        // The heavier body keeps its ground; the lighter one gives way.
+        const firstShare = total > 0 ? secondMass / total : 0.5
+        const secondShare = 1 - firstShare
+        moved[a] = {
+          ...first,
+          x: first.x - (dx / distance) * overlap * firstShare,
+          z: first.z - (dz / distance) * overlap * firstShare,
+        }
+        moved[b] = {
+          ...second,
+          x: second.x + (dx / distance) * overlap * secondShare,
+          z: second.z + (dz / distance) * overlap * secondShare,
+        }
+      }
+    }
+  }
+  return moved
 }
 
 /** Convenience for tests and review: the whole run's shape at a glance. */

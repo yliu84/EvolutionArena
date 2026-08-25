@@ -1,5 +1,6 @@
 import {
   GLOAMWOOD_PREY,
+  gloamwoodPreyBodyRadius,
   stepPrey,
   type GloamwoodNestEvent,
   type GloamwoodNestState,
@@ -15,9 +16,12 @@ import {
   createGloamwoodDefenceState,
   gloamwoodDefenceWave,
   damageGloamwoodDefenceAltar,
+  gloamwoodDefenceDamageScale,
   gloamwoodDefenceMarchStep,
+  gloamwoodDefencePreyWave,
   gloamwoodDefenceSpeedMultiplier,
   gloamwoodDefenceTarget,
+  separateGloamwoodDefencePrey,
   stepGloamwoodDefence,
   type GloamwoodDefenceState,
 } from './gloamwood-defence-director'
@@ -157,7 +161,7 @@ export function createGloamwoodDefenceMap(
         spawnSequence += 1
       }
       for (const kind of directed.release) {
-        prey.push(createGloamwoodDefencePrey(kind, spawnSequence))
+        prey.push(createGloamwoodDefencePrey(kind, spawnSequence, run.wave))
         spawnSequence += 1
       }
 
@@ -191,19 +195,29 @@ export function createGloamwoodDefenceMap(
             events.push(event)
             continue
           }
+          // Two scales, and they are different questions. `playerDamageScale`
+          // is how hard this mode hits compared with the rest of the game;
+          // the wave scale is how much worse it gets as a run goes on.
+          const wave = gloamwoodDefenceDamageScale(gloamwoodDefencePreyWave(event.preyId))
           if (!target.marching) {
-            // Scaled on this map only. See `playerDamageScale`.
             events.push({
               ...event,
-              damage: Math.max(1, Math.round(event.damage * GLOAMWOOD_DEFENCE_RUN.playerDamageScale)),
+              damage: Math.max(
+                1,
+                Math.round(event.damage * GLOAMWOOD_DEFENCE_RUN.playerDamageScale * wave),
+              ),
             })
             continue
           }
-          applyAltarDamage(event.damage)
+          applyAltarDamage(event.damage * wave)
         }
       }
 
-      return { state: { ...state, prey }, events }
+      // Last, so nothing that has just been placed on an action ring is left
+      // standing inside a body four times its size.
+      const separated = separateGloamwoodDefencePrey(prey, (entry) => gloamwoodPreyBodyRadius(entry))
+        .map((entry) => ({ ...entry, ...gloamwoodDefenceConfine(entry.x, entry.z) }))
+      return { state: { ...state, prey: separated }, events }
     },
     /** What the mode wants on the status line: which wave, and how the altar is. */
     status: () => (run.phase === 'ready' ? null : {
