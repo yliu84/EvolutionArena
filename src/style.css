@@ -1154,6 +1154,24 @@ body.is-gloamwood-3d * {
 .g3d-boss-plate[data-phase="2"] > i em { background: linear-gradient(90deg, #c32f31, #ff7948 62%, #ffd782); }
 .g3d-boss-plate[data-rhythm="evade"] > b { color: #ff9c6b; text-shadow: 0 0 10px rgba(244, 80, 53, .48); }
 .g3d-boss-plate[data-rhythm="counter"] > b { color: #d9f0a5; text-shadow: 0 0 10px rgba(156, 221, 102, .4); }
+/* The altar defence minimap. Taller than it is wide, because the map is: the
+   whole point is seeing what is on the road, and a circular frame would crop
+   the half of it that matters. */
+.g3d-defence-radar { position: relative; box-sizing: border-box; flex: none; width: 88px; padding: 5px; border: 1px solid rgba(187, 207, 163, .3); border-radius: 10px; color: #dbe9cc; background: linear-gradient(180deg, rgba(24, 20, 38, .62), rgba(8, 20, 14, .6)); box-shadow: inset 0 0 18px rgba(27, 73, 51, .2); backdrop-filter: blur(5px); pointer-events: none; }
+.g3d-defence-radar svg { display: block; width: 100%; height: auto; }
+.g3d-dradar-road { fill: rgba(150, 112, 62, .38); stroke: rgba(196, 158, 96, .34); stroke-width: .5; }
+.g3d-dradar-bowl { fill: rgba(96, 148, 84, .3); stroke: rgba(150, 200, 130, .45); stroke-width: .7; }
+.g3d-dradar-portal { fill: rgba(140, 78, 190, .5); stroke: #c79bff; stroke-width: .7; }
+.g3d-dradar-portal[data-active="true"] { fill: rgba(186, 118, 240, .92); animation: g3d-dradar-pulse .9s ease-in-out infinite; }
+@keyframes g3d-dradar-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+.g3d-dradar-altar { fill: #ffc070; stroke: #fff0d2; stroke-width: .6; }
+.g3d-dradar-altar[data-health="mid"] { fill: #e8a24a; }
+.g3d-dradar-altar[data-health="low"] { fill: #e05a3c; }
+.g3d-dradar-prey { fill: #ff8a72; }
+.g3d-dradar-prey.is-boss { fill: #ff4f3a; stroke: #ffd9cf; stroke-width: .7; }
+.g3d-dradar-player { fill: #eaf7d4; stroke: #1d2a1a; stroke-width: .7; }
+.g3d-defence-radar small { display: block; margin-top: 3px; overflow: hidden; color: #f0f4d8; font-size: 7px; font-weight: 800; letter-spacing: .06em; text-align: center; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+
 .g3d-valley-radar { position: relative; box-sizing: border-box; flex: none; width: 106px; padding: 6px; border: 1px solid rgba(187, 207, 163, .3); border-radius: 50%; color: #dbe9cc; background: radial-gradient(circle at 43% 42%, rgba(30, 71, 49, .5), rgba(5, 18, 14, .54)); box-shadow: inset 0 0 22px rgba(27, 73, 51, .22); backdrop-filter: blur(5px); pointer-events: none; }
 .g3d-valley-radar svg { display: block; width: 100%; height: auto; }
 .g3d-radar-range { fill: none; stroke: rgba(198, 226, 188, .12); stroke-width: .6; }

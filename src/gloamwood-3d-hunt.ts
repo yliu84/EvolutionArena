@@ -15,6 +15,7 @@ import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import { gloamwoodMapFromEntry } from './entry-routing'
 import { createGloamwoodDefenceMap } from './gloamwood-defence-map'
 import { GLOAMWOOD_DEFENCE_RUN, type GloamwoodDefenceState } from './gloamwood-defence-director'
+import { GLOAMWOOD_DEFENCE } from './gloamwood-defence-terrain'
 import { buildGloamwoodDefenceScene } from './gloamwood-defence-scene'
 
 import { quality3DBodyStageForFamily, resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
@@ -1281,6 +1282,15 @@ class Gloamwood3DHunt {
   private debugOutput?: HTMLOutputElement
   private mutationLab?: HTMLElement
   private debugLive?: HTMLElement
+  private defenceRadar?: {
+    root: HTMLElement
+    player: SVGElement
+    altar: SVGElement
+    portal: SVGElement
+    prey: SVGElement
+    label: HTMLElement
+    toView(x: number, z: number): { x: number; y: number }
+  }
   private valleyRadar?: {
     root: HTMLElement
     player: SVGElement
@@ -1376,6 +1386,7 @@ class Gloamwood3DHunt {
     }
     this.createHud()
     this.createValleyRadar()
+    this.createDefenceRadar()
     this.bindInput()
     const debugSettings = import.meta.env.DEV ? new URLSearchParams(window.location.search) : null
     if (debugSettings?.get('settings') === '1' || debugSettings?.get('inputSettings') === '1') this.toggleSettings(true)
@@ -6985,6 +6996,100 @@ class Gloamwood3DHunt {
   }
 
   /** A geographic hint, not a second combat HUD: normal prey never appears. */
+  /**
+   * The altar defence minimap.
+   *
+   * A different job from the valley's radar, which is a local view that scrolls
+   * with the player because that map is 1,590 units of folded road. This one
+   * shows the *whole* map at a fixed scale and never moves, because the whole
+   * question it answers is "what is on the road right now" - the owner's ask was
+   * to be able to tell when a wave has started without walking up to look.
+   *
+   * Drawn from the terrain constants, so it cannot disagree with the ground.
+   */
+  private createDefenceRadar() {
+    if (this.map.id !== 'defence') return
+    const { bounds, arena, altar, portal, road } = GLOAMWOOD_DEFENCE
+    // World to a 100x100 viewBox, preserving aspect: the map is twice as deep
+    // as it is wide, so a square viewBox would squash the road.
+    const span = Math.max(bounds.halfWidth, bounds.halfDepth) * 2
+    const toView = (x: number, z: number) => ({
+      x: 50 + (x / span) * 100,
+      y: 50 + (z / span) * 100,
+    })
+    const arenaAt = toView(arena.x, arena.z)
+    const altarAt = toView(altar.x, altar.z)
+    const portalAt = toView(portal.x, portal.z)
+    const roadTop = toView(-road.halfWidth, portal.z)
+    const roadBottom = toView(-road.mouthHalfWidth, road.endZ)
+    const roadRightTop = toView(road.halfWidth, portal.z)
+    const roadRightBottom = toView(road.mouthHalfWidth, road.endZ)
+
+    const radar = document.createElement('aside')
+    radar.className = 'g3d-defence-radar'
+    radar.setAttribute('aria-label', t('radar.defenceLabel'))
+    radar.innerHTML = [
+      '<svg viewBox="0 0 100 100" aria-hidden="true">',
+      `<path class="g3d-dradar-road" d="M${roadTop.x} ${roadTop.y} L${roadRightTop.x} ${roadRightTop.y} L${roadRightBottom.x} ${roadRightBottom.y} L${roadBottom.x} ${roadBottom.y} Z"/>`,
+      `<circle class="g3d-dradar-bowl" cx="${arenaAt.x}" cy="${arenaAt.y}" r="${(arena.radius / span) * 100}"/>`,
+      `<circle class="g3d-dradar-portal" data-g3d-dradar-portal cx="${portalAt.x}" cy="${portalAt.y}" r="3.4"/>`,
+      `<rect class="g3d-dradar-altar" data-g3d-dradar-altar x="${altarAt.x - 3}" y="${altarAt.y - 2.2}" width="6" height="4.4" rx="1.2"/>`,
+      '<g data-g3d-dradar-prey></g>',
+      '<circle class="g3d-dradar-player" data-g3d-dradar-player r="2.6"/>',
+      '</svg>',
+      '<small data-g3d-dradar-label></small>',
+    ].join('')
+    const slot = this.hud?.querySelector<HTMLElement>('[data-g3d-radar-slot]')
+    ;(slot ?? this.container).append(radar)
+    this.defenceRadar = {
+      root: radar,
+      player: radar.querySelector('[data-g3d-dradar-player]')!,
+      altar: radar.querySelector('[data-g3d-dradar-altar]')!,
+      portal: radar.querySelector('[data-g3d-dradar-portal]')!,
+      prey: radar.querySelector('[data-g3d-dradar-prey]')!,
+      label: radar.querySelector('[data-g3d-dradar-label]')!,
+      toView,
+    }
+  }
+
+  private updateDefenceRadar() {
+    const radar = this.defenceRadar
+    if (!radar) return
+    const run = (this.map as { defenceRun?: () => GloamwoodDefenceState }).defenceRun?.()
+    if (!run) return
+
+    const at = radar.toView(this.playerRoot.position.x, this.playerRoot.position.z)
+    radar.player.setAttribute('cx', at.x.toFixed(2))
+    radar.player.setAttribute('cy', at.y.toFixed(2))
+
+    // Rebuilt rather than pooled: there are at most eleven of them and this
+    // runs once a frame on a map whose whole budget is one instanced draw per
+    // kit piece.
+    const marks: string[] = []
+    for (const prey of this.nestState.prey) {
+      if (prey.phase === 'dead') continue
+      const point = radar.toView(prey.x, prey.z)
+      const boss = prey.tier === 'boss'
+      marks.push(`<circle class="g3d-dradar-prey${boss ? ' is-boss' : ''}" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="${boss ? 2.8 : 1.5}"/>`)
+    }
+    radar.prey.innerHTML = marks.join('')
+
+    const fraction = run.altarMaxHealth > 0 ? run.altarHealth / run.altarMaxHealth : 0
+    radar.altar.setAttribute('data-health', fraction > 0.6 ? 'high' : fraction > 0.3 ? 'mid' : 'low')
+    // The portal lights while a wave is stepping through, which is the cue the
+    // owner asked for: knowing a wave has started without going to look.
+    radar.portal.setAttribute('data-active', run.phase === 'spawning' ? 'true' : 'false')
+
+    if (run.phase === 'intermission') {
+      const remaining = Math.max(0, GLOAMWOOD_DEFENCE_RUN.intermissionSeconds - run.phaseElapsed)
+      radar.label.textContent = t('radar.defenceNext', { seconds: Math.ceil(remaining) })
+    } else if (run.phase === 'won' || run.phase === 'lost') {
+      radar.label.textContent = t('radar.defenceOver')
+    } else {
+      radar.label.textContent = t('radar.defenceWave', { wave: run.wave, waves: GLOAMWOOD_DEFENCE_RUN.waves })
+    }
+  }
+
   private createValleyRadar() {
     if (this.map.id !== 'valley') return
     const radar = document.createElement('aside')
@@ -7835,6 +7940,7 @@ class Gloamwood3DHunt {
 
   private updateHud() {
     this.updateValleyRadar()
+    this.updateDefenceRadar()
     if (!this.hud) return
     const playerRatio = this.playerCombat.health / this.playerCombat.maxHealth
     const setText = (selector: string, value: string) => {

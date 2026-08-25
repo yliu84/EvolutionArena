@@ -236,6 +236,56 @@ export function gloamwoodDefenceTarget(
 }
 
 /**
+ * How close to the altar a marching creature has to be before combat takes over.
+ *
+ * Outside this it walks; inside it is handed to `stepPrey`, which positions it
+ * on an action ring and starts a telegraph.
+ */
+export const GLOAMWOOD_DEFENCE_ENGAGE_DISTANCE = GLOAMWOOD_DEFENCE.altar.radius + 3.4
+
+/**
+ * Walk one frame down the road. Not combat, and deliberately not `stepPrey`.
+ *
+ * `stepPrey`'s chase is built for a pack converging on a player in the open: it
+ * assigns each creature a slot around its target and rotates it around the
+ * target toward that slot while closing. At two body-lengths that reads as a
+ * pack spreading out. At sixty-eight units it is a vast arc - measured, a Fang
+ * leaving the portal swung out to x=20 on a road 3.5 wide, walked through the
+ * forest, and arrived at the altar from the side. Half of every frame's
+ * movement budget was going sideways, because the angular step's arc length is
+ * the move speed regardless of how far away the target is.
+ *
+ * So the approach is a straight walk toward the next point on the corridor, and
+ * combat only takes over once the creature is actually somewhere to fight.
+ * Nothing about the families' balance is touched: this replaces travel, not a
+ * single telegraph, strike or recovery.
+ */
+export function gloamwoodDefenceMarchStep(
+  prey: Pick<GloamwoodNestPrey, 'x' | 'z'>,
+  delta: number,
+  speed: number,
+) {
+  const { altar, road } = GLOAMWOOD_DEFENCE
+  // Two legs: down the throat to the mouth, then across the bowl to the altar.
+  // Aiming straight at the altar from the portal cuts the corner and walks a
+  // creature into the trees along the way.
+  const aim = prey.z < road.endZ
+    ? { x: 0, z: road.endZ + 1.5 }
+    : { x: altar.x, z: altar.z }
+  const dx = aim.x - prey.x
+  const dz = aim.z - prey.z
+  const distance = Math.hypot(dx, dz)
+  if (distance < 1e-4) return { x: prey.x, z: prey.z, facingRadians: -Math.PI / 2 }
+  const stride = Math.min(distance, Math.max(0, speed) * delta)
+  return {
+    x: prey.x + (dx / distance) * stride,
+    z: prey.z + (dz / distance) * stride,
+    // The runtime's zero is +X and its Z runs the other way to the maths.
+    facingRadians: Math.atan2(-dz, dx),
+  }
+}
+
+/**
  * Speed multiplier for a creature this frame.
  *
  * Only while marching, and only while it is still a walk rather than a fight -

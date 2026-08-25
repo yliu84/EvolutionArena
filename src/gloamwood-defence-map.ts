@@ -1,4 +1,5 @@
 import {
+  GLOAMWOOD_PREY,
   stepPrey,
   type GloamwoodNestEvent,
   type GloamwoodNestState,
@@ -7,12 +8,14 @@ import {
 } from './gloamwood-3d-ecology'
 import {
   GLOAMWOOD_DEFENCE_BOSSES,
+  GLOAMWOOD_DEFENCE_ENGAGE_DISTANCE,
   GLOAMWOOD_DEFENCE_RUN,
   createGloamwoodDefenceBossPrey,
   createGloamwoodDefencePrey,
   createGloamwoodDefenceState,
   gloamwoodDefenceWave,
   damageGloamwoodDefenceAltar,
+  gloamwoodDefenceMarchStep,
   gloamwoodDefenceSpeedMultiplier,
   gloamwoodDefenceTarget,
   stepGloamwoodDefence,
@@ -160,10 +163,29 @@ export function createGloamwoodDefenceMap(
 
       for (let index = 0; index < prey.length; index += 1) {
         const target = gloamwoodDefenceTarget(prey[index], player)
+        const toAltar = Math.hypot(
+          GLOAMWOOD_DEFENCE.altar.x - prey[index].x,
+          GLOAMWOOD_DEFENCE.altar.z - prey[index].z,
+        )
+        // Travel is a walk, not an approach. See `gloamwoodDefenceMarchStep`.
+        if (target.marching && toAltar > GLOAMWOOD_DEFENCE_ENGAGE_DISTANCE && prey[index].phase === 'chase') {
+          const walked = gloamwoodDefenceMarchStep(
+            prey[index],
+            delta,
+            GLOAMWOOD_PREY[prey[index].kind].moveSpeed
+              * gloamwoodDefenceSpeedMultiplier(prey[index], true),
+          )
+          const onFloor = gloamwoodDefenceConfine(walked.x, walked.z)
+          prey[index] = { ...prey[index], ...walked, ...onFloor }
+          continue
+        }
         const stepped = stepPrey(prey[index], delta, target.presence, {
           moveSpeedMultiplier: gloamwoodDefenceSpeedMultiplier(prey[index], target.marching),
         })
-        prey[index] = stepped.state
+        // A hard guarantee rather than a hope: nothing on this map may stand
+        // where the player cannot follow it.
+        const onFloor = gloamwoodDefenceConfine(stepped.state.x, stepped.state.z)
+        prey[index] = { ...stepped.state, ...onFloor }
         for (const event of stepped.events) {
           if (event.type !== 'prey-attack') {
             events.push(event)
