@@ -272,16 +272,210 @@ function buildAltar(disposables: Array<{ dispose(): void }>) {
   group.add(heart)
   disposables.push(heartGeometry, heartMaterial)
 
-  // A halo that catches the eye from the far rim, and a ground ring that says
-  // where the thing being defended actually stands.
-  const haloGeometry = new THREE.RingGeometry(0.95, 1.5, 28).rotateX(-Math.PI / 2)
-  const haloMaterial = new THREE.MeshBasicMaterial({
-    color: 0x7fc8ee, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
+  /**
+   * Light orbiting the crystal, in place of the flat disc that used to sit
+   * around it.
+   *
+   * The disc was a `RingGeometry` lying horizontally at the crystal's height,
+   * and from the game's fixed three-quarter camera it read as exactly what it
+   * was: a cardboard washer threaded onto the gem. A flat ring has no motion
+   * except its own spin, which is invisible on a shape that is rotationally
+   * symmetric, and nothing about it suggested the crystal was doing anything.
+   *
+   * Points on tilted orbits fix all of that at once. They pass in front of the
+   * gem and then behind it - `depthTest` stays on, so the far half is genuinely
+   * occluded - and that occlusion is what makes the eye read a volume of light
+   * around the crystal rather than a decal stuck to it. Each one carries its own
+   * radius, tilt, speed and phase, so no two share a path and the swarm never
+   * settles into a pattern.
+   */
+  /**
+   * A band of light around the crystal: a packed ribbon of small motes with a
+   * scattering of much brighter ones riding inside it.
+   *
+   * Three passes to get here, and each failure is worth keeping.
+   *
+   * A `RingGeometry` disc lying flat at the crystal's height read as a cardboard
+   * washer threaded onto the gem - a flat ring under a fixed three-quarter
+   * camera has no form, and its only animation, spin, is invisible on a shape
+   * that is rotationally symmetric.
+   *
+   * Scattering motes over a sphere instead fixed the flatness and broke
+   * something else: with every mote on its own tilt it read as a swarm of
+   * insects around the crystal.
+   *
+   * So: one orbital plane, tilted well off horizontal so it is unmistakably a
+   * ring in three dimensions, with the motes packed close enough along it that
+   * their halos fuse into a continuous ribbon. The bright ones give the ribbon
+   * something to be made *of* - a smooth glowing band is just the flat ring
+   * again with softer edges.
+   *
+   * The near half of the band passes in front of the gem and the far half
+   * behind it. `depthTest` stays on, so that occlusion is real, and it is the
+   * whole reason the ring reads as surrounding the crystal instead of being
+   * painted over it.
+   */
+  const BAND_COUNT = 900
+  const BAND_RADIUS = 1.55
+  const BAND_TILT = 0.46
+  /**
+   * Billboarded quads, not `THREE.Points`.
+   *
+   * A custom points shader has to size itself in *pixels*, and the conversion
+   * from a world radius to a pixel radius needs the viewport height, which this
+   * module has no way to learn and would have to be re-fed on every resize. The
+   * first attempt guessed the scale factor and every mote rendered under a pixel
+   * wide, so the band was invisible. A quad expanded in view space is stated in
+   * world units and is simply correct at any resolution.
+   *
+   * The orbit is evaluated in the vertex shader from a per-mote seed and one
+   * clock uniform, so the geometry is uploaded once and never touched again -
+   * 460 motes cost nothing per frame on the CPU.
+   */
+  const bandPositions = new Float32Array(BAND_COUNT * 4 * 3)
+  const bandCorners = new Float32Array(BAND_COUNT * 4 * 2)
+  const bandParams = new Float32Array(BAND_COUNT * 4 * 4)
+  const bandIndices = new Uint16Array(BAND_COUNT * 6)
+  const CORNERS = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]]
+  for (let index = 0; index < BAND_COUNT; index += 1) {
+    // Irrational strides for the jitters, so no pattern can emerge; the angle
+    // itself stays evenly spaced, because even spacing is what makes this a
+    // band rather than a scatter.
+    const jitter = (index * 0.6180339887) % 1
+    const across = (index * 0.7548776662) % 1
+    // Roughly one mote in fourteen is a bright one. Sparse enough that they read
+    // as individual lights rather than as a second, brighter ribbon.
+    const bright = index % 14 === 0
+    const angle = (index / BAND_COUNT) * Math.PI * 2
+    // Thickness, not scatter. Widen these and it becomes a swarm again.
+    const radius = BAND_RADIUS + (jitter - 0.5) * 0.17
+    const lift = (across - 0.5) * 0.12
+    // Each mote drifts slightly faster or slower than the band, so the ribbon
+    // shimmers along its length instead of turning as one rigid hoop.
+    const drift = 0.94 + jitter * 0.13
+    const size = bright ? 0.15 + across * 0.07 : 0.07 + across * 0.035
+    for (let corner = 0; corner < 4; corner += 1) {
+      const vertex = index * 4 + corner
+      bandPositions[vertex * 3] = angle
+      bandPositions[vertex * 3 + 1] = radius
+      bandPositions[vertex * 3 + 2] = lift
+      bandCorners[vertex * 2] = CORNERS[corner][0]
+      bandCorners[vertex * 2 + 1] = CORNERS[corner][1]
+      bandParams[vertex * 4] = size
+      bandParams[vertex * 4 + 1] = drift
+      bandParams[vertex * 4 + 2] = bright ? 1 : 0
+      // Twinkle rate. The bright ones beat slowly and the ribbon fizzes.
+      bandParams[vertex * 4 + 3] = bright ? 1.1 + across * 1.4 : 2.6 + across * 4.2
+    }
+    const base = index * 4
+    bandIndices.set([base, base + 1, base + 2, base, base + 2, base + 3], index * 6)
+  }
+  const bandGeometry = new THREE.BufferGeometry()
+  // `position` carries the orbit parameters, not a location: the vertex shader
+  // turns (angle, radius, lift) into a point on the band. Named `position`
+  // anyway because three requires the attribute to exist.
+  bandGeometry.setAttribute('position', new THREE.BufferAttribute(bandPositions, 3))
+  bandGeometry.setAttribute('aCorner', new THREE.BufferAttribute(bandCorners, 2))
+  bandGeometry.setAttribute('aParams', new THREE.BufferAttribute(bandParams, 4))
+  bandGeometry.setIndex(new THREE.BufferAttribute(bandIndices, 1))
+  const orbitMaterial = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+      uPulse: { value: 0.5 },
+      uTilt: { value: BAND_TILT },
+      uTint: { value: new THREE.Color(0x5ec8f5) },
+      uCore: { value: new THREE.Color(0xeaf8ff) },
+    },
+    vertexShader: `
+      attribute vec2 aCorner;
+      attribute vec4 aParams;
+      uniform float uTime;
+      uniform float uPulse;
+      uniform float uTilt;
+      varying vec2 vCorner;
+      varying float vBright;
+      varying float vAlpha;
+
+      void main() {
+        float angle = position.x + uTime * 0.6 * aParams.y;
+        float radius = position.y;
+        float lift = position.z;
+
+        // The band's plane is tilted off horizontal, and the plane itself
+        // precesses slowly around Y, so the ring is never seen at the same
+        // angle twice and never looks painted on.
+        float tilt = uTilt;
+        float precession = uTime * 0.1;
+        // Named level, not flat: flat is a reserved interpolation qualifier
+        // in GLSL and the shader will not compile with it as a variable name.
+        vec3 level = vec3(cos(angle) * radius, lift, sin(angle) * radius);
+        vec3 tilted = vec3(
+          level.x,
+          level.y * cos(tilt) - level.z * sin(tilt),
+          level.y * sin(tilt) + level.z * cos(tilt)
+        );
+        vec3 centre = vec3(
+          tilted.x * cos(precession) + tilted.z * sin(precession),
+          tilted.y,
+          -tilted.x * sin(precession) + tilted.z * cos(precession)
+        );
+
+        float twinkle = 0.7 + sin(uTime * aParams.w + position.x * 7.3) * 0.3;
+        vBright = aParams.z;
+        // Weighted well down on the ribbon motes. At full game scale - the
+        // crystal is about forty pixels tall - several hundred additive motes
+        // on a ring this tight sum into one white glare that swallows the gem,
+        // and the gem is the thing being defended. The ribbon reads at a
+        // fraction of the brightness it needs when seen up close.
+        // The altar's shared pulse only nudges the band. Driving it harder had
+        // every mote peak on the same beat, and with bloom on top the whole
+        // ring flared white about every four seconds.
+        vAlpha = twinkle * mix(0.55, 1.0, aParams.z) * (0.88 + uPulse * 0.12);
+        vCorner = aCorner;
+
+        // Expanded in view space, which is what makes the quad face the camera
+        // without any per-frame billboarding on the CPU.
+        vec4 viewPosition = modelViewMatrix * vec4(centre, 1.0);
+        viewPosition.xy += aCorner * aParams.x * mix(1.0, twinkle, aParams.z);
+        gl_Position = projectionMatrix * viewPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uTint;
+      uniform vec3 uCore;
+      varying vec2 vCorner;
+      varying float vBright;
+      varying float vAlpha;
+
+      void main() {
+        float distance = length(vCorner) * 2.0;
+        if (distance > 1.0) discard;
+        // A wide soft halo, which is what fuses neighbouring motes into a
+        // ribbon instead of leaving a dotted line...
+        float halo = smoothstep(1.0, 0.0, distance);
+        // ...and a small hard core inside it. The core is what makes a mote
+        // read as light rather than as a smudge, and it is what a bloom pass
+        // has to catch hold of.
+        float core = smoothstep(0.5, 0.0, distance);
+        // The ribbon motes keep more of the tint and only the bright ones go
+        // to white, so the band reads as ice-blue light with hot points in it
+        // rather than as a white cord.
+        vec3 colour = mix(uTint, uCore, core * mix(0.3, 1.0, vBright));
+        float alpha = (halo * halo * 0.34 + core * mix(0.7, 1.1, vBright)) * vAlpha;
+        gl_FragColor = vec4(colour * alpha, alpha);
+      }
+    `,
   })
-  const halo = new THREE.Mesh(haloGeometry, haloMaterial)
-  halo.position.y = tierY + 1.5
+  const halo = new THREE.Mesh(bandGeometry, orbitMaterial)
+  // The bounding sphere is computed from `position`, which holds orbit
+  // parameters rather than coordinates, so it describes nothing real. Culling
+  // against it would make the band flicker in and out.
+  halo.frustumCulled = false
   group.add(halo)
-  disposables.push(haloGeometry, haloMaterial)
+  disposables.push(bandGeometry, orbitMaterial)
 
   const ringGeometry = new THREE.RingGeometry(altar.radius * 1.2, altar.radius * 1.52, 40).rotateX(-Math.PI / 2)
   const ringMaterial = new THREE.MeshBasicMaterial({
@@ -304,8 +498,8 @@ function buildAltar(disposables: Array<{ dispose(): void }>) {
       const pulse = 0.5 + Math.sin(elapsed * 1.6) * 0.5
       heart.position.y = tierY + 1.5 + Math.sin(elapsed * 1.1) * 0.09
       halo.position.y = heart.position.y
-      halo.rotation.y = -elapsed * 0.3
-      haloMaterial.opacity = 0.34 + pulse * 0.22
+      orbitMaterial.uniforms.uTime.value = elapsed
+      orbitMaterial.uniforms.uPulse.value = pulse
       ringMaterial.opacity = 0.14 + pulse * 0.1
       glow.intensity = 9.5 + pulse * 3.5
     },
@@ -319,7 +513,10 @@ function buildAltar(disposables: Array<{ dispose(): void }>) {
  * scattered white confetti rather than as anything coming out of a rift. One
  * 64px radial gradient fixes it and costs nothing.
  */
-function moteTexture() {
+function moteTexture(
+  mid = 'rgba(226,180,255,0.75)',
+  edge = 'rgba(150,80,220,0)',
+) {
   const canvas = document.createElement('canvas')
   canvas.width = 64
   canvas.height = 64
@@ -327,8 +524,8 @@ function moteTexture() {
   if (context) {
     const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32)
     gradient.addColorStop(0, 'rgba(255,255,255,1)')
-    gradient.addColorStop(0.35, 'rgba(226,180,255,0.75)')
-    gradient.addColorStop(1, 'rgba(150,80,220,0)')
+    gradient.addColorStop(0.35, mid)
+    gradient.addColorStop(1, edge)
     context.fillStyle = gradient
     context.fillRect(0, 0, 64, 64)
   }
@@ -448,9 +645,20 @@ function buildPortal(disposables: Array<{ dispose(): void }>) {
         float lip = smoothstep(0.08, 0.62, radius) * smoothstep(1.0, 0.66, radius);
         float throat = smoothstep(0.7, 0.0, radius);
 
+        // The hot band is deliberately over-range. Everything the bloom pass
+        // sees is the linear buffer before tone mapping, and a value that never
+        // exceeds 1.0 there can never bloom however bright it looks on screen -
+        // the rift used to top out around 0.9 and got no glow at all. ACES pulls
+        // these back into range on the way out, so the band reads as light
+        // rather than as a white hole even with the effect switched off.
         vec3 deep = vec3(0.045, 0.012, 0.09);
-        vec3 glow = vec3(0.62, 0.24, 0.95);
-        vec3 hot = vec3(0.93, 0.76, 1.0);
+        vec3 glow = vec3(1.1, 0.42, 1.7);
+        // The bloom pass thresholds on *luminance*, which is 71% green and only
+        // 7% blue, so a violet has to be pushed a long way over 1.0 before it
+        // clears the bar. This peak lands around 1.35 against a threshold of
+        // 1.15 - enough for the bright arms of the spiral to glow while the
+        // duller parts of the lip stay ordinary light.
+        vec3 hot = vec3(2.8, 2.1, 3.4);
         vec3 colour = deep;
         colour = mix(colour, glow, lip * (0.45 + streaks * 0.55));
         colour = mix(colour, hot, lip * streaks * streaks * 0.5);
@@ -480,7 +688,11 @@ function buildPortal(disposables: Array<{ dispose(): void }>) {
   moteGeometry.setAttribute('position', new THREE.BufferAttribute(motePositions, 3))
   const moteMap = moteTexture()
   const moteMaterial = new THREE.PointsMaterial({
-    map: moteMap, color: 0xd9aaff, size: 0.42, transparent: true, opacity: 0.9,
+    map: moteMap,
+    // Over-range for the same reason as the rift's hot band: a mote clamped to
+    // 1.0 sits below the bloom threshold and stays a flat dot.
+    color: new THREE.Color(1.9, 1.25, 2.4),
+    size: 0.42, transparent: true, opacity: 0.9,
     depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true,
   })
   const motes = new THREE.Points(moteGeometry, moteMaterial)

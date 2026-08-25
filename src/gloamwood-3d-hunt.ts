@@ -137,6 +137,13 @@ import {
   type GloamwoodCircleObstacle,
 } from './gloamwood-3d-collision'
 import {
+  GLOAMWOOD_BLOOM,
+  createGloamwoodBloom,
+  gloamwoodBloomRequested,
+  type GloamwoodBloomPipeline,
+  type GloamwoodBloomSettings,
+} from './gloamwood-bloom'
+import {
   GLOAMWOOD_ROCK_VARIANTS,
   GLOAMWOOD_TREE_VARIANTS,
   GLOAMWOOD_VEGETATION_VARIANTS,
@@ -846,6 +853,7 @@ interface DebugState {
     rocks: number
     defenceProps: number
     defenceGroundVertices: number
+    bloom: boolean
     shrinePieces: number
     collisionObstacles: number
     weather: string
@@ -877,6 +885,12 @@ export async function launchGloamwood3DHunt() {
     // the state that results, rather than reading a snapshot frozen at startup.
     ;(window as unknown as Record<string, unknown>).__gloamwoodStep =
       (frames?: number, delta?: number) => experience.stepFramesForReview(frames, delta)
+    // Bloom judged by eye needs the same frame twice, not two runs a few
+    // seconds apart: creatures move, foliage sways, and the difference those
+    // make to the picture is larger than the effect being judged.
+    ;(window as unknown as Record<string, unknown>).__gloamwoodBloom =
+      (enabled: boolean, settings?: Partial<GloamwoodBloomSettings>) =>
+        experience.setBloomForReview(enabled, settings)
   }
   try {
     await experience.start()
@@ -1016,6 +1030,7 @@ class Gloamwood3DHunt {
    * Boss actually begins a telegraph. Keeping the renderer out of the opening
    * module gets the first hunt on screen earlier without changing authority.
    */
+  private bloom?: GloamwoodBloomPipeline
   private bossFx?: GloamwoodBossFxScene
   private bossFxLoad?: Promise<void>
   private bossFxUnavailable = false
@@ -1439,6 +1454,13 @@ class Gloamwood3DHunt {
     } else if (debugGatesAllowed && debugParams.get('evolutionGate') === '1') {
       this.openEvolutionGateForDebug()
     }
+    // Built here rather than in the constructor because the composer sizes
+    // itself from the renderer, and the renderer has no size until its canvas
+    // is in the document.
+    if (gloamwoodBloomRequested(window.location.search)) {
+      this.bloom = createGloamwoodBloom(this.renderer, this.scene, this.camera) ?? undefined
+      this.resize()
+    }
     this.lastFrameAt = performance.now()
     this.tick()
   }
@@ -1457,6 +1479,8 @@ class Gloamwood3DHunt {
     document.removeEventListener('gestureend', this.suppressGesture)
     document.removeEventListener('visibilitychange', this.visibilityChanged)
     document.removeEventListener('fullscreenchange', this.fullscreenChanged)
+    this.bloom?.dispose()
+    this.bloom = undefined
     this.bossFx?.dispose()
     this.bossFx = undefined
     this.scene.traverse((node) => {
@@ -2894,10 +2918,32 @@ class Gloamwood3DHunt {
     const width = Math.max(1, this.container.clientWidth)
     const height = Math.max(1, this.container.clientHeight)
     const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false
-    this.renderer.setPixelRatio(resolveGloamwoodRenderPixelRatio(window.devicePixelRatio || 1, coarsePointer))
+    const pixelRatio = resolveGloamwoodRenderPixelRatio(window.devicePixelRatio || 1, coarsePointer)
+    this.renderer.setPixelRatio(pixelRatio)
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
     this.renderer.setSize(width, height, false)
+    // The composer owns its own render targets and will not learn about a new
+    // window on its own; one left at the old size stretches the whole frame.
+    this.bloom?.setSize(width, height, pixelRatio)
+  }
+
+  /**
+   * Draw the frame.
+   *
+   * Every path through `tick` ends here rather than calling the renderer
+   * directly. There are five of them - paused, an open offer panel, the result
+   * screen, the valley's terminal boss death, and the ordinary frame - and when
+   * each made its own render call, any change to how the game is drawn had to
+   * be made five times. Bloom applied to only the ordinary frame would ship as
+   * a visible flicker every time a panel opened.
+   */
+  private present() {
+    if (this.bloom) {
+      this.bloom.render()
+      return
+    }
+    this.renderer.render(this.scene, this.camera)
   }
 
   private readonly keyDown = (event: KeyboardEvent) => {
@@ -2984,6 +3030,18 @@ class Gloamwood3DHunt {
    * succeeded. Stepping the loop explicitly is the only honest way to inspect
    * time-dependent state there.
    */
+  setBloomForReview(enabled: boolean, settings?: Partial<GloamwoodBloomSettings>) {
+    this.bloom?.dispose()
+    this.bloom = undefined
+    if (!enabled) return false
+    this.bloom = createGloamwoodBloom(this.renderer, this.scene, this.camera, {
+      ...GLOAMWOOD_BLOOM,
+      ...settings,
+    }) ?? undefined
+    this.resize()
+    return this.bloom !== undefined
+  }
+
   stepFramesForReview(frames = 1, delta = 1 / 60) {
     for (let index = 0; index < frames; index += 1) this.tick(delta)
     return this.getDebugState()
@@ -3027,7 +3085,7 @@ class Gloamwood3DHunt {
     this.updateDamageNumbers(delta)
     this.updateTargetBar()
     if (this.paused) {
-      this.renderer.render(this.scene, this.camera)
+      this.present()
       this.updateHud()
       this.updateDebug()
       return
@@ -3038,14 +3096,14 @@ class Gloamwood3DHunt {
     // at you is not a choice.
     if (this.evolutionState.phase === 'choosing' || this.mutationState.offering) {
       this.updateCamera(delta)
-      this.renderer.render(this.scene, this.camera)
+      this.present()
       this.updateHud()
       this.updateDebug()
       return
     }
     if (this.runPhase === 'victory' || this.runPhase === 'defeat') {
       this.updateCamera(delta)
-      this.renderer.render(this.scene, this.camera)
+      this.present()
       this.updateHud()
       this.updateDebug()
       return
@@ -3069,7 +3127,7 @@ class Gloamwood3DHunt {
     // that contact frame.
     if (this.resolveValleyTerminalBossDeath()) {
       this.updateCamera(delta)
-      this.renderer.render(this.scene, this.camera)
+      this.present()
       this.updateHud()
       this.updateDebug()
       return
@@ -3080,7 +3138,7 @@ class Gloamwood3DHunt {
     this.updateHealthDecay(delta)
     this.updateMutationOffers()
     this.updateCamera(delta)
-    this.renderer.render(this.scene, this.camera)
+    this.present()
     this.updateHud()
     this.updateDebug()
   }
@@ -8424,6 +8482,7 @@ class Gloamwood3DHunt {
         // that placed it correctly outside the bowl.
         defenceProps: this.defenceScene?.stats.props ?? 0,
         defenceGroundVertices: this.defenceScene?.stats.groundVertices ?? 0,
+        bloom: this.bloom !== undefined,
         shrinePieces: this.shrinePieces,
         collisionObstacles: this.obstacles.length,
         weather: this.valley?.weather.id ?? 'gloamwood-static',
