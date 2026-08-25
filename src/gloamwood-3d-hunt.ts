@@ -14,6 +14,7 @@ import {
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import { gloamwoodMapFromEntry } from './entry-routing'
 import { createGloamwoodDefenceMap } from './gloamwood-defence-map'
+import { GLOAMWOOD_DEFENCE_RUN, type GloamwoodDefenceState } from './gloamwood-defence-director'
 import { buildGloamwoodDefenceScene } from './gloamwood-defence-scene'
 
 import { quality3DBodyStageForFamily, resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
@@ -795,6 +796,20 @@ interface DebugState {
   bossModel: string | null
   bossClip: string | null
   bossModelError: string | null
+  /**
+   * The altar defence run, when that is the map.
+   *
+   * Reported because the two things this mode is decided by - which wave is out
+   * and how the altar is holding - are both invisible in a screenshot until the
+   * moment the run ends.
+   */
+  defence: {
+    phase: string
+    wave: number
+    waves: number
+    altarHealth: number
+    altarMaxHealth: number
+  } | null
   prey: Array<{
     id: string
     kind: GloamwoodPreyKind
@@ -8063,6 +8078,17 @@ class Gloamwood3DHunt {
       bossModel: this.bossVisual?.model?.config.url.split('/').pop()?.split('?')[0] ?? null,
       bossClip: this.bossVisual?.model?.currentName ?? null,
       bossModelError: this.bossModelError ?? null,
+      defence: (() => {
+        const run = (this.map as { defenceRun?: () => GloamwoodDefenceState }).defenceRun?.()
+        if (!run) return null
+        return {
+          phase: run.phase,
+          wave: run.wave,
+          waves: GLOAMWOOD_DEFENCE_RUN.waves,
+          altarHealth: run.altarHealth,
+          altarMaxHealth: run.altarMaxHealth,
+        }
+      })(),
       prey: this.nestState.prey.map((prey) => ({
         id: prey.id,
         kind: prey.kind,

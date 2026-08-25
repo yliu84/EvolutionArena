@@ -590,10 +590,26 @@ function preyMoveSpeed(spec: GloamwoodPreySpec, playerDistance: number, player: 
  * of route, but what a creature does once it has noticed the player is the same
  * question in both, and answering it twice is how the two would drift apart.
  */
+export interface GloamwoodPreyStepOptions {
+  /**
+   * Multiplier on how fast this creature closes, this frame only.
+   *
+   * Exists for the altar defence mode, where a creature crossing 48 units of
+   * road is walking rather than fighting and the Carapace's 1.48 is 32 seconds
+   * of nothing happening. The director applies it only while marching, so a
+   * creature in a fight moves at exactly the speed its family was balanced at.
+   *
+   * Deliberately not part of the prey spec: it is a state a creature is in, not
+   * a property it has, and writing it into the spec would change every map.
+   */
+  moveSpeedMultiplier?: number
+}
+
 export function stepPrey(
   state: GloamwoodNestPrey,
   delta: number,
   player: GloamwoodPlayerPresence,
+  options?: GloamwoodPreyStepOptions,
 ): { state: GloamwoodNestPrey; events: GloamwoodNestEvent[] } {
   if (state.phase === 'dead') return { state, events: [] }
   const spec = GLOAMWOOD_PREY[state.kind]
@@ -642,6 +658,7 @@ export function stepPrey(
       const targetAngle = Math.atan2(slot.z - player.z, slot.x - player.x)
       const moveSpeed = preyMoveSpeed(spec, playerDistance, player)
         * gloamwoodEliteSpeed(next.elite, next.health, next.maxHealth)
+        * Math.max(0, options?.moveSpeedMultiplier ?? 1)
       const radialStep = Math.min(Math.abs(playerDistance - stopDistance), moveSpeed * delta)
       const nextRadius = Math.max(stopDistance, playerDistance + Math.sign(stopDistance - playerDistance) * radialStep)
       const angularStep = Math.min(

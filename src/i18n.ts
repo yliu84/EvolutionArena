@@ -184,6 +184,10 @@ const STRINGS = {
   'hud.msg.backToHunt': { en: 'Back into the hunt', zh: '重新投入狩猎' },
   'hud.nestWave': { en: 'Nest · wave {wave} of {waves}', zh: '巢穴 · 第 {wave} 波 / 共 {waves} 波' },
   'hud.nestBreath': { en: 'Nest · next wave incoming', zh: '巢穴 · 下一波正在来' },
+  'hud.defenceStatus': {
+    en: 'Wave {wave} of {waves} · Altar {altar}/{altarMax}',
+    zh: '第 {wave} 波 / 共 {waves} 波 · 祭坛 {altar}/{altarMax}',
+  },
   'hud.msg.valleyNestEntered': {
     en: 'Nest roused · {waves} waves, no way around',
     zh: '惊动巢穴 · {waves} 波，绕不开',
