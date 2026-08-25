@@ -123,9 +123,9 @@ function buildGround(disposables: Array<{ dispose(): void }>) {
  *
  * Built rather than modelled because it is one object seen from one bearing at
  * a fixed distance: eight standing stones, three tiers, a slowly turning heart
- * and a ground ring. Amber throughout, deliberately - violet belongs to the
- * Warden and to the portal, and the two things the player must tell apart at a
- * glance are the thing being defended and the thing attacking it.
+ * and a ground ring. The crystal is cool against warm stone, and the portal is
+ * violet - the thing being defended and the thing attacking it are the two the
+ * player must never have to think about telling apart.
  */
 function buildAltar(disposables: Array<{ dispose(): void }>) {
   const group = new THREE.Group()
@@ -177,16 +177,39 @@ function buildAltar(disposables: Array<{ dispose(): void }>) {
     group.add(cap)
   }
 
-  const heartGeometry = new THREE.IcosahedronGeometry(0.78, 0)
-  // Saturated emissive at *low* intensity, not a bright one.
-  //
-  // The first two attempts pushed emissiveIntensity to 2.4 and then 3.2 and got
-  // a white lump both times. Once every channel of the emissive contribution
-  // clips above 1, tone mapping takes the result to white no matter what colour
-  // was asked for - so the fix is a colour with almost no blue in it, played
-  // quietly, rather than a warm colour played loud.
+  // Slightly elongated, so it reads as a cut crystal rather than a ball, and
+  // flat-shaded so the facets survive. Smooth normals on an icosahedron blend
+  // every face into its neighbour and the whole thing renders as a sphere.
+  const heartGeometry = new THREE.IcosahedronGeometry(0.8, 0)
+  heartGeometry.scale(0.86, 1.22, 0.86)
+  /**
+   * Ice-blue, flat-shaded, and lit far more than it glows.
+   *
+   * Three passes got this wrong in two different ways. Pushing
+   * `emissiveIntensity` to 2.4 and then 3.2 rendered a white lump, because once
+   * every channel of the emissive contribution clips above 1 the tone mapper
+   * takes the result to white whatever colour was asked for. Dropping to a
+   * saturated amber at 1.55 fixed the colour and left the second fault
+   * untouched: **emissive does not vary with the surface normal**, so any
+   * emissive strong enough to dominate erases the facets it is lighting. The
+   * owner's read - "看不出来几面和边缘棱形了" - is exactly that.
+   *
+   * So the glow is turned right down and the form is carried by ordinary
+   * shading, with a low roughness for facet highlights.
+   *
+   * The hue moved from amber to ice for contrast rather than taste: the dais is
+   * warm pale stone and the bowl is warm green, and a gold gem on a tan plinth
+   * has almost nothing to separate it. Cool against warm is the only pairing on
+   * this map with real separation, and it keeps the altar clearly apart from
+   * the portal's violet - the two things the player must never confuse.
+   */
   const heartMaterial = new THREE.MeshStandardMaterial({
-    color: 0x50280a, emissive: 0xff6a0a, emissiveIntensity: 1.55, roughness: 0.26, metalness: 0,
+    color: 0x9fd8f5,
+    emissive: 0x1d6f9e,
+    emissiveIntensity: 0.5,
+    roughness: 0.18,
+    metalness: 0.15,
+    flatShading: true,
   })
   const heart = new THREE.Mesh(heartGeometry, heartMaterial)
   heart.position.y = tierY + 1.5
@@ -198,7 +221,7 @@ function buildAltar(disposables: Array<{ dispose(): void }>) {
   // where the thing being defended actually stands.
   const haloGeometry = new THREE.RingGeometry(0.95, 1.5, 28).rotateX(-Math.PI / 2)
   const haloMaterial = new THREE.MeshBasicMaterial({
-    color: 0xff9a3c, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
+    color: 0x7fc8ee, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
   })
   const halo = new THREE.Mesh(haloGeometry, haloMaterial)
   halo.position.y = tierY + 1.5
@@ -207,14 +230,14 @@ function buildAltar(disposables: Array<{ dispose(): void }>) {
 
   const ringGeometry = new THREE.RingGeometry(altar.radius * 1.2, altar.radius * 1.52, 40).rotateX(-Math.PI / 2)
   const ringMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffb457, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false,
+    color: 0x86cdf0, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false,
   })
   const ring = new THREE.Mesh(ringGeometry, ringMaterial)
   ring.position.y = 0.05
   group.add(ring)
   disposables.push(ringGeometry, ringMaterial)
 
-  const glow = new THREE.PointLight(0xffb457, 11, 20, 2)
+  const glow = new THREE.PointLight(0x8fd0f2, 11, 20, 2)
   glow.position.y = tierY + 1.6
   group.add(glow)
 
