@@ -120,9 +120,22 @@ describe('the things that are meant to glow clear the threshold', () => {
     // orange at the edges, and that falls out of the luminance weighting rather
     // than needing two gains.
     const sparks = rendingSparkBurst()
-    const lit = sparks.map((spark) => bloomLuminance(linearFromHex(spark.color)) * SKILL_FX_LIGHT_GAIN)
+    expect(sparks.every((spark) => spark.texture === 'glow')).toBe(true)
+    const lit = sparks.map((spark) => bloomLuminance(linearFromHex(spark.color)) * SKILL_FX_LIGHT_GAIN.glow)
     expect(Math.max(...lit)).toBeGreaterThan(GLOAMWOOD_BLOOM.threshold)
     expect(Math.min(...lit)).toBeLessThan(GLOAMWOOD_BLOOM.threshold)
+  })
+
+  it('gains a streak less than a glow, because screen area is what deposits light', () => {
+    // One gain for both was wrong and the numbers said so. Peak count of pixels
+    // over 0.9 luminance in a 432-wide frame: a rending-claws hit reached 13 and
+    // never made a single near-white pixel, while the tail sweep at the same
+    // gain reached 912 with 136 over 0.97. `glow` is a small point-like sprite
+    // and six of them make a spark burst; `streak` is 0.16 by 0.72 units and the
+    // tail sweep fires twelve at once, additive and overlapping.
+    expect(SKILL_FX_LIGHT_GAIN.streak).toBeLessThan(SKILL_FX_LIGHT_GAIN.glow)
+    // Both still have to be over 1, or neither texture reaches the pass at all.
+    expect(SKILL_FX_LIGHT_GAIN.streak).toBeGreaterThan(1)
   })
 })
 

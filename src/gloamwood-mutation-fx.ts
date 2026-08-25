@@ -76,13 +76,30 @@ const TAIL_SWEEP_SHOCK = {
 export const SPORE_HAZE = {
   color: 0xc6e878,
   moteColor: 0xe8f6a8,
-  hazeOpacity: 0.14,
-  moteOpacity: 0.2,
-  height: 0.22,
-  moteCeil: 0.52,
+  /**
+   * The mist. Thin on purpose, but not invisible: this aura slows anything
+   * inside it by 40%, so its footprint is information the player needs, and
+   * with the orbs gone the mist is the only thing that still draws the edge.
+   */
+  hazeOpacity: 0.12,
+  moteOpacity: 0.9,
+  height: 0.18,
   radiusScale: 1.22,
-  patchCount: 4,
-  moteCount: 6,
+  patchCount: 6,
+  /**
+   * Spores, and there are a lot of them now.
+   *
+   * This used to be six sprites a metre across, drawn with the same soft radial
+   * gradient as the mist, and at the game's camera distance they read as a
+   * handful of pale bubbles parked around the animal rather than as anything
+   * airborne. Many small points of light carry the idea far better: individually
+   * they are too small to read as objects, so what the eye gets is a *drift*.
+   */
+  moteCount: 84,
+  /** World units. Small enough that a single one is a spark, not a ball. */
+  moteSize: 0.145,
+  /** How high a spore climbs over its life before it fades and restarts. */
+  moteRise: 1.35,
 } as const
 
 export function sporeHazeLayout(radius: number) {
@@ -92,25 +109,44 @@ export function sporeHazeLayout(radius: number) {
   ]
   for (let index = 0; index < SPORE_HAZE.patchCount; index += 1) {
     const angle = (index / SPORE_HAZE.patchCount) * TAU + 0.18
-    const dist = span * (0.58 + (index % 3) * 0.14)
+    const dist = span * (0.52 + (index % 3) * 0.16)
     patches.push({
       local: [Math.cos(angle) * dist, SPORE_HAZE.height + (index % 2) * 0.04, Math.sin(angle) * dist],
-      size: span * (1.05 + (index % 2) * 0.22),
+      // Broader and flatter than before, and overlapping, so the patches fuse
+      // into one field of mist instead of reading as separate discs.
+      size: span * (1.35 + (index % 3) * 0.3),
       spin: (index % 2 === 0 ? 1 : -1) * 0.08,
     })
   }
-  const motes: Array<{ local: [number, number, number]; size: number; phase: number }> = []
+  const motes: Array<{
+    local: [number, number, number]
+    size: number
+    phase: number
+    angle: number
+    distance: number
+    rise: number
+    drift: number
+    twinkle: number
+  }> = []
   for (let index = 0; index < SPORE_HAZE.moteCount; index += 1) {
-    const angle = (index / SPORE_HAZE.moteCount) * TAU + 0.4
-    const dist = span * (0.32 + (index % 4) * 0.2)
+    // Golden-angle bearings and a square-rooted radius, which is what spreads
+    // points evenly over a disc rather than crowding them at the middle.
+    const angle = index * 2.399963
+    const distance = span * Math.sqrt(((index * 0.6180339887) % 1)) * 0.94
+    const phase = (index * 0.7548776662) % 1
+    const size = SPORE_HAZE.moteSize * (0.7 + ((index * 0.3819660113) % 1) * 0.8)
     motes.push({
-      local: [
-        Math.cos(angle) * dist,
-        0.22 + (index % 5) * 0.06,
-        Math.sin(angle) * dist,
-      ],
-      size: 1.05 + (index % 3) * 0.18,
-      phase: index * 0.7,
+      // Kept for anything that wants a static position; the runtime animates
+      // these from the parameters below.
+      local: [Math.cos(angle) * distance, SPORE_HAZE.height + phase * 0.3, Math.sin(angle) * distance],
+      size,
+      phase,
+      angle,
+      distance,
+      // Each spore climbs at its own rate, so the cloud never pulses as one.
+      rise: 0.16 + ((index * 0.5436890127) % 1) * 0.22,
+      drift: (index % 2 === 0 ? 1 : -1) * (0.05 + ((index * 0.4501477) % 1) * 0.12),
+      twinkle: 1.4 + ((index * 0.2360679) % 1) * 3.2,
     })
   }
   return {
@@ -119,6 +155,7 @@ export function sporeHazeLayout(radius: number) {
     moteColor: SPORE_HAZE.moteColor,
     hazeOpacity: SPORE_HAZE.hazeOpacity,
     moteOpacity: SPORE_HAZE.moteOpacity,
+    moteRise: SPORE_HAZE.moteRise,
     patches,
     motes,
   }

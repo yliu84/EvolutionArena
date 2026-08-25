@@ -27,11 +27,22 @@ describe('mutation skill-particle feedback', () => {
     expect(layout.patches[0].size).toBeGreaterThan(layout.radius * 1.8)
     expect(Math.max(...layout.patches.map((patch) => Math.hypot(patch.local[0], patch.local[2]) + patch.size * 0.5))).toBeGreaterThan(4.2)
     expect(layout.hazeOpacity).toBeLessThan(0.22)
-    expect(layout.moteOpacity).toBeLessThan(0.28)
-    expect(layout.motes.every((mote) => mote.size > 0.8)).toBe(true)
     expect(layout.patches.every((patch) => patch.local[1] < 0.4)).toBe(true)
-    expect(layout.motes.every((mote) => mote.local[1] < 0.55)).toBe(true)
     expect(layout.patches.length).toBeGreaterThanOrEqual(4)
+    // Many small points of light, not a few big soft ones. The previous shape
+    // was six sprites a metre across drawn with the mist's own gradient, and at
+    // the game's camera distance they read as pale bubbles parked around the
+    // animal rather than as anything airborne. Subtlety now comes from each
+    // spore being tiny and fading over its climb, not from a low opacity - so
+    // the guard is on size and count, and the opacity cap is gone.
+    expect(layout.motes.length).toBeGreaterThan(30)
+    // A quarter of a unit against the metre-wide sprites this replaced.
+    expect(layout.motes.every((mote) => mote.size < 0.25)).toBe(true)
+    // Every spore starts inside the aura it belongs to.
+    expect(layout.motes.every((mote) => Math.hypot(mote.local[0], mote.local[2]) <= layout.radius)).toBe(true)
+    // They rise, but not over the animal's head - this is a ground aura.
+    expect(layout.moteRise).toBeLessThan(2)
+    expect(layout.motes.every((mote) => mote.local[1] < 0.55)).toBe(true)
     const aura = mutationFxBurst('spore-aura', 1.2)
     expect(aura.particles).toHaveLength(0)
     expect(aura.trauma).toBe(0)

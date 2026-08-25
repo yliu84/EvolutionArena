@@ -317,17 +317,33 @@ const GLOAMWOOD_ARENA_PLAYER_RADIUS = 7.6
 const GLOAMWOOD_BOSS_ARENA_CLEAR_RADIUS = 7.8
 const PLAYER_FEEDBACK_SETTINGS_KEY = 'evolution-arena-combat-feedback-v1'
 /**
- * How far over 1.0 the additive skill-effect colours are pushed.
+ * How far over 1.0 the additive skill-effect colours are pushed, per texture.
  *
  * Bloom thresholds against the linear buffer before tone mapping, so a hit
  * spark authored as `0xffe7a8` peaks at a luminance of 0.81 there and can never
- * glow, however hot it looks after ACES. At this gain the warm-white cores
- * clear the 1.15 threshold with margin while the deep orange bodies
- * (`0xff4a12`, luminance 0.26) stay under it - which is the read that was
- * wanted anyway: a white-hot centre throwing light, cooling to plain orange at
- * the edges.
+ * glow, however hot it looks after ACES. These gains lift the two textures that
+ * were already drawn as light rather than as matter. Dust, pebbles and plates
+ * are not in this table and are never gained: debris that blooms is a bug
+ * report.
+ *
+ * One gain for both was wrong, and the numbers say why. Measured as the peak
+ * count of pixels over 0.9 luminance in a 432-wide frame, a rending-claws hit
+ * reached 13 and never produced a single near-white pixel; the tail sweep at
+ * the same gain reached 912, with 136 pixels over 0.97. Seventy times the lit
+ * area, from the same multiplier.
+ *
+ * The difference is what each texture is. `glow` is a small point-like sprite
+ * and there are six of them in a spark burst. `streak` is long and thin - 0.16
+ * by 0.72 units - and the tail sweep fires *twelve* of them in a ring around
+ * the body at once, all additive, all overlapping. Screen area, not colour, is
+ * what decides how much light lands.
  */
-export const SKILL_FX_LIGHT_GAIN = 2.4
+export const SKILL_FX_LIGHT_GAIN = {
+  /** Small, point-like: hit sparks and regeneration motes. */
+  glow: 2.4,
+  /** Long and thin, and fired a dozen at a time. */
+  streak: 1.5,
+} as const
 
 /**
  * The scene's tone mapping exposure.
@@ -934,6 +950,8 @@ export async function launchGloamwood3DHunt() {
         experience.setBloomForReview(enabled, settings, exposureScale)
     ;(window as unknown as Record<string, unknown>).__gloamwoodFog =
       (density?: number) => experience.fogDensityForReview(density)
+    ;(window as unknown as Record<string, unknown>).__gloamwoodFxGain =
+      (scale: number) => experience.skillFxGainForReview(scale)
   }
   try {
     await experience.start()
@@ -981,7 +999,12 @@ class Gloamwood3DHunt {
   private sporeHaze: {
     root: THREE.Group
     patches: THREE.Mesh[]
-    motes: Array<{ sprite: THREE.Sprite; base: THREE.Vector3; size: number; phase: number }>
+    /** One mesh holding every spore; the cloud is animated in its shader. */
+    motes: {
+      mesh: THREE.Mesh
+      geometry: THREE.BufferGeometry
+      material: THREE.ShaderMaterial
+    }
     texture: THREE.CanvasTexture
     previewBoost: number
   } | null = null
@@ -1074,6 +1097,8 @@ class Gloamwood3DHunt {
    * module gets the first hunt on screen earlier without changing authority.
    */
   private bloom?: GloamwoodBloomPipeline
+  /** Review-only multiplier on the skill FX gains, so they can be swept live. */
+  private skillFxGainScale = 1
   private bossFx?: GloamwoodBossFxScene
   private bossFxLoad?: Promise<void>
   private bossFxUnavailable = false
@@ -2286,10 +2311,13 @@ class Gloamwood3DHunt {
       //
       // Dust, pebbles and plates are deliberately left alone. They are debris,
       // and debris that blooms is a bug report.
-      const lit = spec.texture === 'glow' || spec.texture === 'streak'
+      const gain = spec.texture === 'glow' || spec.texture === 'streak'
+        ? SKILL_FX_LIGHT_GAIN[spec.texture] * this.skillFxGainScale
+        : 0
+      const lit = gain > 0
       const common = {
         map,
-        color: lit ? new THREE.Color(spec.color).multiplyScalar(SKILL_FX_LIGHT_GAIN) : new THREE.Color(spec.color),
+        color: lit ? new THREE.Color(spec.color).multiplyScalar(gain) : new THREE.Color(spec.color),
         transparent: true,
         opacity: 0,
         depthWrite: false,
@@ -2392,7 +2420,7 @@ class Gloamwood3DHunt {
     for (const spec of rendingSparkBurst()) {
       const material = new THREE.SpriteMaterial({
         map: this.skillFxTextures.get(spec.texture),
-        color: new THREE.Color(spec.color).multiplyScalar(SKILL_FX_LIGHT_GAIN),
+        color: new THREE.Color(spec.color).multiplyScalar(SKILL_FX_LIGHT_GAIN.glow * this.skillFxGainScale),
         transparent: true,
         opacity: 0,
         depthWrite: false,
@@ -3090,6 +3118,11 @@ class Gloamwood3DHunt {
    * succeeded. Stepping the loop explicitly is the only honest way to inspect
    * time-dependent state there.
    */
+  skillFxGainForReview(scale: number) {
+    this.skillFxGainScale = scale
+    return scale
+  }
+
   fogDensityForReview(density?: number) {
     const fog = this.scene.fog as THREE.FogExp2 | null
     if (!fog) return null
@@ -4676,7 +4709,13 @@ class Gloamwood3DHunt {
           float t = clamp((r - 1.52) / 0.58, 0.0, 1.0);
           float core = 1.0 - smoothstep(0.06, 0.28, abs(t - 0.36));
           float dust = smoothstep(0.0, 0.16, t) * (1.0 - smoothstep(0.48, 1.0, t)) * 0.4;
-          gl_FragColor = vec4(uColor, (core + dust) * uOpacity);
+          // Clamped, which used to make no difference and now makes all of it.
+          // Where the core and the dusty skirt overlap this reached about 1.4,
+          // and on the direct path an alpha over 1 simply clipped. With a
+          // composer the same fragment lands in a linear HDR buffer, so the
+          // overshoot survives, crosses the bloom threshold and turns the ring
+          // into a flare.
+          gl_FragColor = vec4(uColor, min(1.0, core + dust) * uOpacity);
         }`,
       transparent: true,
       blending: THREE.AdditiveBlending,
@@ -4705,7 +4744,10 @@ class Gloamwood3DHunt {
       duration: 0.42 * pace,
       gravity: 0,
       motion: 'expand',
-      peakOpacity: 0.95,
+      // Down from 0.95. Additive at near-full alpha the cream washes to flat
+      // white, which is both brighter than it needs to be and less interesting
+      // - backing it off lets the colour survive.
+      peakOpacity: 0.78,
       startScale: new THREE.Vector2(layout.shockStart, layout.shockStart),
       endScale: new THREE.Vector2(layout.shockEnd, layout.shockEnd),
       attractTarget: shockMesh.position.clone(),
@@ -4990,11 +5032,8 @@ class Gloamwood3DHunt {
       const material = patch.material
       if (material instanceof THREE.MeshBasicMaterial) material.opacity = hazeOpacity
     }
-    for (const mote of haze.motes) {
-      const wobble = 0.05 * Math.sin(time * 1.3 + mote.phase)
-      mote.sprite.position.set(mote.base.x, mote.base.y + wobble, mote.base.z)
-      mote.sprite.material.opacity = moteOpacity
-    }
+    haze.motes.material.uniforms.uTime.value = time
+    haze.motes.material.uniforms.uOpacity.value = moteOpacity
   }
 
   private createSporeHaze(radius: number) {
@@ -5023,7 +5062,11 @@ class Gloamwood3DHunt {
         side: THREE.DoubleSide,
         blending: THREE.AdditiveBlending,
         fog: false,
-        toneMapped: false,
+        // Tone-mapped, unlike the version before it. `toneMapped: false` writes
+        // a display-referred colour straight out, which was harmless while the
+        // renderer drew to the canvas and is not once a composer puts a linear
+        // HDR buffer in between: the mist landed there at a value the bloom
+        // pass treats as light, and a glowing mist is just fog with a halo.
       })
       const mesh = new THREE.Mesh(this.sporeHazePlane, material)
       mesh.position.set(...patch.local)
@@ -5034,31 +5077,132 @@ class Gloamwood3DHunt {
       root.add(mesh)
       patches.push(mesh)
     }
-    const motes: Array<{ sprite: THREE.Sprite; base: THREE.Vector3; size: number; phase: number }> = []
-    for (const mote of layout.motes) {
-      const material = new THREE.SpriteMaterial({
-        map: texture,
-        color: layout.moteColor,
-        transparent: true,
-        opacity: layout.moteOpacity,
-        depthWrite: false,
-        depthTest: true,
-        blending: THREE.AdditiveBlending,
-        fog: false,
-        toneMapped: false,
-      })
-      const sprite = new THREE.Sprite(material)
-      sprite.position.set(...mote.local)
-      sprite.scale.set(mote.size, mote.size, 1)
-      sprite.renderOrder = 2
-      root.add(sprite)
-      motes.push({
-        sprite,
-        base: new THREE.Vector3(...mote.local),
-        size: mote.size,
-        phase: mote.phase,
-      })
+    /**
+     * The spores: many small points of light, on one billboarded mesh.
+     *
+     * The six sprites this replaces were a metre across and drawn with the same
+     * soft gradient as the mist, so at the game's camera distance they read as
+     * pale bubbles parked around the animal. What sells an aura is a *drift* -
+     * points too small to read as objects individually, rising and fading on
+     * their own beats.
+     *
+     * One mesh with the whole cloud in it, animated in the vertex shader from a
+     * clock uniform, so 54 spores cost one draw call and nothing per frame on
+     * the CPU. Quads expanded in view space rather than `THREE.Points`, because
+     * a points shader has to size itself in pixels and would need the viewport
+     * height fed back to it on every resize.
+     */
+    const CORNERS = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]]
+    const count = layout.motes.length
+    const positions = new Float32Array(count * 4 * 3)
+    const corners = new Float32Array(count * 4 * 2)
+    const params = new Float32Array(count * 4 * 4)
+    const indices = new Uint16Array(count * 6)
+    for (const [index, mote] of layout.motes.entries()) {
+      for (let corner = 0; corner < 4; corner += 1) {
+        const vertex = index * 4 + corner
+        positions[vertex * 3] = mote.angle
+        positions[vertex * 3 + 1] = mote.distance
+        positions[vertex * 3 + 2] = mote.phase
+        corners[vertex * 2] = CORNERS[corner][0]
+        corners[vertex * 2 + 1] = CORNERS[corner][1]
+        params[vertex * 4] = mote.size
+        params[vertex * 4 + 1] = mote.rise
+        params[vertex * 4 + 2] = mote.drift
+        params[vertex * 4 + 3] = mote.twinkle
+      }
+      const base = index * 4
+      indices.set([base, base + 1, base + 2, base, base + 2, base + 3], index * 6)
     }
+    const moteGeometry = new THREE.BufferGeometry()
+    // `position` carries (bearing, distance, phase), not a location.
+    moteGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    moteGeometry.setAttribute('aCorner', new THREE.BufferAttribute(corners, 2))
+    moteGeometry.setAttribute('aParams', new THREE.BufferAttribute(params, 4))
+    moteGeometry.setIndex(new THREE.BufferAttribute(indices, 1))
+    const moteMaterial = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uOpacity: { value: layout.moteOpacity },
+        uRise: { value: layout.moteRise },
+        uBase: { value: SPORE_HAZE.height },
+        // Over-range, so the cores clear the bloom threshold and the spores
+        // read as light rather than as green dots. Spore yellow-green is a
+        // cheap colour to do this with - the threshold is on luminance, and
+        // this hue is mostly green.
+        uTint: { value: new THREE.Color(0x8ede2e).multiplyScalar(1.7) },
+        uCore: { value: new THREE.Color(0xeaffc4).multiplyScalar(1.8) },
+      },
+      vertexShader: `
+        attribute vec2 aCorner;
+        attribute vec4 aParams;
+        uniform float uTime;
+        uniform float uRise;
+        uniform float uBase;
+        varying vec2 vCorner;
+        varying float vAlpha;
+
+        void main() {
+          float phase = position.z;
+          // Each spore climbs, fades out at the top and restarts at the bottom.
+          // Wrapping the life rather than respawning means nothing has to be
+          // tracked between frames.
+          float life = fract(uTime * aParams.y + phase);
+          float bearing = position.x + uTime * aParams.z;
+          float distance = position.y * (1.0 + life * 0.12);
+          vec3 centre = vec3(
+            cos(bearing) * distance,
+            uBase + life * uRise,
+            sin(bearing) * distance
+          );
+
+          // In and out over the climb, so a spore is never born or killed on
+          // screen, plus its own twinkle on top.
+          // A plateau rather than a bell: squaring the fade left every spore
+          // dim for most of its climb and the cloud barely registered.
+          float fade = smoothstep(0.0, 0.18, life) * (1.0 - smoothstep(0.72, 1.0, life));
+          float twinkle = 0.7 + sin(uTime * aParams.w + phase * 12.0) * 0.3;
+          vAlpha = fade * twinkle;
+          vCorner = aCorner;
+
+          vec4 viewPosition = modelViewMatrix * vec4(centre, 1.0);
+          viewPosition.xy += aCorner * aParams.x;
+          gl_Position = projectionMatrix * viewPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uTint;
+        uniform vec3 uCore;
+        uniform float uOpacity;
+        varying vec2 vCorner;
+        varying float vAlpha;
+
+        void main() {
+          float distance = length(vCorner) * 2.0;
+          if (distance > 1.0) discard;
+          float halo = smoothstep(1.0, 0.0, distance);
+          float core = smoothstep(0.46, 0.0, distance);
+          // The core never goes all the way to white. At full weight every
+          // spore read as a plain white speck and the whole point of the colour
+          // was lost - what is wanted is a green mote with a hot middle.
+          vec3 colour = mix(uTint, uCore, core * 0.55);
+          float alpha = (halo * halo * 0.4 + core) * vAlpha * uOpacity;
+          gl_FragColor = vec4(colour * alpha, alpha);
+        }
+      `,
+    })
+    const moteMesh = new THREE.Mesh(moteGeometry, moteMaterial)
+    // The bounding sphere would be computed from orbit parameters rather than
+    // coordinates, so it describes nothing real and culling against it would
+    // make the cloud flicker.
+    moteMesh.frustumCulled = false
+    moteMesh.renderOrder = 3
+    root.add(moteMesh)
+    const motes = { mesh: moteMesh, geometry: moteGeometry, material: moteMaterial }
     this.scene.add(root)
     return { root, patches, motes, texture, previewBoost: 0 }
   }
@@ -5070,7 +5214,8 @@ class Gloamwood3DHunt {
     for (const patch of haze.patches) {
       if (patch.material instanceof THREE.Material) patch.material.dispose()
     }
-    for (const mote of haze.motes) mote.sprite.material.dispose()
+    haze.motes.geometry.dispose()
+    haze.motes.material.dispose()
     haze.texture.dispose()
     this.sporeHaze = null
   }
