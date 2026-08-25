@@ -12,6 +12,7 @@ import {
   gloamwoodDefenceDamageScale,
   gloamwoodDefenceHealthScale,
   gloamwoodDefencePreyWave,
+  gloamwoodDefenceReward,
   gloamwoodDefenceSpawnPoint,
   gloamwoodDefenceSpeedMultiplier,
   gloamwoodDefenceTarget,
@@ -461,5 +462,46 @@ describe('a boss cannot be tanked face to face', () => {
       .toBe(GLOAMWOOD_DEFENCE_BOSSES['cliff-maw'])
     expect(gloamwoodDefenceBossScale(createGloamwoodDefencePrey('fang', 3, 5).id)).toBeUndefined()
     expect(gloamwoodDefenceBossScale('nonsense')).toBeUndefined()
+  })
+})
+
+describe('clearing a wave grows the player', () => {
+  it('pays a mutation for every ordinary wave and an evolution for the first two bosses', () => {
+    const paid = GLOAMWOOD_DEFENCE_WAVES.map((wave) => gloamwoodDefenceReward(wave.index))
+    expect(paid).toEqual([
+      'mutation', 'mutation', 'evolution',
+      'mutation', 'mutation', 'evolution',
+      'mutation', 'mutation', 'none',
+      'mutation', 'mutation', 'none',
+    ])
+  })
+
+  it('hands out exactly as much growth as the content has', () => {
+    // Eight mutations exist and a body evolves twice - stage 0 to 1 to 2 is all
+    // there is. Paying more would offer nothing; paying less would leave the
+    // player fighting a 2.9x creature with a stage-zero body, which is the run
+    // the owner actually got.
+    const paid = GLOAMWOOD_DEFENCE_WAVES.map((wave) => gloamwoodDefenceReward(wave.index))
+    expect(paid.filter((reward) => reward === 'mutation')).toHaveLength(8)
+    expect(paid.filter((reward) => reward === 'evolution')).toHaveLength(2)
+  })
+
+  it('never pays during a wave, only after one is cleared', () => {
+    // Every reward is keyed to a wave index that exists, so nothing can be paid
+    // for a wave the run never reaches.
+    for (const wave of GLOAMWOOD_DEFENCE_WAVES) {
+      expect(['mutation', 'evolution', 'none']).toContain(gloamwoodDefenceReward(wave.index))
+    }
+    expect(gloamwoodDefenceReward(0)).toBe('none')
+    expect(gloamwoodDefenceReward(GLOAMWOOD_DEFENCE_RUN.waves + 1)).toBe('none')
+  })
+
+  it('finishes growing the body before the two hardest bosses', () => {
+    // The last two bosses are the payoff for a finished build, not another rung
+    // of the ladder - so both evolutions must land before wave nine.
+    const evolutionWaves = GLOAMWOOD_DEFENCE_WAVES
+      .filter((wave) => gloamwoodDefenceReward(wave.index) === 'evolution')
+      .map((wave) => wave.index)
+    for (const wave of evolutionWaves) expect(wave).toBeLessThan(9)
   })
 })

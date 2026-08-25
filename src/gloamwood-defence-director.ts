@@ -235,6 +235,30 @@ export function gloamwoodDefenceWave(index: number) {
   return GLOAMWOOD_DEFENCE_WAVES.find((wave) => wave.index === index)
 }
 
+/**
+ * What clearing this wave pays the player.
+ *
+ * The mode was shipped without this and it was the real reason a run got hard:
+ * the owner reached wave six and died, and the result screen said "No
+ * evolution" with no mutations taken. Creatures were scaling to 2.9x health
+ * across the run while the player fought the whole thing as a stage-zero body
+ * with an empty mutation deck. The owner's brief for this mode said "玩家也可以
+ * 通过杀怪不停进化" from the start; nothing was wired to deliver it.
+ *
+ * The split matches the content exactly. There are **eight** mutations and a
+ * body evolves **twice** - stage 0 to 1 to 2 is all there is - so the eight
+ * ordinary waves each pay a mutation and the first two boss waves each pay an
+ * evolution. The last two boss waves pay nothing because by then there is
+ * nothing left to give: they are the run's payoff rather than its ladder.
+ */
+export function gloamwoodDefenceReward(wave: number): 'evolution' | 'mutation' | 'none' {
+  const entry = gloamwoodDefenceWave(wave)
+  if (!entry) return 'none'
+  if (!entry.boss) return 'mutation'
+  // The first two bosses grow the body; the last two are the reward for it.
+  return wave === 3 || wave === 6 ? 'evolution' : 'none'
+}
+
 /** How much health a creature spawned in this wave carries, as a multiplier. */
 export function gloamwoodDefenceHealthScale(wave: number) {
   return 1 + Math.max(0, wave - 1) * GLOAMWOOD_DEFENCE_RUN.healthPerWave

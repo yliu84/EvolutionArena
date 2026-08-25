@@ -14,7 +14,11 @@ import {
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import { gloamwoodMapFromEntry } from './entry-routing'
 import { createGloamwoodDefenceMap } from './gloamwood-defence-map'
-import { GLOAMWOOD_DEFENCE_RUN, type GloamwoodDefenceState } from './gloamwood-defence-director'
+import {
+  GLOAMWOOD_DEFENCE_RUN,
+  gloamwoodDefenceReward,
+  type GloamwoodDefenceState,
+} from './gloamwood-defence-director'
 import { GLOAMWOOD_DEFENCE } from './gloamwood-defence-terrain'
 import { buildGloamwoodDefenceScene } from './gloamwood-defence-scene'
 
@@ -3812,6 +3816,12 @@ class Gloamwood3DHunt {
         continue
       }
       if (event.type === 'wave-cleared') {
+        if (this.map.id === 'defence') {
+          this.lockedPreyId = null
+          this.combatMessage = t('hud.msg.waveClear', { wave: event.wave })
+          this.presentDefenceGrowth(event.wave)
+          continue
+        }
         // Guardian waves are not hunt waves; the guardian pays out on its own
         // milestone below, or it would grant two.
         if (this.runPhase === 'hunt' && event.wave < GLOAMWOOD_NEST.waveCount) {
@@ -6294,6 +6304,47 @@ class Gloamwood3DHunt {
    * without this the reward arrives during the intro and is read while something
    * is already winding up.
    */
+  /**
+   * Pay the player for clearing a wave of the altar defence.
+   *
+   * Taken during the intermission, which is the only quiet the mode has: the
+   * field is clear by definition and the next wave is six seconds away, so a
+   * choice is never made with something chewing on the altar.
+   *
+   * Without this the player fought all twelve waves as a stage-zero body with
+   * an empty mutation deck while the creatures scaled to 2.9x health - which is
+   * what the owner actually ran into, not a tuning problem.
+   */
+  private presentDefenceGrowth(wave: number) {
+    const reward = gloamwoodDefenceReward(wave)
+    if (reward === 'none') return
+    if (reward === 'evolution') {
+      // Two different openers, and using the wrong one is a defect this project
+      // has already shipped once: `openGloamwoodEvolutionOffer` returns the
+      // state unchanged when a form has already been selected, so it can only
+      // ever open the *first* evolution. The debug gate had exactly this bug and
+      // silently did nothing on the second.
+      this.evolutionState = this.evolutionState.phase === 'selected'
+        ? openGloamwoodNextEvolutionOffer(this.evolutionState, this.nestState.genes, this.nestState.recentHunts)
+        : openGloamwoodEvolutionOffer(this.evolutionState, this.nestState.genes, this.nestState.recentHunts)
+      if (this.evolutionState.phase !== 'choosing') return
+      this.runPhase = 'evolution'
+      this.showEvolutionOverlay()
+      return
+    }
+    this.mutationState = recordGloamwoodMutationMilestone(this.mutationState, `defence-wave-${wave}`)
+    const earned = gloamwoodMutationOffersEarned(this.mutationState) + this.bonusOffersEarned
+    if (earned <= this.mutationOffersTaken) return
+    this.mutationState = openGloamwoodMutationOffer(this.mutationState, this.nestState.genes)
+    if (!this.mutationState.offering) {
+      // Nothing left in the pool. Bank the offer so it is not re-counted every
+      // wave for the rest of the run.
+      this.mutationOffersTaken = earned
+      return
+    }
+    this.showMutationOverlay()
+  }
+
   private presentGuardianMutation() {
     const earned = gloamwoodMutationOffersEarned(this.mutationState) + this.bonusOffersEarned
     if (earned <= this.mutationOffersTaken) return false
