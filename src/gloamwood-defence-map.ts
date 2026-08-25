@@ -16,6 +16,7 @@ import {
   createGloamwoodDefenceState,
   gloamwoodDefenceWave,
   damageGloamwoodDefenceAltar,
+  gloamwoodDefenceBossScale,
   gloamwoodDefenceDamageScale,
   gloamwoodDefenceMarchStep,
   gloamwoodDefencePreyWave,
@@ -199,17 +200,19 @@ export function createGloamwoodDefenceMap(
           // is how hard this mode hits compared with the rest of the game;
           // the wave scale is how much worse it gets as a run goes on.
           const wave = gloamwoodDefenceDamageScale(gloamwoodDefencePreyWave(event.preyId))
+          // A boss is typed as an ordinary family, so without this it hits like
+          // one. See `GLOAMWOOD_DEFENCE_BOSSES.damageScale`.
+          const boss = gloamwoodDefenceBossScale(event.preyId)
+          const blow = event.damage * wave * (boss?.damageScale ?? 1)
           if (!target.marching) {
             events.push({
               ...event,
-              damage: Math.max(
-                1,
-                Math.round(event.damage * GLOAMWOOD_DEFENCE_RUN.playerDamageScale * wave),
-              ),
+              damage: Math.max(1, Math.round(blow * GLOAMWOOD_DEFENCE_RUN.playerDamageScale)),
+              knockback: event.knockback * (boss?.knockbackScale ?? 1),
             })
             continue
           }
-          applyAltarDamage(event.damage * wave)
+          applyAltarDamage(blow)
         }
       }
 

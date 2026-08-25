@@ -126,8 +126,8 @@ export const GLOAMWOOD_DEFENCE_RUN = {
    * Applied per creature from the wave it *spawned* in, not the wave that is
    * current - something that survives into the next wave must not grow.
    */
-  healthPerWave: 0.145,
-  damagePerWave: 0.055,
+  healthPerWave: 0.175,
+  damagePerWave: 0.07,
   /** Seconds of quiet between a wave clearing and the next stepping through. */
   intermissionSeconds: 6,
   /**
@@ -369,11 +369,46 @@ export const GLOAMWOOD_DEFENCE_BOSSES: Readonly<Record<GloamwoodDefenceBossId, {
   bodyId: string
   health: number
   footprintRadius: number
+  /**
+   * How much harder it hits than the family it is typed as.
+   *
+   * The owner's read after a run was that a boss could be tanked face to face.
+   * Measured, that was exactly right and for a dull reason: a boss is typed
+   * `shell`, so it inherited the Carapace family's 14 damage and hit for 13.5
+   * after this map's scaling - the same as an ordinary Fang. It had boss health
+   * and rank-and-file damage, so standing on it cost nothing and the 1.05s
+   * telegraph the family already carries was information nobody needed.
+   *
+   * These put a boss blow at roughly a quarter to a third of the player's
+   * health, which is what makes the telegraph worth reading: three or four
+   * blows kill, so the fight is about the wind-up rather than about outlasting
+   * it. The escalation across the four is on top of the ordinary wave scale, so
+   * the last one is a genuine threat and the first is a warning.
+   */
+  damageScale: number
+  /**
+   * And it shoves. A creature that cannot be stood on is a different problem
+   * from one that merely hurts, and knockback is what makes "hold this ground"
+   * a decision rather than a default.
+   */
+  knockbackScale: number
 }>> = {
-  bladeshell: { bodyId: 'tide-cleaver', health: 340, footprintRadius: 3.5 },
-  'cliff-maw': { bodyId: 'cliff-maw', health: 480, footprintRadius: 2.09 },
-  'source-root': { bodyId: 'source-root', health: 620, footprintRadius: 3.9 },
-  'thornheart-warden': { bodyId: 'thornheart-warden', health: 820, footprintRadius: 2.25 },
+  bladeshell: { bodyId: 'tide-cleaver', health: 400, footprintRadius: 3.5, damageScale: 2.6, knockbackScale: 1.8 },
+  'cliff-maw': { bodyId: 'cliff-maw', health: 580, footprintRadius: 2.09, damageScale: 2.9, knockbackScale: 2.0 },
+  'source-root': { bodyId: 'source-root', health: 780, footprintRadius: 3.9, damageScale: 3.2, knockbackScale: 2.2 },
+  'thornheart-warden': { bodyId: 'thornheart-warden', health: 1050, footprintRadius: 2.25, damageScale: 3.6, knockbackScale: 2.4 },
+}
+
+/**
+ * The boss multipliers for a creature id, or nothing if it is not a boss.
+ *
+ * Read off the id for the same reason the wave is: `GloamwoodNestPrey` is the
+ * shape every map fills in, and these belong to this mode alone.
+ */
+export function gloamwoodDefenceBossScale(id: string) {
+  const match = /^defence-boss-(.+)$/.exec(id)
+  if (!match) return undefined
+  return GLOAMWOOD_DEFENCE_BOSSES[match[1] as GloamwoodDefenceBossId]
 }
 
 export function createGloamwoodDefenceBossPrey(

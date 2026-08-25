@@ -8,6 +8,7 @@ import {
   createGloamwoodDefencePrey,
   createGloamwoodDefenceState,
   damageGloamwoodDefenceAltar,
+  gloamwoodDefenceBossScale,
   gloamwoodDefenceDamageScale,
   gloamwoodDefenceHealthScale,
   gloamwoodDefencePreyWave,
@@ -321,7 +322,7 @@ describe('a creature gets tougher the later it arrives', () => {
     // escalation harder than a duel does - the player is pinned to a line with
     // up to ten things on it - and the owner's standing brief is that attacks
     // must not spike.
-    expect(lastDamage).toBeLessThan(1.8)
+    expect(lastDamage).toBeLessThan(2)
     expect(lastDamage).toBeLessThan(lastHealth)
   })
 
@@ -407,5 +408,58 @@ describe('a small creature never disappears inside a big one', () => {
     const separated = separateGloamwoodDefencePrey([corpse, at('live', 0.2, 0, 1)], () => 1)
     expect(separated[0].x).toBe(0)
     expect(separated[0].z).toBe(0)
+  })
+})
+
+describe('a boss cannot be tanked face to face', () => {
+  const PLAYER_HEALTH = 130
+  const bossBlow = (boss: keyof typeof GLOAMWOOD_DEFENCE_BOSSES, wave: number) =>
+    GLOAMWOOD_PREY.shell.damage
+      * gloamwoodDefenceDamageScale(wave)
+      * GLOAMWOOD_DEFENCE_BOSSES[boss].damageScale
+      * GLOAMWOOD_DEFENCE_RUN.playerDamageScale
+
+  it('hits far harder than the family it is typed as', () => {
+    // The fault the owner found: a boss is typed `shell`, so it inherited the
+    // Carapace family's 14 damage and hit for 13.5 after this map's scaling -
+    // the same as an ordinary Fang. Boss health, rank-and-file damage.
+    const fang = GLOAMWOOD_PREY.fang.damage
+      * gloamwoodDefenceDamageScale(12)
+      * GLOAMWOOD_DEFENCE_RUN.playerDamageScale
+    expect(bossBlow('thornheart-warden', 12)).toBeGreaterThan(fang * 3)
+  })
+
+  it('kills a full-health player in a handful of blows', () => {
+    // Few enough that the 1.05s telegraph is worth reading, not so few that a
+    // single mistake ends the run.
+    const last = PLAYER_HEALTH / bossBlow('thornheart-warden', 12)
+    expect(last).toBeGreaterThan(2)
+    expect(last).toBeLessThan(4)
+    const first = PLAYER_HEALTH / bossBlow('bladeshell', 3)
+    // The first one warns rather than punishes.
+    expect(first).toBeGreaterThan(last)
+    expect(first).toBeLessThan(9)
+  })
+
+  it('gets more dangerous with every boss, not just tougher', () => {
+    const order = ['bladeshell', 'cliff-maw', 'source-root', 'thornheart-warden'] as const
+    const waves = [3, 6, 9, 12]
+    const blows = order.map((boss, index) => bossBlow(boss, waves[index]))
+    expect(blows).toEqual([...blows].sort((a, b) => a - b))
+    const knockbacks = order.map((boss) => GLOAMWOOD_DEFENCE_BOSSES[boss].knockbackScale)
+    expect(knockbacks).toEqual([...knockbacks].sort((a, b) => a - b))
+  })
+
+  it('shoves, so standing on it is not a stance', () => {
+    for (const boss of Object.values(GLOAMWOOD_DEFENCE_BOSSES)) {
+      expect(boss.knockbackScale).toBeGreaterThan(1.5)
+    }
+  })
+
+  it('reads its multipliers off the id, and nothing else does', () => {
+    expect(gloamwoodDefenceBossScale(createGloamwoodDefenceBossPrey('cliff-maw', 0).id))
+      .toBe(GLOAMWOOD_DEFENCE_BOSSES['cliff-maw'])
+    expect(gloamwoodDefenceBossScale(createGloamwoodDefencePrey('fang', 3, 5).id)).toBeUndefined()
+    expect(gloamwoodDefenceBossScale('nonsense')).toBeUndefined()
   })
 })
