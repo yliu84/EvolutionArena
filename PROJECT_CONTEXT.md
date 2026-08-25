@@ -703,28 +703,91 @@ and glTF validator all pass. Desktop 1440x900 and mobile landscape 844x390 both
 load the form with `matchedFamily`/`matchedForm` true, grounded, one canvas, no
 horizontal overflow and no console errors.
 
-## Active content milestone — Swarm stage-2 body
+## Delivered content milestone — Thorn Heart Warden model
 
-The Swarm second evolution exists in-game as `brood-hollow`, but the owner
-rejected the look on 2026-08-24: players found it ugly. The shipped mesh stays
-until a replacement source is accepted. Do not overwrite
-`public/assets/quality-3d/models/brood-hollow-rigged-v1.glb` from the new board.
+Shipped 2026-08-24. The Gloamwood's boss 荆心守卫 was about thirty primitives
+whose entire attack animation was one line - `body.position.x = strike * 0.65` -
+shared identically by Root Slam, Thorn Charge and Spore Ring. The three patterns
+produced the same body motion and were told apart only by the decal drawn on the
+ground. It is now a model with a clip per pattern.
 
-- contract: `docs/concepts/evolution-v2/swarm-stage2/PRODUCTION-MODEL-CONTRACT-V1.md`
-- Meshy pack: `docs/concepts/evolution-v2/swarm-stage2/source/SOURCE.md`
-- working id `brood-hollow` — **not locked**
-- world height **2.55**
-- architecture (revision 2): appealing big-cat / young-dragon; two large cyan
-  eyes; ruff of **four or five LARGE** glowing pods at neck and shoulders; sturdy
-  muscular sprinting legs; cream chest; tufted tail. Board-1's thin-legged
-  vented colony is withdrawn
-- gates: torso **w/h ≤ 0.52**, **l/h ≤ 2.10**, emissive ≤ 15%, confined to eyes,
-  ruff pods and tail tuft
+- runtime id **`thorn-heart-warden`**, display **荆心守卫**, unchanged
+- runtime model: `public/assets/quality-3d/models/thornheart-warden-runtime-v1.glb`
+  - 3.27 MB, 18,817 triangles, 27 bones, seven clips, 0 glTF errors/warnings
+- config: `GLOAMWOOD_THORNHEART_WARDEN_BOSS` in `src/gloamwood-3d-modelled-boss.ts`
+- contract: `docs/concepts/gloamwood/thorn-warden/PRODUCTION-MODEL-CONTRACT-V1.md`
+- source record: `docs/concepts/gloamwood/thorn-warden/source/SOURCE.md`
+- processing script: `scripts/blender/process_thornheart_warden_meshy.py`
+- Blender file: `art-source/gloamwood-boss/thornheart-warden-runtime-v1.blend`
+- board-3 accepted after board-1 (thorns read as a crest) and board-2 (faceless
+  dead-stick ram, rejected as ugly). Appeal was the gate that decided both
+- measured body **3.45 × 4.50 × 3.20** at `worldHeight` 3.2, against the largest
+  player form's 2.70 × 5.05 × 2.55: 28% wider, 25% taller, 11% shorter
+- three patterns, three clips. Measured at the head as a fraction of the rest
+  head-above-forefoot distance: `Slam` −35% → **+76%** → **−79%**, `Charge` −58%
+  → −85% held → **+32%**, `RingBurst` −61% → −87% → **+103%**. Slam and
+  RingBurst are opposite at the instant of contact; Charge is the only one that
+  stays low through its whole wind-up
+- **the Walk clip is authored here, not imported.** The owner reported a
+  cratered neck twice. The first attempt damped `head`/`headend` rotation,
+  which is what fixed the same-sounding fault on the Swarm stage-2 form, and it
+  did nothing. Rendering settled it: the crater is fully open at Walk **frame
+  0** with head rotation at exactly zero, and frame 0 is where damping has the
+  least effect anywhere in a clip. On the Swarm form the sink really is
+  rotation-driven - put the rotation back and it returns - because that neck is
+  long, soft and unarmoured. Here the neck is short and under rigid plates and
+  the Meshy Walk poses the rig into a configuration the skin cannot hold. Every
+  clip authored in the processing script is clean at every frame, so the Walk is
+  authored too and the import is discarded. Weight stripping, weight smoothing
+  and rebinding were all tried and all made it worse
+- loads when the guardian encounter opens rather than in the opening scene,
+  which keeps Goal 15E's rule. A failed load leaves the primitives in place and
+  reports through `bossModelError`; `bossModel` and `bossClip` are in debug
+  state so a boss silently running on primitives is visible
 
-Current gate: **owner reviews the revision-2 3/4.** Board in
-`docs/EvolutionArena-Project-Docs-v0.1/docs/art/concepts/swarm-stage2-brood-*.png`.
-Board-1 archived `superseded-board1-*`. Do not run Meshy until the 3/4 is
-accepted. Text-to-3D is forbidden. Do not upload board-1 or any `swarm-stage1-*`.
+**This body is not on the shipped route, and that was not understood when the
+work was proposed.** `gloamwoodMapFromEntry` returns `valley` unless
+`?map=gloamwood` is passed, and its own comment is explicit that the Gloamwood
+"must be requested explicitly; a new player should never land in a retired
+sample". Every path to `startBossEncounter` runs through nest events, and only
+the Gloamwood map has a nest. So the Warden is reachable only at
+`?map=gloamwood`, a focused combat lab. The shipped valley run ends on
+`source-root`, a model since 2026-08-18.
+
+The case made for building it - "every new player's first run ends on a pile of
+boxes" - was wrong, and should have been checked against `entry-routing.ts`
+before the concept work started. What the work does deliver is real and
+separable: the combat lab's boss is no longer primitives, the
+three-patterns-one-animation defect is fixed on the only fight that had it, and
+modelled bosses are now covered by a file contract that previously checked
+player forms only. Whether the Gloamwood is worth further investment is an open
+product question this milestone did not settle.
+
+Licence evidence for the Meshy source is **outstanding**, alongside Shell
+stage 1. See `docs/ASSET-LICENSE-REGISTER.md`.
+
+New diagnostic: `scripts/blender/inspect_clip_deformation.py` renders a rig with
+no animation and then at chosen frames of one clip. It separates an amplitude
+fault from a skinning fault in one pass, and it must be run **before** a
+deformation fix is attempted rather than after the second report - two rounds
+were spent damping a knob that was not connected to anything.
+
+New guards. `tests/quality-3d-glb-file-contract.test.ts` now opens every
+modelled boss GLB as well as every player form and asserts the clips its config
+names are in the file: `updateModelledBoss` resolves a pattern to a clip name and
+calls `clips.get(name)`, and a miss is silent - the mixer plays nothing while the
+authority goes on resolving the telegraph, the strike and the damage.
+`tests/thornheart-warden-boss.test.ts` drives the real boss state machine through
+a full two-phase fight and asserts all three patterns fire and reach three
+different clips, because `spore-ring` is one slot in a four-slot phase-two
+rotation and is the pattern least likely to be caught by eye - thirty seconds of
+watching it in a browser never produced one.
+
+## Delivered — Swarm stage-2 (`lantern-lynx`)
+
+Shipped 2026-08-24 as `lantern-lynx`. The first look (`brood-hollow`) was
+rejected as ugly; the appealing cat-dragon with a lantern ruff replaced it.
+See `docs/concepts/evolution-v2/swarm-stage2/PRODUCTION-MODEL-CONTRACT-V1.md`.
 
 ## Superseded plan — Shell stage-2 body
 

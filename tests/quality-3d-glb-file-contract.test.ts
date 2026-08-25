@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import { QUALITY_3D_GLB_ASSETS } from '../src/quality-3d-glb-assets'
+import { GLOAMWOOD_MODELLED_BOSSES } from '../src/gloamwood-3d-modelled-boss'
 
 /**
  * The registry declares what each runtime GLB contains. Nothing checked that
@@ -88,5 +89,56 @@ describe('runtime GLB files match what the registry claims', () => {
         expect(animationNames, `${asset.formId} step ${step}`).toContain(clip)
       }
     }
+  })
+})
+
+/**
+ * Bosses were outside this guard entirely until the Gloamwood got a modelled
+ * one.
+ *
+ * `updateModelledBoss` resolves a pattern to a clip name and calls
+ * `model.clips.get(name)`. A miss is silent: the mixer is never told to play
+ * anything, the boss stands still, and the authority goes on resolving the
+ * telegraph, the strike and the damage. That is the same failure the player
+ * forms are checked for above, on the fight that ends a run.
+ */
+describe('modelled boss GLB files carry the clips their config names', () => {
+  for (const config of GLOAMWOOD_MODELLED_BOSSES) {
+    const file = config.url.split('?')[0].split('/').pop() as string
+    describe(file, () => {
+      const json = readGLBJson(config.url)
+      const animationNames: string[] = (json.animations ?? []).map((entry: { name: string }) => entry.name)
+
+      it('contains idle, walk, hit and death', () => {
+        for (const clip of [config.clips.idle, config.clips.walk, config.clips.hit, config.clips.death]) {
+          expect(animationNames, `${file} is missing ${clip}`).toContain(clip)
+        }
+      })
+
+      it('contains a clip for every boss pattern', () => {
+        for (const [pattern, clip] of Object.entries(config.clips.patterns)) {
+          expect(animationNames, `${file} names ${clip} for ${pattern} but does not carry it`).toContain(clip)
+        }
+      })
+
+      it('ships no Meshy viewport helper', () => {
+        const nodeNames: string[] = (json.nodes ?? []).map((entry: { name?: string }) => entry.name ?? '')
+        expect(nodeNames).not.toContain('Icosphere')
+      })
+    })
+  }
+
+  it('gives the Gloamwood boss three different clips for its three patterns', () => {
+    // The whole reason that body was modelled. The primitive assembly it
+    // replaced drove all three patterns from one line of code, so Root Slam,
+    // Thorn Charge and Spore Ring were told apart only by their ground decals.
+    // Sharing a clip here would put that back without anything failing - and
+    // two of the valley bosses do share one, deliberately, which is why this
+    // assertion names the Gloamwood boss instead of applying to all of them.
+    const warden = GLOAMWOOD_MODELLED_BOSSES.find((config) => config.url.includes('thornheart-warden'))
+    expect(warden, 'the Gloamwood boss is not registered').toBeDefined()
+    const clips = Object.values(warden!.clips.patterns)
+    expect(clips).toHaveLength(3)
+    expect(new Set(clips).size, `patterns share a clip: ${clips.join(', ')}`).toBe(3)
   })
 })

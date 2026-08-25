@@ -48,6 +48,7 @@ import {
 import { GloamwoodSessionLog, summariseGloamwoodSession } from './gloamwood-3d-session-log'
 import {
   GLOAMWOOD_BLADESHELL_BOSS,
+  GLOAMWOOD_THORNHEART_WARDEN_BOSS,
   gloamwoodBossClipForState,
   gloamwoodBossClipRate,
   type GloamwoodModelledBossConfig,
@@ -780,6 +781,18 @@ interface DebugState {
   /** Unclaimed Elite/Boss Gene Cores; confirms reward collection in browser QA. */
   geneCores: number
   preyModelError: string | null
+  /**
+   * Which authored body the boss is wearing, and the clip it is playing.
+   *
+   * `bossModel` is null while it wears its primitive assembly, which is both
+   * the pre-model behaviour and the fallback when the GLB fails. Reported so a
+   * boss silently running on primitives is visible rather than something a
+   * reviewer has to notice by eye - the same reason `matchedForm` exists for
+   * player bodies.
+   */
+  bossModel: string | null
+  bossClip: string | null
+  bossModelError: string | null
   prey: Array<{
     id: string
     kind: GloamwoodPreyKind
@@ -896,6 +909,8 @@ class Gloamwood3DHunt {
   private readonly nestRoot = new THREE.Group()
   private readonly preyVisuals = new Map<string, PreyVisual>()
   private preyModelError?: string
+  private wardenBodyRequested = false
+  private bossModelError?: string
   /**
    * The ground this run is played on.
    *
@@ -4211,6 +4226,29 @@ class Gloamwood3DHunt {
     model.mixer.update(delta)
   }
 
+  /**
+   * Start the Gloamwood boss's body downloading, at most once.
+   *
+   * Called from both the guardian encounter and the boss encounter, because the
+   * guardian can be skipped - the debug `startBoss()` hook goes straight to the
+   * arena, and so did every review of this fight.
+   */
+  private ensureThornheartWardenBody() {
+    if (this.map.id !== 'gloamwood') return
+    if (this.wardenBodyRequested || this.bossVisual?.model) return
+    // The Bladeshell override exists to judge a valley body in this arena. If
+    // someone asked for it, loading the Warden on top would swap it back out.
+    if (new URLSearchParams(window.location.search).get('bossModel') === 'bladeshell') return
+    this.wardenBodyRequested = true
+    // Reported rather than voided: a `void` on a failing load swallows the
+    // reason and leaves the boss wearing its primitives, which is
+    // indistinguishable from the model never having been wired up.
+    this.loadModelledBoss(GLOAMWOOD_THORNHEART_WARDEN_BOSS).catch((error) => {
+      console.error('Thornheart Warden body failed to load', error)
+      this.bossModelError = error instanceof Error ? error.message : String(error)
+    })
+  }
+
   private async loadModelledBoss(config: GloamwoodModelledBossConfig) {
     const visual = this.bossVisual
     if (!visual) return
@@ -6315,6 +6353,13 @@ class Gloamwood3DHunt {
 
   private startGuardianEncounter() {
     this.runPhase = 'guardian'
+    // The guardian is the step before the boss, so this is where the Warden's
+    // body starts downloading: out of the opening scene, which is the whole
+    // point of Goal 15E, but with a whole guardian fight of head start. If it
+    // has not finished by the time the arena opens, the boss simply wears its
+    // primitive assembly until it does, exactly as it did before this model
+    // existed.
+    this.ensureThornheartWardenBody()
     const guardianState = awakenGloamwoodNestGuardian(this.nestState)
     this.nestState = {
       ...guardianState,
@@ -6343,6 +6388,7 @@ class Gloamwood3DHunt {
 
   private startBossEncounter() {
     this.runPhase = 'boss'
+    this.ensureThornheartWardenBody()
     this.bossState = startGloamwoodBoss(createGloamwoodBossState(GLOAMWOOD_BOSS_ARENA.x, GLOAMWOOD_BOSS_ARENA.z))
     this.bossLocked = true
     this.lockedPreyId = null
@@ -7982,6 +8028,9 @@ class Gloamwood3DHunt {
       meatDrops: this.meatDrops.length,
       geneCores: this.geneCores.length,
       preyModelError: this.preyModelError ?? null,
+      bossModel: this.bossVisual?.model?.config.url.split('/').pop()?.split('?')[0] ?? null,
+      bossClip: this.bossVisual?.model?.currentName ?? null,
+      bossModelError: this.bossModelError ?? null,
       prey: this.nestState.prey.map((prey) => ({
         id: prey.id,
         kind: prey.kind,
