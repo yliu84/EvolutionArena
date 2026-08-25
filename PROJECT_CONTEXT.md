@@ -703,6 +703,67 @@ and glTF validator all pass. Desktop 1440x900 and mobile landscape 844x390 both
 load the form with `matchedFamily`/`matchedForm` true, grounded, one canvas, no
 horizontal overflow and no console errors.
 
+## Active content milestone — Altar defence mode (`?map=defence`)
+
+A third map and a different mode, chosen by the owner on 2026-08-25 after the
+Warden shipped: waves come out of a portal, walk a road, and try to reach an
+altar the player has to hold. Built in four slices, each verified before the
+next started.
+
+- entry: `?map=defence` (explicit, like `?map=gloamwood`; the shipped route is
+  still the valley)
+- terrain: `src/gloamwood-defence-terrain.ts` — the shape lives in functions and
+  `scripts/render-defence-preview.ts` samples them to draw the plan, so a plan
+  cannot go stale against the ground
+- scatter: `src/gloamwood-defence-dressing.ts`, scene: `…-scene.ts`,
+  contract: `…-map.ts`, director: `…-director.ts`
+- **52 × 104**, bowl radius 13, road 48 units, interception depth 20
+- **12 waves, 4 bosses** on 3/6/9/12. Twelve because the content supports about
+  ten growth choices — two evolutions is all a body has, then eight mutations —
+  and eight waves would leave half the mutation pool unseen. Four because four
+  modelled boss bodies exist; the owner's number and the asset count agreed
+  without either being chosen for the other
+- altar 600 health; the run is lost when it empties, won when wave 12 clears
+- three lives, already existing (`GLOAMWOOD_RUN_LIVES`)
+
+**It reuses the combat authority rather than growing a second one.** `stepPrey`
+takes a `GloamwoodPlayerPresence`, which is only `{ x, z, alive, bodyRadius }` —
+so a marching creature is stepped against the *altar* as its presence and a
+drawn-off one against the player. Telegraph timing, strike windows, slot
+spreading, elite modifiers and facing commitment all come along untouched. A
+blow that lands on the altar never becomes a `prey-attack`, because that event
+means "the player was hit" everywhere else in the runtime.
+
+Two numbers are mode-local overrides rather than edits to shared tables, because
+`GLOAMWOOD_PREY` is the accepted Goal 2–4 balance and the whole valley fights on
+it: **march speed ×1.9** while walking only (the Carapace crosses 48 units at
+1.48, which is 32 seconds of nothing happening), and **player damage ×0.6**
+(standing still through wave one killed a full-health player in engine). Altar
+damage stays raw — its 600 was sized against the raw numbers.
+
+Layout decisions worth keeping. The altar sits against the south rim rather than
+in the middle: a central altar with one northern entrance is a problem the
+player solves by standing still just north of it, and the southern half of the
+bowl is never used. The road ends *inside* the bowl at z=6, where the bowl is
+8.31 wide against the mouth's 8, so the two walkable regions overlap; ending it
+on the rim left them meeting at a single point. And the scatter keeps trunks out
+of the ground the camera flies through — the altar is against the wall, so the
+lens is inside that wall, and the first build framed a screenful of bark.
+
+Three rendering findings from building it, all of the same family: **emissive
+does not vary with the surface normal**, so an emissive strong enough to
+dominate erases the facets it lights (the altar crystal took three passes);
+**once every channel of an emissive contribution clips above 1, tone mapping
+takes the result to white** whatever colour was asked for; and **additive
+blending cannot occlude**, so the portal's rift showed the forest through it and
+read as a hoop with a smudge rather than as a hole.
+
+Still open on this mode: no real-device frame-rate reading with ten creatures on
+the field (`maximumActive` is 10 against the Gloamwood's 6), drops are the
+existing meat and gene cores rather than anything mode-specific, and there are
+no achievements. The owner chose to do post-processing (bloom) and an itch
+landing page after this mode rather than before it.
+
 ## Delivered content milestone — Thorn Heart Warden model
 
 Shipped 2026-08-24. The Gloamwood's boss 荆心守卫 was about thirty primitives
