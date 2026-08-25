@@ -19,36 +19,40 @@
  * used. Against the south wall, the bowl itself becomes the defended frontage:
  * 20 units of ground that anything has to cross, and the player has to hold.
  *
- * **The road is long on purpose.** It is 34 units, which at the shipped prey
- * speeds is 9.3s for the Fang, 11.7s for the Swarm and 23s for the Carapace.
+ * **The road is long on purpose.** It is 48 units, which at the shipped prey
+ * speeds is 13.2s for the Fang, 16.6s for the Swarm and 32.4s for the Carapace.
  * Without it a wave arrives as a single mob on top of the player. With it, a
  * wave arrives strung out by how fast its members walk, which is a difficulty
  * texture nobody had to author.
  *
- * Do not confuse that with the 54 units from the portal to the altar. The road
+ * Do not confuse that with the 68 units from the portal to the altar. The road
  * is how long a wave takes to *arrive*; the march is how far it would get if
  * nothing ever stopped it, and an early estimate quoted one as the other.
  *
- * The Carapace's 23s is too long to stand and watch, which is why the mode is
- * expected to march creatures faster than they fight. That belongs to the wave
- * director rather than to the ground, and is not decided here.
+ * The Carapace's 32.4s is far too long to stand and watch, which is why the
+ * mode marches creatures faster than they fight. At the x1.6 the director is
+ * expected to apply that is 8.2s, 10.4s and 20.3s - and the Carapace is still
+ * long enough that it wants either a bigger boost of its own or a place late in
+ * a wave rather than at its head. That belongs to the director, not the ground.
  */
 
 export const GLOAMWOOD_DEFENCE = {
   /**
-   * 52 x 68, against the compact Gloamwood's 50 x 36.
+   * 52 x 104, against the compact Gloamwood's 50 x 36.
    *
    * The width was already enough; it is the depth that had to grow, because
-   * the depth is where the march happens.
+   * the depth is where the march happens. Lengthened once after the first walk
+   * through it: 34 units of road did not read as an approach, it read as a
+   * short corridor, and the owner asked for more of it.
    */
-  bounds: { halfWidth: 26, halfDepth: 34 },
+  bounds: { halfWidth: 26, halfDepth: 52 },
   /** The open bowl. Nothing is scattered inside it - that is the whole point. */
   arena: { x: 0, z: 16, radius: 13 },
   /** Backed against the south wall, so nothing can get behind it. */
   altar: { x: 0, z: 26, radius: 3 },
   /** In front of the altar, so a death puts the player back on the last line. */
   spawn: { x: 0, z: 21 },
-  portal: { x: 0, z: -28 },
+  portal: { x: 0, z: -42 },
   road: {
     /** Where the throat is at its narrowest, all the way down from the portal. */
     halfWidth: 3.5,

@@ -48,12 +48,18 @@ describe('the bowl is one connected piece of ground with one way in', () => {
   })
 
   it('walls off everything else, so the road is the only approach', () => {
-    // Abreast of the bowl, well outside it, and abreast of the road but wide of
-    // it. Both must be wall or the altar can be reached without crossing the
-    // player's frontage.
-    expect(gloamwoodDefenceWalkable(20, 16)).toBe(false)
-    expect(gloamwoodDefenceWalkable(12, -18)).toBe(false)
-    expect(gloamwoodDefenceWalkable(0, -32)).toBe(false)
+    // Derived from the layout rather than written as coordinates: the road has
+    // already been lengthened once, and a hardcoded point behind the old portal
+    // became walkable ground without the rule it was testing having changed.
+    const { portal, arena, road } = GLOAMWOOD_DEFENCE
+    // Abreast of the bowl, well outside it.
+    expect(gloamwoodDefenceWalkable(arena.radius + 7, arena.z)).toBe(false)
+    // Abreast of the road, wide of it.
+    expect(gloamwoodDefenceWalkable(road.halfWidth + 8, portal.z / 2)).toBe(false)
+    // Behind the portal, where a wave comes from.
+    expect(gloamwoodDefenceWalkable(0, portal.z - 4)).toBe(false)
+    // Behind the altar, so nothing can get around it.
+    expect(gloamwoodDefenceWalkable(0, arena.z + arena.radius + 3)).toBe(false)
   })
 })
 
@@ -89,7 +95,7 @@ describe('the altar sits on the far side of the frontage the player has to hold'
 describe('the march is long enough to string a wave out', () => {
   it('separates the families by several seconds over its length', () => {
     const march = gloamwoodDefenceMarchDistance()
-    expect(march).toBe(54)
+    expect(march).toBe(GLOAMWOOD_DEFENCE.altar.z - GLOAMWOOD_DEFENCE.portal.z)
     const seconds = (speed: number) => march / speed
     // Fang first, Swarm behind it, Carapace last: the ordering is the texture,
     // and it costs nothing to author because it falls out of the walk speeds.

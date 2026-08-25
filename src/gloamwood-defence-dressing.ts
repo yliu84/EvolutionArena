@@ -72,9 +72,15 @@ export const GLOAMWOOD_DEFENCE_SCATTER = {
    * why it costs nothing to look at.
    */
   cameraClearance: 5,
-  trees: 320,
-  rocks: 90,
-  plants: 260,
+  /**
+   * Counts, not densities, so a change here is visible in one place - but they
+   * were raised with the road when it went from 34 units to 48. Keeping the
+   * old numbers over the longer band thinned the wall until the forest read as
+   * a scattering of trees rather than as something you cannot walk into.
+   */
+  trees: 460,
+  rocks: 130,
+  plants: 380,
 } as const
 
 function outsideEnough(x: number, z: number, clearance: number) {

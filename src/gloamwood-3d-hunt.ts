@@ -932,7 +932,10 @@ class Gloamwood3DHunt {
    * on either one.
    */
   private readonly map: GloamwoodMapContract = gloamwoodMapFromEntry() === 'defence'
-    ? createGloamwoodDefenceMap(async () => { await this.buildDefenceScenery() })
+    ? createGloamwoodDefenceMap(
+      async () => { await this.buildDefenceScenery() },
+      (_camera, elapsed) => this.defenceScene?.update(elapsed),
+    )
     : gloamwoodMapFromEntry() === 'valley'
     ? createGloamwoodValleyMap(
       Number(new URLSearchParams(window.location.search).get('mapSeed') ?? 0) || 0x5a11e,
