@@ -184,6 +184,15 @@ const STRINGS = {
   'hud.msg.backToHunt': { en: 'Back into the hunt', zh: '重新投入狩猎' },
   'hud.nestWave': { en: 'Nest · wave {wave} of {waves}', zh: '巢穴 · 第 {wave} 波 / 共 {waves} 波' },
   'hud.nestBreath': { en: 'Nest · next wave incoming', zh: '巢穴 · 下一波正在来' },
+  'result.defenceVictoryLead': { en: 'The altar still stands', zh: '祭坛还立着' },
+  'result.defenceDefeatLead': { en: 'The altar is dark', zh: '祭坛熄了' },
+  'result.defenceWave': { en: 'Wave', zh: '波次' },
+  'result.defenceAltar': { en: 'Altar', zh: '祭坛' },
+  'hud.msg.altarStruck': {
+    en: 'The altar is struck · {remaining}/{max}',
+    zh: '祭坛被击中 · {remaining}/{max}',
+  },
+  'hud.msg.altarFell': { en: 'The altar fell.', zh: '祭坛倒下了。' },
   'hud.defenceStatus': {
     en: 'Wave {wave} of {waves} · Altar {altar}/{altarMax}',
     zh: '第 {wave} 波 / 共 {waves} 波 · 祭坛 {altar}/{altarMax}',

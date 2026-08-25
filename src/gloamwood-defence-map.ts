@@ -6,9 +6,12 @@ import {
   createGloamwoodNestState,
 } from './gloamwood-3d-ecology'
 import {
+  GLOAMWOOD_DEFENCE_BOSSES,
   GLOAMWOOD_DEFENCE_RUN,
+  createGloamwoodDefenceBossPrey,
   createGloamwoodDefencePrey,
   createGloamwoodDefenceState,
+  gloamwoodDefenceWave,
   damageGloamwoodDefenceAltar,
   gloamwoodDefenceSpeedMultiplier,
   gloamwoodDefenceTarget,
@@ -16,7 +19,12 @@ import {
   type GloamwoodDefenceState,
 } from './gloamwood-defence-director'
 import { GLOAMWOOD_RUN_LIVES, type GloamwoodMapContract } from './gloamwood-map'
-import { GLOAMWOOD_MODELLED_PREY } from './gloamwood-modelled-prey'
+import {
+  GLOAMWOOD_MODELLED_PREY,
+  GLOAMWOOD_THORNHEART_WARDEN_PREY,
+  GLOAMWOOD_VALLEY_BOSS_BODIES,
+  type GloamwoodModelledPreyConfig,
+} from './gloamwood-modelled-prey'
 import {
   GLOAMWOOD_DEFENCE,
   gloamwoodDefenceConfine,
@@ -40,9 +48,15 @@ import {
 export function createGloamwoodDefenceMap(
   buildScenery: () => Promise<void>,
   update?: GloamwoodMapContract['update'],
-): GloamwoodMapContract & { defenceRun(): GloamwoodDefenceState } {
+): GloamwoodMapContract & {
+  defenceRun(): GloamwoodDefenceState
+  defenceDamageAltar(damage: number): number
+  defenceSkipToWave(wave: number): number
+  upcomingBossBody(): GloamwoodModelledPreyConfig | undefined
+} {
   let run = createGloamwoodDefenceState()
   let spawnSequence = 0
+  let pendingAltarDamage = 0
   return {
     id: 'defence',
     buildScenery,
@@ -104,14 +118,41 @@ export function createGloamwoodDefenceMap(
       const events: GloamwoodNestEvent[] = []
       const alive = state.prey.filter((prey) => prey.phase !== 'dead')
 
+      const applyAltarDamage = (damage: number) => {
+        const hit = damageGloamwoodDefenceAltar(run, damage)
+        run = hit.state
+        for (const altarEvent of hit.events) {
+          if (altarEvent.type === 'altar-damaged') {
+            events.push({
+              type: 'defence-altar-damaged',
+              damage: altarEvent.damage,
+              remaining: altarEvent.remaining,
+              max: run.altarMaxHealth,
+            })
+          }
+          if (altarEvent.type === 'run-lost') events.push({ type: 'defence-run-lost' })
+        }
+      }
+
+      if (pendingAltarDamage > 0) {
+        applyAltarDamage(pendingAltarDamage)
+        pendingAltarDamage = 0
+      }
+
       const directed = stepGloamwoodDefence(run, delta, { alive: alive.length, total: state.prey.length })
       run = directed.state
       for (const event of directed.events) {
         if (event.type === 'wave-started') events.push({ type: 'wave-started', wave: event.wave })
         if (event.type === 'wave-cleared') events.push({ type: 'wave-cleared', wave: event.wave })
+        if (event.type === 'run-won') events.push({ type: 'defence-run-won' })
+        if (event.type === 'run-lost') events.push({ type: 'defence-run-lost' })
       }
 
       const prey = alive.map((entry) => ({ ...entry }))
+      if (directed.releaseBoss) {
+        prey.push(createGloamwoodDefenceBossPrey(directed.releaseBoss, spawnSequence))
+        spawnSequence += 1
+      }
       for (const kind of directed.release) {
         prey.push(createGloamwoodDefencePrey(kind, spawnSequence))
         spawnSequence += 1
@@ -136,8 +177,7 @@ export function createGloamwoodDefenceMap(
             })
             continue
           }
-          const hit = damageGloamwoodDefenceAltar(run, event.damage)
-          run = hit.state
+          applyAltarDamage(event.damage)
         }
       }
 
@@ -155,6 +195,49 @@ export function createGloamwoodDefenceMap(
     }),
     /** Read-only, for the HUD and for review. */
     defenceRun: () => run,
+    /**
+     * The body the *next* boss will wear, so it can be fetched before it walks.
+     *
+     * `loadModelledPrey` deliberately skips boss-tier creatures - that is Goal
+     * 15E, which stopped the opening scene downloading every 4-7 MB boss GLB -
+     * so without this the first build of this mode put the Warden on the road
+     * wearing the Carapace family's primitive fallback.
+     *
+     * Fetched during the intermission rather than at spawn: six seconds of head
+     * start, and if it is not enough the boss wears its fallback until the
+     * decode finishes, which is the behaviour that deferral was designed around.
+     */
+    upcomingBossBody: () => {
+      const wave = gloamwoodDefenceWave(run.wave + 1) ?? gloamwoodDefenceWave(run.wave)
+      if (!wave?.boss) return undefined
+      const wanted = GLOAMWOOD_DEFENCE_BOSSES[wave.boss]?.bodyId
+      if (!wanted) return undefined
+      if (wanted === GLOAMWOOD_THORNHEART_WARDEN_PREY.id) return GLOAMWOOD_THORNHEART_WARDEN_PREY
+      return GLOAMWOOD_VALLEY_BOSS_BODIES.find((body) => body.id === wanted)
+    },
+    /**
+     * Review hooks. Both endings of this mode are minutes away from the start -
+     * the altar holds 600 and the run is twelve waves - so reaching either one
+     * by playing is not a way to check it works.
+     */
+    /**
+     * Queues damage rather than applying it.
+     *
+     * The first version called `damageGloamwoodDefenceAltar` directly and the
+     * run went to `lost` while the runtime carried on playing, because the
+     * events it produced were never forwarded. A review hook that takes a
+     * different path from real damage is not testing real damage - so this one
+     * pushes into the same queue the next frame drains.
+     */
+    defenceDamageAltar: (damage: number) => {
+      pendingAltarDamage += Math.max(0, damage)
+      return pendingAltarDamage
+    },
+    defenceSkipToWave: (wave: number) => {
+      const clamped = Math.max(1, Math.min(GLOAMWOOD_DEFENCE_RUN.waves, Math.round(wave)))
+      run = { ...run, phase: 'spawning', wave: clamped, phaseElapsed: 0, released: 0, bossReleased: false }
+      return run.wave
+    },
     resetAfterDeath: (state, _diedAt) => ({
       state,
       // Always back in front of the altar. On this map a death is a breach of
@@ -163,6 +246,19 @@ export function createGloamwoodDefenceMap(
       playerAt: { ...GLOAMWOOD_DEFENCE.spawn },
     }),
     reachedMilestones: () => [],
-    bodyFor: (prey) => GLOAMWOOD_MODELLED_PREY[prey.kind],
+    /**
+     * Bosses read by id, everything else by family.
+     *
+     * Tier first, then family - reading family alone on the valley put three
+     * region bosses on the road as ordinary beetles, and this map has four.
+     */
+    bodyFor: (prey) => {
+      if (prey.tier !== 'boss') return GLOAMWOOD_MODELLED_PREY[prey.kind]
+      const bossId = prey.id.replace('defence-boss-', '') as keyof typeof GLOAMWOOD_DEFENCE_BOSSES
+      const wanted = GLOAMWOOD_DEFENCE_BOSSES[bossId]?.bodyId
+      if (!wanted) return undefined
+      if (wanted === GLOAMWOOD_THORNHEART_WARDEN_PREY.id) return GLOAMWOOD_THORNHEART_WARDEN_PREY
+      return GLOAMWOOD_VALLEY_BOSS_BODIES.find((body) => body.id === wanted)
+    },
   }
 }

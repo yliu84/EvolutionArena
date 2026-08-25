@@ -240,6 +240,30 @@ export const GLOAMWOOD_SOURCE_ROOT_BODY: GloamwoodModelledPreyConfig = {
   clips: { idle: 'Idle', walk: 'Walk', attack: 'Slam', hit: 'Hit', death: 'Death' },
 }
 
+/**
+ * The Thornheart Warden as a *creature* rather than as the Gloamwood's boss.
+ *
+ * It already had a `GloamwoodModelledBossConfig`, which drives the Gloamwood's
+ * scripted boss state machine and selects a clip per pattern. The altar defence
+ * mode does not have that machine: its bosses walk down the road with everything
+ * else and are stepped by `stepPrey` like any other body, so it needs the prey
+ * form of the same GLB.
+ *
+ * 2.25 rather than a round number. The runtime scales a body so its longest
+ * horizontal half-extent equals this, and the mesh measures l/h 1.406 - so 2.25
+ * makes it 4.50 long and 3.20 tall, which is the height its boss config already
+ * gives it. The two readings of the same model therefore agree on its size.
+ */
+export const GLOAMWOOD_THORNHEART_WARDEN_PREY: GloamwoodModelledPreyConfig = {
+  id: 'thornheart-warden',
+  url: '/assets/quality-3d/models/thornheart-warden-runtime-v1.glb?v=defence-boss-v1',
+  footprintRadius: 2.25,
+  modelYaw: Math.PI / 2,
+  // Slam is the clip authored for a committed downward blow, which is what an
+  // ordinary attack is for a creature this heavy.
+  clips: { idle: 'Idle', walk: 'Walk', attack: 'Slam', hit: 'Hit', death: 'Death' },
+}
+
 /** In route order: the two gate bosses, then the end of the run. */
 export const GLOAMWOOD_VALLEY_BOSS_BODIES: readonly GloamwoodModelledPreyConfig[] = [
   GLOAMWOOD_TIDE_CLEAVER_BODY,

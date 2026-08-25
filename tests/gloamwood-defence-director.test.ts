@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  GLOAMWOOD_DEFENCE_BOSSES,
   GLOAMWOOD_DEFENCE_RUN,
   GLOAMWOOD_DEFENCE_WAVES,
+  createGloamwoodDefenceBossPrey,
   createGloamwoodDefencePrey,
   createGloamwoodDefenceState,
   damageGloamwoodDefenceAltar,
@@ -230,5 +232,69 @@ describe('a blow does less to the player here than it does elsewhere', () => {
     // Sized at four to five breaches of roughly a player's health bar.
     const breach = 130
     expect(GLOAMWOOD_DEFENCE_RUN.altarHealth / breach).toBeGreaterThan(3)
+  })
+})
+
+describe('bosses actually come through the portal', () => {
+  it('releases the boss before its escort, on every boss wave', () => {
+    let state = createGloamwoodDefenceState()
+    let alive = 0
+    const bosses: string[] = []
+    const orderWithinWave: string[] = []
+    for (let frame = 0; frame < 60_000 && state.phase !== 'won'; frame += 1) {
+      const result = stepGloamwoodDefence(state, 1 / 60, { alive, total: alive })
+      state = result.state
+      if (result.releaseBoss) {
+        bosses.push(result.releaseBoss)
+        orderWithinWave.push(`boss-${state.wave}`)
+      }
+      if (result.release.length > 0) orderWithinWave.push(`escort-${state.wave}`)
+      alive += result.release.length + (result.releaseBoss ? 1 : 0)
+      for (const event of result.events) if (event.type === 'wave-started') alive = 0
+      if (state.phase === 'holding') alive = 0
+    }
+    expect(bosses).toEqual(['bladeshell', 'cliff-maw', 'source-root', 'thornheart-warden'])
+    // On each boss wave the boss must be the first thing out, or it arrives
+    // buried in its own escort.
+    for (const wave of [3, 6, 9, 12]) {
+      const first = orderWithinWave.find((entry) => entry.endsWith(`-${wave}`))
+      expect(first, `wave ${wave}`).toBe(`boss-${wave}`)
+    }
+  })
+
+  it('releases each boss exactly once', () => {
+    let state = createGloamwoodDefenceState()
+    let alive = 0
+    const counts = new Map<string, number>()
+    for (let frame = 0; frame < 60_000 && state.phase !== 'won'; frame += 1) {
+      const result = stepGloamwoodDefence(state, 1 / 60, { alive, total: alive })
+      state = result.state
+      if (result.releaseBoss) counts.set(result.releaseBoss, (counts.get(result.releaseBoss) ?? 0) + 1)
+      alive += result.release.length + (result.releaseBoss ? 1 : 0)
+      for (const event of result.events) if (event.type === 'wave-started') alive = 0
+      if (state.phase === 'holding') alive = 0
+    }
+    expect([...counts.values()]).toEqual([1, 1, 1, 1])
+  })
+
+  it('builds a boss with a body, a tier and health that escalates', () => {
+    const health = (['bladeshell', 'cliff-maw', 'source-root', 'thornheart-warden'] as const)
+      .map((boss) => GLOAMWOOD_DEFENCE_BOSSES[boss].health)
+    expect(health).toEqual([...health].sort((a, b) => a - b))
+    const prey = createGloamwoodDefenceBossPrey('thornheart-warden', 0)
+    // The tier is what stops the shell family's frontal mitigation applying.
+    expect(prey.tier).toBe('boss')
+    expect(prey.maxHealth).toBe(GLOAMWOOD_DEFENCE_BOSSES['thornheart-warden'].health)
+    expect(prey.bodyRadius).toBe(GLOAMWOOD_DEFENCE_BOSSES['thornheart-warden'].footprintRadius)
+    // Its id has to survive the round trip that `bodyFor` reads it back through.
+    expect(prey.id).toBe('defence-boss-thornheart-warden')
+    expect(prey.id.replace('defence-boss-', '')).toBe('thornheart-warden')
+  })
+
+  it('outclasses an ordinary creature by a wide margin', () => {
+    const ordinary = createGloamwoodDefencePrey('shell', 0)
+    for (const boss of Object.values(GLOAMWOOD_DEFENCE_BOSSES)) {
+      expect(boss.health).toBeGreaterThan(ordinary.maxHealth * 3)
+    }
   })
 })

@@ -3777,6 +3777,27 @@ class Gloamwood3DHunt {
           { x: this.playerRoot.position.x, z: this.playerRoot.position.z },
         )
         this.combatMessage = t('hud.msg.waveStart', { wave: event.wave, hint: this.waveHint(event.wave) })
+        this.ensureUpcomingDefenceBossBody()
+        continue
+      }
+      if (event.type === 'defence-altar-damaged') {
+        // The one number this mode is lost by, said out loud every time it
+        // moves. A player who never sees the altar take a hit cannot learn that
+        // letting something past is what costs them the run.
+        this.combatMessage = t('hud.msg.altarStruck', { remaining: event.remaining, max: event.max })
+        this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.22)
+        // The same cue an enemy landing on the player gets: on this map the
+        // altar is the second thing that can be hurt, and the player has to
+        // hear it happen behind them.
+        this.playSound('enemy-hit-player')
+        continue
+      }
+      if (event.type === 'defence-run-won') {
+        this.completeRunVictory()
+        continue
+      }
+      if (event.type === 'defence-run-lost') {
+        this.completeRunDefeat(t('hud.msg.altarFell'))
         continue
       }
       if (event.type === 'wave-cleared') {
@@ -4083,6 +4104,32 @@ class Gloamwood3DHunt {
       },
       weather: valley.weather,
     }
+  }
+
+  /**
+   * Fetch the next altar-defence boss's body before that boss walks.
+   *
+   * `loadModelledPrey` skips boss-tier creatures on purpose - that is Goal 15E,
+   * which stopped the opening scene downloading every 4-7 MB boss GLB - so
+   * without this the Warden came down the road wearing the Carapace family's
+   * primitive fallback.
+   *
+   * Called when a wave starts, which gives the fetch a whole wave of head
+   * start, and from the review hook that skips waves, because a skip does not
+   * fire the event and checking a boss body by skipping to it is exactly what
+   * that hook is for.
+   *
+   * Reported rather than voided: a body that failed leaves the boss in its
+   * fallback, which looks identical to the feature never having been wired up.
+   */
+  private ensureUpcomingDefenceBossBody() {
+    if (this.map.id !== 'defence') return
+    const upcoming = (this.map as { upcomingBossBody?: () => GloamwoodModelledPreyConfig | undefined })
+      .upcomingBossBody?.()
+    if (!upcoming) return
+    this.ensureModelledPreyTemplate(upcoming).catch((error) => {
+      this.preyModelError = `Primitive fallback: ${upcoming.id} (${error instanceof Error ? error.message : String(error)})`
+    })
   }
 
   private async loadModelledPrey() {
@@ -6609,7 +6656,7 @@ class Gloamwood3DHunt {
     const params = new URLSearchParams(window.location.search)
     const debugSkip = params.get('evolutionGate') === '1' || params.get('bossGate') === '1'
     const pace = classifyGloamwoodRunPace(elapsedSeconds, debugSkip)
-    const valleyBuild = this.map.hasNest ? '' : [
+    const valleyBuild = this.map.hasNest || this.map.id === 'defence' ? '' : [
       '<section class="g3d-result-story">',
       `<strong>${escapeGloamwoodHtml(t('result.valleyBuild'))}</strong>`,
       `<div><b>${escapeGloamwoodHtml(t('result.valleyGenes'))}</b><span>${escapeGloamwoodHtml([
@@ -6629,10 +6676,16 @@ class Gloamwood3DHunt {
       '<div class="g3d-result-panel">',
       `<span>${victory ? t('result.victory') : t('result.defeat')}</span>`,
       // The lead names what beat you. On the valley it named the Gloamwood's
-      // warden, a creature on the other map.
-      `<h1>${victory
-        ? t(this.map.hasNest ? 'result.victoryLead' : 'result.valleyVictoryLead')
-        : t(this.map.hasNest ? 'result.defeatLead' : 'result.valleyDefeatLead')}</h1>`,
+      // warden, a creature on the other map - and with a third map the same
+      // two-way split sent the altar defence's endings out under the valley's
+      // river copy, which is the same defect one map further on.
+      `<h1>${t(
+        this.map.id === 'defence'
+          ? (victory ? 'result.defenceVictoryLead' : 'result.defenceDefeatLead')
+          : this.map.hasNest
+            ? (victory ? 'result.victoryLead' : 'result.defeatLead')
+            : (victory ? 'result.valleyVictoryLead' : 'result.valleyDefeatLead'),
+      )}</h1>`,
       `<p>${reason}</p>`,
       ...(gloamwoodRunPaceVisible(window.location.search)
         ? [`<aside data-pace="${pace.pace}"><strong>${pace.label}</strong><span>${pace.detail}</span></aside>`]
@@ -6646,7 +6699,18 @@ class Gloamwood3DHunt {
       // the player never met - while the things they actually earned went
       // unmentioned: how far up the road they got, what the biomass bought,
       // how much of the milestone track they opened.
-      ...(this.map.hasNest
+      ...(this.map.id === 'defence'
+        ? (() => {
+          const run = (this.map as { defenceRun?: () => GloamwoodDefenceState }).defenceRun?.()
+          // What this run was actually about: how far into the twelve you got,
+          // and what was left of the thing you were holding.
+          return [
+            `<div><dt>${t('result.defenceWave')}</dt><dd>${run?.wave ?? 0}/${GLOAMWOOD_DEFENCE_RUN.waves}</dd></div>`,
+            `<div><dt>${t('result.defenceAltar')}</dt><dd>${run?.altarHealth ?? 0}/${run?.altarMaxHealth ?? 0}</dd></div>`,
+            `<div><dt>${t('hud.biomass')}</dt><dd>${this.nestState.biomass}</dd></div>`,
+          ]
+        })()
+        : this.map.hasNest
         ? [`<div><dt>Boss</dt><dd>${this.bossState.health}/${this.bossState.maxHealth}</dd></div>`]
         : [
           `<div><dt>${t('result.reached')}</dt><dd>${escapeGloamwoodHtml(this.currentRegionName())}</dd></div>`,
@@ -6658,7 +6722,9 @@ class Gloamwood3DHunt {
       // What the run left behind. Checked against the deployed build, storage
       // held nothing at all - a player who died had no reason to open the page
       // again, which is the first thing a public listing needs.
-      ...(this.map.hasNest ? [] : (() => {
+      // Regions and valley boss slots, neither of which this mode has. It keeps
+      // its own progress in the rows above.
+      ...(this.map.hasNest || this.map.id === 'defence' ? [] : (() => {
         const { record, gains } = this.recordFinishedRun()
         const deepest = GLOAMWOOD_VALLEY.regions[record.deepestRegion]
         return [
@@ -6878,6 +6944,39 @@ class Gloamwood3DHunt {
         mutationsHeld: () => [...this.mutationState.taken],
         // What actually happened, and what looks wrong about it. Paste the
         // report into the conversation instead of describing the symptom.
+        // Altar defence review. Both of this mode's endings are minutes from the
+        // start, so playing to them is not a way to check they fire.
+        defenceDamageAltar: (damage: number) => {
+          const map = this.map as { defenceDamageAltar?: (damage: number) => number }
+          return map.defenceDamageAltar?.(damage) ?? null
+        },
+        /**
+         * Empty the field, so a wave clears and the run can be driven to its
+         * end. Goes through the same death the player's own kills produce -
+         * a hook that set the phase directly would not be exercising the path
+         * that decides whether a wave is over.
+         */
+        defenceClearField: () => {
+          let cleared = 0
+          this.nestState = {
+            ...this.nestState,
+            prey: this.nestState.prey.map((prey) => {
+              if (prey.phase === 'dead') return prey
+              cleared += 1
+              return { ...prey, health: 0, phase: 'dead' as const, phaseElapsed: 0 }
+            }),
+          }
+          this.syncPreyVisuals()
+          return cleared
+        },
+        defenceSkipToWave: (wave: number) => {
+          const map = this.map as { defenceSkipToWave?: (wave: number) => number }
+          const skipped = map.defenceSkipToWave?.(wave) ?? null
+          // A skip does not fire `wave-started`, and checking a boss body by
+          // skipping to its wave is exactly what this hook is for.
+          this.ensureUpcomingDefenceBossBody()
+          return skipped
+        },
         sessionReport: () => summariseGloamwoodSession(this.sessionLog.all(), GLOAMWOOD_ARENA_PLAYER_RADIUS),
         sessionDump: () => JSON.stringify(this.sessionLog.all()),
       }

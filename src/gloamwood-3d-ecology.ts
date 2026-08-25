@@ -111,6 +111,13 @@ export type GloamwoodNestEvent =
   | { type: 'valley-nest-entered'; nestId: string; waves: number }
   | { type: 'valley-nest-wave'; nestId: string; wave: number; waves: number }
   | { type: 'valley-nest-cleared'; nestId: string }
+  // The altar defence mode ends its own run. Separate variants rather than
+  // reusing the nest's, for the same reason the valley's are separate: the
+  // runtime answers `nest-cleared` by opening the Gloamwood's evolution gate,
+  // and this mode's waves must not.
+  | { type: 'defence-altar-damaged'; damage: number; remaining: number; max: number }
+  | { type: 'defence-run-won' }
+  | { type: 'defence-run-lost' }
   /**
    * A boss crossed half health and turned.
    *

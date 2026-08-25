@@ -182,6 +182,8 @@ export interface GloamwoodDefenceState {
   altarMaxHealth: number
   /** Creatures that reached the altar and are hitting it, by id. */
   breached: readonly string[]
+  /** Whether this wave's boss has already come through. */
+  bossReleased: boolean
   spawnSequence: number
 }
 
@@ -202,6 +204,7 @@ export function createGloamwoodDefenceState(): GloamwoodDefenceState {
     altarHealth: GLOAMWOOD_DEFENCE_RUN.altarHealth,
     altarMaxHealth: GLOAMWOOD_DEFENCE_RUN.altarHealth,
     breached: [],
+    bossReleased: false,
     spawnSequence: 0,
   }
 }
@@ -249,6 +252,53 @@ export function gloamwoodDefenceSpeedMultiplier(
   return toAltar > altar.radius + 4 ? GLOAMWOOD_DEFENCE_RUN.marchSpeedMultiplier : 1
 }
 
+/**
+ * What each boss is, as a creature.
+ *
+ * Health rather than damage does the escalation. A boss that also hit harder
+ * would be two variables moving at once across four fights, and the one the
+ * player reads is how long it takes to bring down.
+ *
+ * All four are typed `shell`, the slow heavy family, because that is the shape
+ * every one of these bodies has and because the family's frontal mitigation is
+ * explicitly not applied to boss-tier creatures - `gloamwoodPreyGuardsItsFront`
+ * reads the tier for exactly that reason.
+ */
+export const GLOAMWOOD_DEFENCE_BOSSES: Readonly<Record<GloamwoodDefenceBossId, {
+  bodyId: string
+  health: number
+  footprintRadius: number
+}>> = {
+  bladeshell: { bodyId: 'tide-cleaver', health: 340, footprintRadius: 3.5 },
+  'cliff-maw': { bodyId: 'cliff-maw', health: 480, footprintRadius: 2.09 },
+  'source-root': { bodyId: 'source-root', health: 620, footprintRadius: 3.9 },
+  'thornheart-warden': { bodyId: 'thornheart-warden', health: 820, footprintRadius: 2.25 },
+}
+
+export function createGloamwoodDefenceBossPrey(
+  boss: GloamwoodDefenceBossId,
+  sequence: number,
+): GloamwoodNestPrey {
+  const spec = GLOAMWOOD_DEFENCE_BOSSES[boss]
+  const at = gloamwoodDefenceSpawnPoint(sequence)
+  return {
+    id: `defence-boss-${boss}`,
+    kind: 'shell',
+    tier: 'boss',
+    phase: 'chase',
+    phaseElapsed: 0,
+    health: spec.health,
+    maxHealth: spec.health,
+    // On the spine, so the escort spreads around it rather than in front of it.
+    x: 0,
+    z: at.z,
+    facingRadians: -Math.PI / 2,
+    attackResolved: false,
+    slot: 0,
+    bodyRadius: spec.footprintRadius,
+  }
+}
+
 /** Where a creature steps through, spread across the portal's mouth. */
 export function gloamwoodDefenceSpawnPoint(sequence: number) {
   const { portal, road } = GLOAMWOOD_DEFENCE
@@ -293,16 +343,22 @@ export function stepGloamwoodDefence(
   state: GloamwoodDefenceState,
   deltaSeconds: number,
   field: { alive: number; total: number },
-): { state: GloamwoodDefenceState; events: GloamwoodDefenceEvent[]; release: GloamwoodPreyKind[] } {
+): {
+  state: GloamwoodDefenceState
+  events: GloamwoodDefenceEvent[]
+  release: GloamwoodPreyKind[]
+  releaseBoss?: GloamwoodDefenceBossId
+} {
   const delta = Math.max(0, Math.min(0.05, deltaSeconds))
   const events: GloamwoodDefenceEvent[] = []
   const release: GloamwoodPreyKind[] = []
+  let releaseBoss: GloamwoodDefenceBossId | undefined
   if (state.phase === 'won' || state.phase === 'lost') return { state, events, release }
 
   let next = { ...state, phaseElapsed: state.phaseElapsed + delta }
 
   if (next.phase === 'ready') {
-    next = { ...next, phase: 'spawning', wave: 1, phaseElapsed: 0, released: 0 }
+    next = { ...next, phase: 'spawning', wave: 1, phaseElapsed: 0, released: 0, bossReleased: false }
     const wave = gloamwoodDefenceWave(1)
     events.push({ type: 'wave-started', wave: 1, boss: wave?.boss })
     return { state: next, events, release }
@@ -311,7 +367,7 @@ export function stepGloamwoodDefence(
   if (next.phase === 'intermission') {
     if (next.phaseElapsed < GLOAMWOOD_DEFENCE_RUN.intermissionSeconds) return { state: next, events, release }
     const wave = next.wave + 1
-    next = { ...next, phase: 'spawning', wave, phaseElapsed: 0, released: 0 }
+    next = { ...next, phase: 'spawning', wave, phaseElapsed: 0, released: 0, bossReleased: false }
     events.push({ type: 'wave-started', wave, boss: gloamwoodDefenceWave(wave)?.boss })
     return { state: next, events, release }
   }
@@ -321,6 +377,13 @@ export function stepGloamwoodDefence(
     if (!wave) return { state: { ...next, phase: 'holding' }, events, release }
     // Release on the clock, capped by how many are already out. The cap is what
     // keeps a late wave from putting thirty bodies on one road.
+    // The boss comes through first and on its own beat, so it leads its escort
+    // down the road rather than arriving buried in it.
+    if (wave.boss && !next.bossReleased) {
+      next = { ...next, bossReleased: true, spawnSequence: next.spawnSequence + 1 }
+      releaseBoss = wave.boss
+      return { state: next, events, release, releaseBoss }
+    }
     const due = Math.min(
       wave.kinds.length,
       Math.floor(next.phaseElapsed / wave.spacingSeconds) + 1,
@@ -332,7 +395,7 @@ export function stepGloamwoodDefence(
     }
     next = { ...next, released, spawnSequence: next.spawnSequence + release.length }
     if (released >= wave.kinds.length) next = { ...next, phase: 'holding', phaseElapsed: 0 }
-    return { state: next, events, release }
+    return { state: next, events, release, releaseBoss }
   }
 
   // holding: the wave is out, and the run advances when the field is clear.
