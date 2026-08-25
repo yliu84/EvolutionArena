@@ -13,6 +13,8 @@ import {
 } from './gloamwood-render-quality'
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import { gloamwoodMapFromEntry } from './entry-routing'
+import { createGloamwoodDefenceMap } from './gloamwood-defence-map'
+import { buildGloamwoodDefenceScene } from './gloamwood-defence-scene'
 
 import { quality3DBodyStageForFamily, resolveQuality3DGLBAsset, type Quality3DFormFamily } from './quality-3d-glb-assets'
 import { STONE_PANGOLIN_PRESENTATION } from './stone-pangolin-character-presentation'
@@ -822,6 +824,8 @@ interface DebugState {
     undergrowthInstances: number
     trees: number
     rocks: number
+    defenceProps: number
+    defenceGroundVertices: number
     shrinePieces: number
     collisionObstacles: number
     weather: string
@@ -909,6 +913,7 @@ class Gloamwood3DHunt {
   private readonly nestRoot = new THREE.Group()
   private readonly preyVisuals = new Map<string, PreyVisual>()
   private preyModelError?: string
+  private defenceScene?: Awaited<ReturnType<typeof buildGloamwoodDefenceScene>>
   private wardenBodyRequested = false
   private bossModelError?: string
   /**
@@ -926,7 +931,9 @@ class Gloamwood3DHunt {
    * player, the combat, the mutations, the HUD and the session log are the same
    * on either one.
    */
-  private readonly map: GloamwoodMapContract = gloamwoodMapFromEntry() === 'valley'
+  private readonly map: GloamwoodMapContract = gloamwoodMapFromEntry() === 'defence'
+    ? createGloamwoodDefenceMap(async () => { await this.buildDefenceScenery() })
+    : gloamwoodMapFromEntry() === 'valley'
     ? createGloamwoodValleyMap(
       Number(new URLSearchParams(window.location.search).get('mapSeed') ?? 0) || 0x5a11e,
       async () => { await this.buildValleyScenery() },
@@ -4002,6 +4009,28 @@ class Gloamwood3DHunt {
    * the same seven plants and three rocks the Gloamwood uses, spread over 1590
    * units instead of 58.
    */
+  /**
+   * The defence map's scenery.
+   *
+   * Far smaller than the valley's: one ground mesh and one instanced draw per
+   * kit piece, no cells and no streaming, because the whole map is 52 x 68.
+   * Lighting is built here for the same reason the Gloamwood builds its own -
+   * run unconditionally, the rigs stack.
+   */
+  private async buildDefenceScenery() {
+    this.createLighting()
+    const params = new URLSearchParams(window.location.search)
+    const seed = Number(params.get('mapSeed') ?? 0) || 0x5a11e
+    const scene = await buildGloamwoodDefenceScene({
+      seed,
+      anisotropy: Math.min(8, this.renderer.capabilities.getMaxAnisotropy()),
+    })
+    this.scene.add(scene.root)
+    this.scene.background = new THREE.Color(0x131c14)
+    this.scene.fog = new THREE.FogExp2(0x18251a, 0.017)
+    this.defenceScene = scene
+  }
+
   private async buildValleyScenery() {
     const params = new URLSearchParams(window.location.search)
     const seed = Number(params.get('mapSeed') ?? 0) || 0x5a11e
@@ -8066,6 +8095,12 @@ class Gloamwood3DHunt {
         undergrowthInstances: this.undergrowthInstances,
         trees: this.treeCount,
         rocks: this.rockCount,
+        // Reported rather than eyeballed. On the defence map the promise the
+        // layout makes is that the fighting ground is clear, and a scatter that
+        // silently placed nothing at all looks identical in a screenshot to one
+        // that placed it correctly outside the bowl.
+        defenceProps: this.defenceScene?.stats.props ?? 0,
+        defenceGroundVertices: this.defenceScene?.stats.groundVertices ?? 0,
         shrinePieces: this.shrinePieces,
         collisionObstacles: this.obstacles.length,
         weather: this.valley?.weather.id ?? 'gloamwood-static',

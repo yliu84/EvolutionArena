@@ -17,8 +17,12 @@ export function isGloamwood3DEntry(_search = window.location.search) {
  */
 export function gloamwoodMapFromEntry(search = window.location.search) {
   // The river valley is now the completed playtest route. The compact
-  // Gloamwood nest remains useful as a focused combat lab, but it must be
-  // requested explicitly; a new player should never land in a retired sample
-  // and mistake it for the game.
-  return new URLSearchParams(search).get('map') === 'gloamwood' ? 'gloamwood' : 'valley'
+  // Gloamwood nest remains useful as a focused combat lab, and the altar
+  // defence map is under construction; both must be requested explicitly. A new
+  // player should never land in a retired sample or a half-built mode and
+  // mistake either for the game.
+  const requested = new URLSearchParams(search).get('map')
+  if (requested === 'gloamwood') return 'gloamwood'
+  if (requested === 'defence') return 'defence'
+  return 'valley'
 }

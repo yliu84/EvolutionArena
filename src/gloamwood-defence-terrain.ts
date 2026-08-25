@@ -19,13 +19,17 @@
  * used. Against the south wall, the bowl itself becomes the defended frontage:
  * 20 units of ground that anything has to cross, and the player has to hold.
  *
- * **The road is long on purpose.** At the shipped prey speeds a 31-unit march
- * is 8.5s for the Fang, 10.7s for the Swarm and 21s for the Carapace. Without
- * it a wave arrives as a single mob on top of the player. With it, a wave
- * arrives strung out by how fast its members walk, which is a difficulty
+ * **The road is long on purpose.** It is 34 units, which at the shipped prey
+ * speeds is 9.3s for the Fang, 11.7s for the Swarm and 23s for the Carapace.
+ * Without it a wave arrives as a single mob on top of the player. With it, a
+ * wave arrives strung out by how fast its members walk, which is a difficulty
  * texture nobody had to author.
  *
- * The Carapace's 21s is too long to stand and watch, which is why the mode is
+ * Do not confuse that with the 54 units from the portal to the altar. The road
+ * is how long a wave takes to *arrive*; the march is how far it would get if
+ * nothing ever stopped it, and an early estimate quoted one as the other.
+ *
+ * The Carapace's 23s is too long to stand and watch, which is why the mode is
  * expected to march creatures faster than they fight. That belongs to the wave
  * director rather than to the ground, and is not decided here.
  */
@@ -73,6 +77,18 @@ export const GLOAMWOOD_DEFENCE = {
   /** The bank outside the walkable ground, which is what reads as a wall. */
   wallHeight: 3.2,
   wallRampWidth: 4,
+  /**
+   * Where the lens sits relative to the player. Magnitude 20.08, the same as
+   * the Gloamwood's and the valley's - the distance is the game's framing and
+   * only the bearing belongs to the map.
+   *
+   * It lives here rather than only in the map contract because the scatter
+   * needs it too. The altar is against the south wall, so a camera behind the
+   * player is *inside* that wall, and the first build of this map framed a
+   * screenful of bark. Which ground the lens flies through is a fact about the
+   * layout, so both readers take it from one place.
+   */
+  cameraOffset: { x: 5, y: 11.8, z: 15.46 },
 } as const
 
 const ARENA = GLOAMWOOD_DEFENCE.arena
@@ -97,13 +113,6 @@ export function gloamwoodDefenceWalkable(x: number, z: number) {
 }
 
 /**
- * The nearest point that can be stood on, and how far away it is.
- *
- * Both `confine` and `height` need this: where the floor is and how high it is
- * are different questions, and this project has already shipped a defect from
- * answering them in two places that disagreed.
- */
-/**
  * Projected points land a hair inside the edge rather than exactly on it.
  *
  * Projecting onto the boundary itself puts the result at radius exactly, where
@@ -113,6 +122,13 @@ export function gloamwoodDefenceWalkable(x: number, z: number) {
  */
 const EDGE_INSET = 0.02
 
+/**
+ * The nearest point that can be stood on, and how far away it is.
+ *
+ * Both `confine` and `height` need this: where the floor is and how high it is
+ * are different questions, and this project has already shipped a defect from
+ * answering them in two places that disagreed.
+ */
 export function gloamwoodDefenceNearestWalkable(x: number, z: number) {
   if (gloamwoodDefenceWalkable(x, z)) return { x, z, distance: 0 }
 
@@ -177,6 +193,19 @@ export function gloamwoodDefenceHeight(x: number, z: number) {
  */
 export function gloamwoodDefenceInterceptionDepth() {
   return GLOAMWOOD_DEFENCE.altar.z - ROAD.endZ
+}
+
+/**
+ * How far this point is from any position the camera can occupy.
+ *
+ * The camera is the player's position plus a fixed offset and the player is
+ * confined to walkable ground, so the set of camera positions is the walkable
+ * region translated by that offset. Anything tall standing in it ends up
+ * between the lens and the fight.
+ */
+export function gloamwoodDefenceCameraLaneDistance(x: number, z: number) {
+  const { cameraOffset } = GLOAMWOOD_DEFENCE
+  return gloamwoodDefenceNearestWalkable(x - cameraOffset.x, z - cameraOffset.z).distance
 }
 
 /** The march, from the portal to the altar. Used to size wave timing. */

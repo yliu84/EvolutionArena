@@ -26,7 +26,7 @@ import {
   type GloamwoodPlayerPresence,
 } from './gloamwood-3d-ecology'
 
-export type GloamwoodMapId = 'gloamwood' | 'valley'
+export type GloamwoodMapId = 'gloamwood' | 'valley' | 'defence'
 
 export interface GloamwoodMapBounds {
   /** Rectangular clamp, in world units. Used where a map has no better rule. */
