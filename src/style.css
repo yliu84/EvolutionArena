@@ -2044,3 +2044,68 @@ body.is-gloamwood-3d * {
 .gloamwood-run-result aside[data-perf] strong { color: #d9c489; font-size: 10px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
 .gloamwood-run-result aside[data-perf] span { color: #b6c3b2; font-size: 11px; font-variant-numeric: tabular-nums; }
 .gloamwood-run-result aside[data-perf="poor"] span { color: #f0a58c; }
+
+/* Achievements. The list lives on the picker because that is the one screen
+   every player passes through, and a locked entry is the only advertisement
+   this game has for its own depth. */
+.g3d-mode-panel > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.g3d-mode-trophies {
+  padding: 7px 12px;
+  border: 1px solid rgba(221, 195, 119, .34);
+  border-radius: 999px;
+  color: #e6d3a0;
+  font: inherit;
+  font-size: 11px;
+  background: rgba(106, 84, 39, .22);
+  cursor: pointer;
+}
+.g3d-mode-trophies:hover, .g3d-mode-trophies:focus-visible { border-color: rgba(239, 200, 105, .8); outline: none; }
+.g3d-mode-trophies b { color: #efd07d; }
+.g3d-trophy-panel[hidden] { display: none; }
+.g3d-trophy-panel {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: max(20px, env(safe-area-inset-top)) 20px 20px;
+  background: rgba(3, 9, 6, .96);
+}
+.g3d-trophy-panel header { display: flex; align-items: center; justify-content: space-between; width: min(880px, 100%); margin: 0 auto; }
+.g3d-trophy-panel h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+.g3d-trophy-panel header button {
+  min-height: 38px;
+  padding: 6px 14px;
+  border: 1px solid rgba(221, 195, 119, .42);
+  border-radius: 5px;
+  color: #eddfb7;
+  font: inherit;
+  background: rgba(106, 84, 39, .28);
+  cursor: pointer;
+}
+.g3d-trophy-panel ul { display: grid; gap: 8px; width: min(880px, 100%); margin: 0 auto; padding: 0; overflow-y: auto; list-style: none; }
+.g3d-trophy-panel li {
+  display: grid;
+  gap: 2px;
+  padding: 11px 13px;
+  border: 1px solid rgba(208, 195, 145, .16);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: rgba(12, 24, 17, .8);
+}
+/* Locked entries stay legible rather than being blurred out: the text is the
+   only place the game says what else it can do. */
+.g3d-trophy-panel li[data-unlocked="false"] { border-left-color: rgba(208, 195, 145, .2); opacity: .72; }
+.g3d-trophy-panel li[data-unlocked="true"] { border-left-color: #efd07d; background: rgba(38, 44, 22, .8); }
+.g3d-trophy-panel li[data-mode="valley"] span { color: #8fa575; }
+.g3d-trophy-panel li[data-mode="defence"] span { color: #64cbb0; }
+.g3d-trophy-panel li[data-mode="any"] span { color: #a89b78; }
+.g3d-trophy-panel li span { font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.g3d-trophy-panel li strong { font-size: 15px; }
+.g3d-trophy-panel li em { color: #9fae9d; font-size: 11.5px; font-style: normal; }
+.g3d-trophy-panel li i { margin-top: 4px; color: #efd07d; font-size: 10px; font-style: normal; font-variant-numeric: tabular-nums; }
+
+/* Newly unlocked, on the result screen. */
+.gloamwood-run-result aside[data-earned] { display: grid; gap: 3px; margin: 10px 0 0; padding: 9px 11px; border-left: 2px solid #efd07d; border-radius: 3px; background: rgba(38, 44, 22, .6); }
+.gloamwood-run-result aside[data-earned] strong { color: #efd07d; font-size: 10px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+.gloamwood-run-result aside[data-earned] span { color: #e7ddba; font-size: 12px; }

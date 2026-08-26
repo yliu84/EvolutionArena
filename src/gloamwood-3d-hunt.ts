@@ -16,6 +16,12 @@ import {
 } from './gloamwood-render-quality'
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import { gloamwoodMapFromEntry, type GloamwoodMapId } from './entry-routing'
+import {
+  applyGloamwoodRun,
+  readGloamwoodAchievements,
+  writeGloamwoodAchievements,
+  type GloamwoodRunSummary,
+} from './gloamwood-achievements'
 import { createGloamwoodDefenceMap } from './gloamwood-defence-map'
 import {
   GLOAMWOOD_DEFENCE_RUN,
@@ -1192,6 +1198,8 @@ class Gloamwood3DHunt {
    */
   private livesRemaining: number
   private resultOverlay?: HTMLElement
+  /** Ids unlocked by the run that just ended, for the result panel. */
+  private earnedThisRun: string[] = []
   /**
    * Modifiers granted by the one form evolution. Mutations stack on top of
    * these rather than replacing them, so both are folded in one place -
@@ -7307,7 +7315,36 @@ class Gloamwood3DHunt {
     return merged
   }
 
+  /**
+   * What this run leaves behind for the achievement layer.
+   *
+   * Read off the same values the result screen is about to print, so the two
+   * can never disagree - an achievement that fires on a number the player is
+   * not being shown is a bug report nobody can reproduce.
+   */
+  private runSummary(victory: boolean): GloamwoodRunSummary {
+    const defence = (this.map as { defenceRun?: () => GloamwoodDefenceState }).defenceRun?.()
+    return {
+      map: this.map.id === 'defence' ? 'defence' : this.map.hasNest ? 'gloamwood' : 'valley',
+      victory,
+      seconds: Math.round(this.runElapsedSeconds()),
+      kills: this.nestState.kills,
+      biomass: this.nestState.biomass,
+      mutations: this.mutationState.taken.length,
+      evolutions: this.evolutionsTaken,
+      livesLost: Math.max(0, this.map.lives - this.livesRemaining),
+      wave: defence?.wave ?? 0,
+      altarRemaining: defence?.altarHealth ?? 0,
+      altarMax: defence?.altarMaxHealth ?? 0,
+    }
+  }
+
   private showRunResult(victory: boolean, reason: string) {
+    // Folded before the overlay is built, so the panel can show what this run
+    // just earned rather than making the player go and look.
+    const outcome = applyGloamwoodRun(this.runSummary(victory), readGloamwoodAchievements())
+    writeGloamwoodAchievements(outcome.progress)
+    this.earnedThisRun = outcome.earned
     if (!this.resultOverlay) {
       const overlay = document.createElement('section')
       overlay.className = 'gloamwood-run-result'
@@ -7369,6 +7406,13 @@ class Gloamwood3DHunt {
             }) + (run.stalls > 0 ? t('result.perfStalls', { stalls: run.stalls }) : ''))}</span>`
             + '</aside>'
         })()]
+        : []),
+      ...(this.earnedThisRun.length > 0
+        ? [`<aside data-earned="true"><strong>${escapeGloamwoodHtml(t('result.achievements'))}</strong>`
+          + this.earnedThisRun
+            .map((id) => `<span>${escapeGloamwoodHtml(t(`achievement.${id}.name` as 'achievement.altar-held.name'))}</span>`)
+            .join('')
+          + '</aside>']
         : []),
       '<dl>',
       `<div><dt>${t('result.time')}</dt><dd>${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, '0')}</dd></div>`,

@@ -1,4 +1,10 @@
 import { t } from './i18n'
+import {
+  GLOAMWOOD_ACHIEVEMENTS,
+  gloamwoodAchievementsUnlocked,
+  isGloamwoodAchievementUnlocked,
+  readGloamwoodAchievements,
+} from './gloamwood-achievements'
 
 /**
  * The first screen anyone sees, and the front door for both modes.
@@ -69,6 +75,41 @@ function card(mode: GloamwoodMode, key: string, remembered: boolean) {
 }
 
 /**
+ * The list of achievements, folded into the picker rather than given a screen.
+ *
+ * This is the one screen every player passes through, and a locked entry is the
+ * only advertisement this game has for its own depth - somebody who has cleared
+ * the valley twice has no other way to find out that the altar can be held
+ * without the thing ever being touched.
+ */
+function achievementPanel(progress: Record<string, number>) {
+  const rows = GLOAMWOOD_ACHIEVEMENTS.map((entry) => {
+    const held = progress[entry.id] ?? 0
+    const unlocked = isGloamwoodAchievementUnlocked(entry.id, progress)
+    // Shown for anything counted rather than merely done: "60 of 100" is a
+    // reason to play again and "not yet" is not.
+    const measure = !unlocked && entry.target > 1 && held > 0
+      ? `<i>${held} / ${entry.target}</i>`
+      : unlocked ? `<i>${escapeHtml(t('achievement.earned'))}</i>` : ''
+    return [
+      `<li data-unlocked="${unlocked}" data-mode="${entry.mode}">`,
+      `<span>${escapeHtml(t(`achievement.mode.${entry.mode}`))}</span>`,
+      `<strong>${escapeHtml(t(`achievement.${entry.id}.name` as 'achievement.altar-held.name'))}</strong>`,
+      `<em>${escapeHtml(t(`achievement.${entry.id}.detail` as 'achievement.altar-held.detail'))}</em>`,
+      measure,
+      '</li>',
+    ].join('')
+  }).join('')
+  return [
+    '<div class="g3d-trophy-panel" hidden>',
+    `<header><h2>${escapeHtml(t('achievement.title'))}</h2>`,
+    `<button type="button" data-close-achievements>${escapeHtml(t('achievement.close'))}</button></header>`,
+    `<ul>${rows}</ul>`,
+    '</div>',
+  ].join('')
+}
+
+/**
  * Shows the picker and resolves with what was chosen.
  *
  * Resolves once and then tears itself down, so the caller can simply await it
@@ -79,6 +120,7 @@ function card(mode: GloamwoodMode, key: string, remembered: boolean) {
 export function presentGloamwoodModeSelect(
   container: HTMLElement,
   remembered: GloamwoodMode | null = rememberedGloamwoodMode(),
+  progress = readGloamwoodAchievements(),
 ): Promise<GloamwoodMode> {
   const overlay = document.createElement('section')
   overlay.className = 'gloamwood-mode-select'
@@ -96,8 +138,16 @@ export function presentGloamwoodModeSelect(
     card('valley', '1', remembered === 'valley'),
     card('defence', '2', remembered === 'defence'),
     '</div>',
-    `<footer><small>${escapeHtml(t('mode.hint'))}</small></footer>`,
+    '<footer>',
+    `<small>${escapeHtml(t('mode.hint'))}</small>`,
+    `<button class="g3d-mode-trophies" type="button" data-open-achievements>`
+      + `${escapeHtml(t('achievement.title'))} <b>${escapeHtml(t('achievement.count', {
+        unlocked: gloamwoodAchievementsUnlocked(progress).length,
+        total: GLOAMWOOD_ACHIEVEMENTS.length,
+      }))}</b></button>`,
+    '</footer>',
     '</div>',
+    achievementPanel(progress),
   ].join('')
   container.append(overlay)
 
@@ -120,6 +170,12 @@ export function presentGloamwoodModeSelect(
       resolve(mode)
     }
     const onKey = (event: KeyboardEvent) => {
+      if (event.code === 'Escape' && overlay.dataset.reading === 'true') {
+        event.preventDefault()
+        setPanel(false)
+        return
+      }
+      if (overlay.dataset.reading === 'true') return
       const byDigit = event.code === 'Digit1' ? 'valley' : event.code === 'Digit2' ? 'defence' : null
       if (!byDigit) return
       event.preventDefault()
@@ -128,6 +184,15 @@ export function presentGloamwoodModeSelect(
     for (const button of buttons) {
       button.addEventListener('click', () => choose(button.dataset.mode as GloamwoodMode))
     }
+    const panel = overlay.querySelector<HTMLElement>('.g3d-trophy-panel')
+    const setPanel = (open: boolean) => {
+      if (panel) panel.hidden = !open
+      // The digit shortcuts belong to the cards behind the panel; leaving them
+      // live would start a run out from under whoever is reading the list.
+      overlay.dataset.reading = open ? 'true' : 'false'
+    }
+    overlay.querySelector('[data-open-achievements]')?.addEventListener('click', () => setPanel(true))
+    overlay.querySelector('[data-close-achievements]')?.addEventListener('click', () => setPanel(false))
     window.addEventListener('keydown', onKey)
   })
 }

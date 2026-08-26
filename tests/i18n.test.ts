@@ -73,6 +73,7 @@ describe('MapLab 5 player-facing text is fully localised', () => {
     // The picker is the first screen anyone sees, so it is the worst possible
     // place to ship untranslated copy.
     'gloamwood-mode-select.ts',
+    'gloamwood-achievements.ts',
   ]
 
   it('holds no Han characters anywhere in the live body', () => {
