@@ -929,6 +929,44 @@ Verified by serving the relative-path build rather than trusting the archive:
 `matchedFamily`/`matchedForm` true, grounded, one canvas, no horizontal overflow,
 no console errors and about 120 FPS.
 
+## Release build — 2026-08-26 (`4aaf41b`)
+
+Packaged with `npm run package:itch`, which builds with `DEPLOY_BASE=./`, runs
+the runtime-asset audit and the itch-build check, zips `dist/` and then tests
+the zip. Archive: `release/EvolutionArenaLite-itch-alpha.zip`, 61 MB
+compressed, 76.6 MB extracted, 85 files, largest single file 7.1 MB. The audit
+resolves 80 source modules and 41 named assets; 1,238 tests across 129 files
+pass.
+
+What this build adds over the 2026-08-24 one, in the order a player meets it:
+
+- **A front door.** The game no longer boots straight into the valley. The mode
+  picker (`src/gloamwood-mode-select.ts`) is the first screen, and it is what
+  finally ships the altar defence mode - twelve waves, four bosses and both
+  endings that until now could only be reached by typing `?map=defence`.
+- **Achievements**, nine of them, and the game's first memory of anything
+  across runs beyond the chosen mode.
+- **Bloom**, with the fog compensation the valley needs (`bloomFogScale`), and
+  the emissive work that gives it something to find.
+- **A run-long frame record** behind `?perf=1`, which exists so the Goal 5
+  reading can be taken on a phone rather than inferred from a dev machine.
+
+Verified by serving the built `dist/` rather than trusting the archive: the
+picker is the front door, the defence mode launches from it, 15 GLBs serve at
+200, there are no failed requests and no console errors, and the debug API is
+correctly absent without `?debug=1`. The relative-path requirement was checked
+by reading `index.html` out of the archive itself - three references, all
+`./`-relative, zero root-absolute.
+
+Standing items, unchanged and still open:
+
+- **Shell stage-1 Meshy licence evidence is still unarchived.**
+- **The real-device 30 FPS reading is still uncollected.** The instrument for it
+  now exists and ships in this build; nobody has taken the reading yet. It is
+  more pressing than it was, because the defence map is heavier than the valley
+  (1,430 props, a 21,945-vertex ground, up to ten concurrent creatures) and is
+  now reachable by every player rather than by a hand-typed URL.
+
 **Release approved by the project owner on 2026-08-24**, who will upload the
 archive to itch.io manually. Two items were raised before that decision and the
 owner chose to proceed with both open, so they are carried here as accepted risk
