@@ -18,6 +18,14 @@ import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import { gloamwoodMapFromEntry, type GloamwoodMapId } from './entry-routing'
 import { defineGloamwoodTunable, gloamwoodTuningRequested } from './gloamwood-tuning'
 import {
+  createGloamwoodSkillState,
+  gloamwoodDashLanding,
+  gloamwoodSkillFor,
+  stepGloamwoodSkillState,
+  tryGloamwoodSkill,
+  type GloamwoodSkillState,
+} from './gloamwood-skills'
+import {
   applyGloamwoodRun,
   readGloamwoodAchievements,
   writeGloamwoodAchievements,
@@ -816,6 +824,8 @@ interface DebugState {
     targetKind: GloamwoodPreyKind | null
     comboAction: string
     skillsEnabled: false
+    skillCooldown: number
+    skillGuard: number
     lockAssist: 'stable-wave-and-attacker'
     knockbackRecoverySeconds: number
     lastKnockbackDistance: number
@@ -1102,6 +1112,9 @@ class Gloamwood3DHunt {
    */
   private bloom?: GloamwoodBloomPipeline
   private disposeTuningPanel?: () => void
+  private skillState: GloamwoodSkillState = createGloamwoodSkillState()
+  /** Spore blooms burning on the ground. Authority, not decoration. */
+  private skillZones: Array<{ x: number; z: number; radius: number; remaining: number; damagePerSecond: number; slow: number; carry: number }> = []
   /** Review-only multiplier on the skill FX gains, so they can be swept live. */
   private skillFxGainScale = 1
   private bossFx?: GloamwoodBossFxScene
@@ -3146,6 +3159,11 @@ class Gloamwood3DHunt {
       event.preventDefault()
       this.toggleEnemyLock()
     }
+    if (event.code === this.inputBindings.skill) {
+      event.preventDefault()
+      this.requestSkill()
+      return
+    }
     if (event.code === this.inputBindings.attack) {
       event.preventDefault()
       // Only the initial press arms the chain. Browsers repeat keydown while a
@@ -3326,6 +3344,8 @@ class Gloamwood3DHunt {
     this.updateValleyProgression()
     this.updateSessionLog()
     this.updateModelledBoss(delta)
+    this.skillState = stepGloamwoodSkillState(this.skillState, delta)
+    this.updateSkillZones(delta)
     this.updateHealthDecay(delta)
     this.updateMutationOffers()
     this.updateCamera(delta)
@@ -3553,6 +3573,111 @@ class Gloamwood3DHunt {
     // time the approach lands, so arriving has to start the next chain itself -
     // otherwise the player walks all the way in and then waits for a second press.
     if (!this.attackState.action) this.requestPrimaryAttack()
+  }
+
+  /**
+   * The line's own verb.
+   *
+   * Resolves through the same authority a basic attack does - the dash lands a
+   * blow through `damageGloamwoodNestPrey`, the bloom burns through it every
+   * tick - so a skill cannot deal damage the combat model does not know about,
+   * and turning off every effect in this file changes nothing about what a run
+   * costs.
+   */
+  private requestSkill() {
+    if (this.paused || this.evolutionState.phase === 'choosing' || this.mutationState.offering) return
+    if (this.runPhase === 'victory' || this.runPhase === 'defeat') return
+    const target = this.bossActive() && this.bossLocked ? null : this.lockedPrey() ?? this.nearestLivePrey()
+    const distance = target
+      ? Math.hypot(target.x - this.playerRoot.position.x, target.z - this.playerRoot.position.z)
+      : Infinity
+    const attempt = tryGloamwoodSkill({
+      family: this.characterFamily,
+      state: this.skillState,
+      alive: this.playerCombat.alive,
+      hasTarget: target !== null,
+      targetDistance: distance,
+    })
+    this.skillState = attempt.state
+    if (!attempt.fired || !attempt.skill) {
+      // Said out loud. A skill that silently does nothing reads as an input the
+      // game dropped, and the player presses it harder.
+      this.combatMessage = attempt.refusal === 'cooling'
+        ? t('hud.msg.skillCooling', { seconds: Math.ceil(this.skillState.cooldownRemaining) })
+        : attempt.refusal === 'no-skill' ? t('hud.msg.skillNone')
+        : attempt.refusal === 'out-of-range' ? t('hud.msg.skillFar')
+        : attempt.refusal === 'no-target' ? t('hud.msg.skillNoTarget')
+        : this.combatMessage
+      return
+    }
+    const shape = attempt.skill.shape
+    this.playSound('evolution-select')
+    if (shape.kind === 'dash' && target) {
+      const landing = gloamwoodDashLanding(
+        this.playerRoot.position,
+        target,
+        gloamwoodPreyBodyRadius(target),
+        gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily),
+      )
+      const held = this.map.confine(landing.x, landing.z)
+      this.playerRoot.position.set(held.x, this.map.height(held.x, held.z), held.z)
+      this.target.set(held.x, 0, held.z)
+      this.lockedPreyId = target.id
+      this.snapCameraNextFrame = true
+      const hit = damageGloamwoodNestPrey(
+        this.nestState, target.id, Math.round(shape.damage * this.damageMultiplier),
+        'Pounce', { x: held.x, z: held.z }, shape.knockback,
+      )
+      this.nestState = hit.state
+      this.spawnDamageNumber(
+        new THREE.Vector3(target.x, this.map.height(target.x, target.z) + 1.4, target.z),
+        hit.effectiveDamage, hit.killed ? 'kill' : 'hit',
+      )
+      this.spawnMutationFxBurst('tail-sweep', this.lastFacing)
+      this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.3)
+    } else if (shape.kind === 'zone' && target) {
+      this.skillZones.push({
+        x: target.x, z: target.z, radius: shape.radius, remaining: shape.seconds,
+        damagePerSecond: shape.damagePerSecond, slow: shape.slow, carry: 0,
+      })
+      this.spawnMutationFxBurst(
+        'spore-preview',
+        this.lastFacing,
+        new THREE.Vector3(target.x, this.map.height(target.x, target.z), target.z),
+      )
+    } else if (shape.kind === 'guard') {
+      this.spawnMutationFxBurst('carapace', this.lastFacing)
+      this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.12)
+    }
+    this.combatMessage = t(`skill.${attempt.skill.id}.cast` as 'skill.fang-pounce.cast')
+    this.logSession({ kind: 'mutation-effect', id: attempt.skill.id, effect: 'skill-cast' })
+  }
+
+  /**
+   * Spore blooms burn on their own clock.
+   *
+   * Damage is carried between frames rather than rounded per frame: at nine a
+   * second and sixty frames, per-frame rounding would floor every tick to zero
+   * and the zone would be decoration.
+   */
+  private updateSkillZones(delta: number) {
+    if (this.skillZones.length === 0) return
+    for (const zone of this.skillZones) {
+      zone.remaining -= delta
+      zone.carry += zone.damagePerSecond * delta
+      const tick = Math.floor(zone.carry)
+      if (tick <= 0) continue
+      zone.carry -= tick
+      for (const prey of this.nestState.prey) {
+        if (prey.phase === 'dead') continue
+        if (Math.hypot(prey.x - zone.x, prey.z - zone.z) > zone.radius + gloamwoodPreyBodyRadius(prey)) continue
+        const hit = damageGloamwoodNestPrey(
+          this.nestState, prey.id, tick, 'TailSwipe', { x: zone.x, z: zone.z }, 0,
+        )
+        this.nestState = hit.state
+      }
+    }
+    this.skillZones = this.skillZones.filter((zone) => zone.remaining > 0)
   }
 
   private requestPrimaryAttack() {
@@ -6570,7 +6695,14 @@ class Gloamwood3DHunt {
    */
   private takePlayerDamage(rawDamage: number) {
     const reflect = this.mutationEffects.reflectFraction ?? 0
-    const received = gloamwoodPlayerDamageTaken(rawDamage * (1 - reflect), this.damageReduction, this.flatArmour)
+    // The shell's guard window folds in here rather than anywhere nearer the
+    // effect, so it is the same single place every other reduction is applied
+    // and a blow cannot be reduced twice by two code paths disagreeing.
+    const guard = this.skillState.guardRemaining > 0
+      ? (gloamwoodSkillFor(this.characterFamily)?.shape as { reduction?: number } | undefined)?.reduction ?? 0
+      : 0
+    const reduction = 1 - (1 - this.damageReduction) * (1 - guard)
+    const received = gloamwoodPlayerDamageTaken(rawDamage * (1 - reflect), reduction, this.flatArmour)
     if (reflect > 0) {
       this.reflectDamageToNearestPrey(Math.round(rawDamage * reflect))
       this.spawnCarapaceFeedback()
@@ -7553,6 +7685,9 @@ class Gloamwood3DHunt {
       `<header><span data-g3d-nest-title>${t('hud.nestTitle')}</span><strong data-g3d-message>${t('hud.initialMsg')}</strong></header>`,
       '<div class="g3d-combat-bars">',
       `<label>${t('hud.health')} <b data-g3d-player-health>100 / 100</b><i><em data-g3d-player-bar></em><s data-g3d-player-scar aria-hidden="true"></s></i></label>`,
+      // The skill is the one action with a clock on it, and a clock the player
+      // cannot see is a clock they press against.
+      `<label data-g3d-skill-row hidden>${t('hud.skill')} <b data-g3d-skill>—</b><i><em data-g3d-skill-bar></em></i></label>`,
       '</div>',
       // The status line belongs with the message: both answer "what is
       // happening right now", and the nest's wave count is only useful while
@@ -8636,7 +8771,7 @@ class Gloamwood3DHunt {
     if (!this.settingsPanel) return
     const labels: Record<GloamwoodInputAction, string> = {
       moveUp: t('bind.moveUp'), moveDown: t('bind.moveDown'), moveLeft: t('bind.moveLeft'), moveRight: t('bind.moveRight'),
-      lock: t('bind.lock'), attack: t('bind.attack'), pause: t('bind.pause'),
+      lock: t('bind.lock'), attack: t('bind.attack'), skill: t('bind.skill'), pause: t('bind.pause'),
     }
     for (const button of this.settingsPanel.querySelectorAll<HTMLButtonElement>('[data-g3d-bind]')) {
       const action = button.dataset.g3dBind as GloamwoodInputAction
@@ -8804,6 +8939,24 @@ class Gloamwood3DHunt {
     const playerBar = this.hud.querySelector<HTMLElement>('[data-g3d-player-bar]')
     if (playerBar) {
       playerBar.style.width = `${Math.max(0, ceiling > 0 ? this.playerCombat.health / ceiling : 0) * 100}%`
+    }
+    const skillRow = this.hud.querySelector<HTMLElement>('[data-g3d-skill-row]')
+    const skill = gloamwoodSkillFor(this.characterFamily)
+    if (skillRow) {
+      // Hidden rather than shown empty on the origin form: a row reading "no
+      // skill" for the first two minutes of every run is a row that teaches
+      // the player to stop looking at it.
+      skillRow.hidden = skill === null
+      if (skill) {
+        const cooling = this.skillState.cooldownRemaining
+        setText('[data-g3d-skill]', cooling > 0
+          ? `${t(`skill.${skill.id}.name` as 'skill.fang-pounce.name')} · ${cooling.toFixed(1)}s`
+          : `${t(`skill.${skill.id}.name` as 'skill.fang-pounce.name')} · ${t('hud.skillReady')}`)
+        const bar = this.hud.querySelector<HTMLElement>('[data-g3d-skill-bar]')
+        if (bar) bar.style.width = `${(1 - cooling / skill.cooldownSeconds) * 100}%`
+        skillRow.dataset.ready = cooling > 0 ? 'false' : 'true'
+        skillRow.dataset.guarding = this.skillState.guardRemaining > 0 ? 'true' : 'false'
+      }
     }
     const playerScar = this.hud.querySelector<HTMLElement>('[data-g3d-player-scar]')
     if (playerScar) {
@@ -8993,6 +9146,11 @@ class Gloamwood3DHunt {
         targetKind: this.lockedPrey()?.kind ?? null,
         comboAction: this.attackState.action ?? 'none',
         skillsEnabled: false,
+        // The guard window is the one skill whose effect is invisible in a
+        // screenshot - it changes a number, not a picture - so it has to be
+        // readable somewhere a review can check it.
+        skillCooldown: round(this.skillState.cooldownRemaining),
+        skillGuard: round(this.skillState.guardRemaining),
         lockAssist: 'stable-wave-and-attacker',
         knockbackRecoverySeconds: round(this.knockbackRecoverySeconds),
         lastKnockbackDistance: round(this.lastKnockbackDistance),

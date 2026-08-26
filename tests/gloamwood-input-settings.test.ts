@@ -21,7 +21,9 @@ describe('Gloamwood input bindings', () => {
     const rebound = rebindGloamwoodInput(DEFAULT_GLOAMWOOD_INPUT_BINDINGS, 'attack', 'KeyW')
     expect(rebound.attack).toBe('KeyW')
     expect(rebound.moveUp).toBe('Space')
-    expect(new Set(Object.values(rebound)).size).toBe(7)
+    // Derived, not counted: the rule is that no two actions share a key, and a
+    // hardcoded total fails for the wrong reason the moment an action is added.
+    expect(new Set(Object.values(rebound)).size).toBe(Object.keys(rebound).length)
   })
 
   it('formats keyboard codes for compact HUD and onboarding copy', () => {

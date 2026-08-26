@@ -2168,3 +2168,13 @@ body.is-gloamwood-3d * {
   background: rgba(0, 0, 0, .55);
   user-select: text;
 }
+
+/* The skill row. It only exists once a line has been chosen, so it never
+   teaches the player to ignore an empty slot. */
+.g3d-combat-bars label[data-g3d-skill-row][hidden] { display: none; }
+.g3d-combat-bars label[data-g3d-skill-row] em { background: linear-gradient(90deg, #3f5f6b, #6fb6c7); }
+.g3d-combat-bars label[data-g3d-skill-row][data-ready="true"] em { background: linear-gradient(90deg, #4a7a55, #7fe0a0); }
+.g3d-combat-bars label[data-g3d-skill-row][data-ready="true"] b { color: #8ff0a4; }
+/* The shell's guard window, which is the one skill whose effect outlives its
+   cast and so is the one the player has to be able to see is still running. */
+.g3d-combat-bars label[data-g3d-skill-row][data-guarding="true"] em { background: linear-gradient(90deg, #8a6a2a, #efd07d); animation: g3d-critical .8s ease-in-out infinite alternate; }

@@ -1,4 +1,4 @@
-export type GloamwoodInputAction = 'moveUp' | 'moveDown' | 'moveLeft' | 'moveRight' | 'lock' | 'attack' | 'pause'
+export type GloamwoodInputAction = 'moveUp' | 'moveDown' | 'moveLeft' | 'moveRight' | 'lock' | 'attack' | 'skill' | 'pause'
 
 export type GloamwoodInputBindings = Record<GloamwoodInputAction, string>
 
@@ -11,6 +11,10 @@ export const DEFAULT_GLOAMWOOD_INPUT_BINDINGS: GloamwoodInputBindings = {
   moveRight: 'KeyD',
   lock: 'Tab',
   attack: 'Space',
+  // Reachable without leaving the movement hand. The skill is a positional
+  // answer - close, endure, or deny ground - so it gets pressed while moving,
+  // and a key that needs the mouse hand would be pressed late every time.
+  skill: 'KeyQ',
   pause: 'Escape',
 }
 
