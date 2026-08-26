@@ -26,8 +26,20 @@ import {
   gloamwoodSkillFor,
   stepGloamwoodSkillState,
   tryGloamwoodSkill,
+  type GloamwoodSkillShape,
   type GloamwoodSkillState,
 } from './gloamwood-skills'
+import {
+  applyGloamwoodPoison,
+  gloamwoodPoisonOn,
+  gloamwoodPoisonRemaining,
+  gloamwoodPoisonTint,
+  gloamwoodSporeSplashTargets,
+  pruneGloamwoodPoison,
+  stepGloamwoodPoison,
+  type GloamwoodPoisonSpec,
+  type GloamwoodPoisonStack,
+} from './gloamwood-poison'
 import {
   applyGloamwoodRun,
   readGloamwoodAchievements,
@@ -378,6 +390,21 @@ export const SKILL_FX_LIGHT_GAIN = {
   get glow() { return SKILL_FX_GLOW_GAIN.value },
   get streak() { return SKILL_FX_STREAK_GAIN.value },
 }
+
+/**
+ * What a poisoned body is tinted towards, and what it gives off.
+ *
+ * The skin colour is desaturated rather than the orb's green: a creature is not
+ * meant to look like it is made of spores, it is meant to look wrong. Mixed at
+ * 0.55 it survives on the near-black Swarm hide and on the pale Fang one, which
+ * a bright green does not - on the dark body it is invisible and on the light
+ * one it turns the animal into a leaf.
+ *
+ * The glow is deliberately dim. Both values are chosen against the ACES curve
+ * at exposure 1.38, where 0.30 linear already reads about 76% on screen.
+ */
+const GLOAMWOOD_POISON_SKIN = new THREE.Color(0.40, 0.62, 0.24)
+const GLOAMWOOD_POISON_GLOW = new THREE.Color(0.13, 0.30, 0.05)
 
 /**
  * The scene's tone mapping exposure.
@@ -838,6 +865,19 @@ interface DebugState {
     skillsEnabled: false
     skillCooldown: number
     skillGuard: number
+    /** Orbs in the air, so a cast that produced nothing is distinguishable
+     *  from a cast whose effect was simply not visible. */
+    sporeOrbs: number
+    /**
+     * What each poisoned creature is carrying, and how green it currently is.
+     *
+     * `tint` is the value actually written to that creature's materials. It is
+     * reported per creature on purpose: the modelled bodies shared one material
+     * across every creature wearing them, so "the poison is green" and "this
+     * particular animal is green" were different claims, and only the second
+     * one is the feature.
+     */
+    poisoned: Array<{ id: string; remaining: number; ticksLeft: number; perTick: number; tint: number }>
     lockAssist: 'stable-wave-and-attacker'
     knockbackRecoverySeconds: number
     lastKnockbackDistance: number
@@ -945,6 +985,16 @@ interface DebugState {
      */
     bodyMeshes: number
     y: number
+    /**
+     * The colour this one creature's first material is actually carrying.
+     *
+     * Reported because a status written to a *shared* material is written to
+     * the whole species, and there is no way to see the difference in a
+     * screenshot of one animal. Comparing a poisoned creature's skin against an
+     * unpoisoned neighbour of the same body is the only check that proves the
+     * per-creature clone did anything.
+     */
+    skinHex: string
   }>
   camera: { fov: number; pitch: number; distance: number }
   world: {
@@ -1134,10 +1184,42 @@ class Gloamwood3DHunt {
    * leap that finishes in the same frame it starts cannot read as a leap, and
    * the only motion on screen was the dust it kicked up.
    */
-  private readonly skillZoneVisuals: Array<{
-    group: THREE.Group; fill: THREE.Mesh; rim: THREE.Mesh
-    zone: { remaining: number }; elapsed: number
+  /**
+   * Spore orbs in the air, spat at a locked creature.
+   *
+   * Homing, rather than fired along a heading and left to miss. A skill on a
+   * nine-second cooldown that can be dodged by a creature that happened to
+   * step sideways is a skill the player stops pressing, and nothing else in
+   * this game asks them to lead a shot.
+   */
+  private readonly sporeOrbs: Array<{
+    group: THREE.Group
+    core: THREE.Sprite
+    halo: THREE.Sprite
+    position: THREE.Vector3
+    targetId: string
+    speed: number
+    impactDamage: number
+    splashRadius: number
+    poison: GloamwoodPoisonSpec
+    elapsed: number
+    trailIn: number
   }> = []
+  /**
+   * Poison burning on bodies. Authority, not decoration - every instalment goes
+   * through `damageGloamwoodNestPrey` like a swing does.
+   */
+  private poisonStacks: GloamwoodPoisonStack[] = []
+  /**
+   * Seconds the cast still owns the body for.
+   *
+   * A cast is not a basic attack and it is not a dash, and the locomotion pass
+   * hands the body back to Idle on the very next frame unless something claims
+   * it. Measured: the spit set its clip and played `Idle` for the entire cast,
+   * so the animal produced the orb without moving. Exactly the fault the pounce
+   * had, in the one other place that starts a clip outside the attack state.
+   */
+  private castHold = 0
   private dash: {
     fromX: number; fromZ: number; toX: number; toZ: number
     /**
@@ -1153,8 +1235,6 @@ class Gloamwood3DHunt {
     targetId: string; elapsed: number; seconds: number
     damage: number; knockback: number; resolved: boolean
   } | null = null
-  /** Spore blooms burning on the ground. Authority, not decoration. */
-  private skillZones: Array<{ x: number; z: number; radius: number; remaining: number; damagePerSecond: number; slow: number; carry: number }> = []
   /** Review-only multiplier on the skill FX gains, so they can be swept live. */
   private skillFxGainScale = 1
   private bossFx?: GloamwoodBossFxScene
@@ -2840,6 +2920,12 @@ class Gloamwood3DHunt {
     const materials: THREE.MeshStandardMaterial[] = []
     const material = (color: number, roughness = 0.78, emissive = 0x000000) => {
       const value = new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.01, emissive })
+      // Recorded on every prey material, modelled or primitive, because a
+      // status tints towards a colour *from* this one. Without it the fallback
+      // is the live colour, so each frame lerps the body from where the last
+      // frame left it and the tint compounds to solid green and never comes
+      // back - a body that is poisoned once stays poisoned to look at.
+      value.userData.gloamwoodBaseColor = value.color.clone()
       materials.push(value)
       return value
     }
@@ -3386,8 +3472,9 @@ class Gloamwood3DHunt {
     this.updateModelledBoss(delta)
     this.skillState = stepGloamwoodSkillState(this.skillState, delta)
     this.updateDash(delta)
-    this.updateSkillZones(delta)
-    this.updateSkillZoneVisuals(delta)
+    this.castHold = Math.max(0, this.castHold - delta)
+    this.updateSporeOrbs(delta)
+    this.updatePoison(delta)
     this.updateHealthDecay(delta)
     this.updateMutationOffers()
     this.updateCamera(delta)
@@ -3486,7 +3573,7 @@ class Gloamwood3DHunt {
     // this off, so the skill set its leap clip and the very next frame handed
     // it straight back to Idle - which is why the leap could be measured moving
     // and still never be seen.
-    if (this.attackState.action || this.dash) return
+    if (this.attackState.action || this.dash || this.castHold > 0) return
     this.setAction(this.moving ? 'Run' : this.turning ? 'Turn' : 'Idle')
   }
 
@@ -3689,12 +3776,24 @@ class Gloamwood3DHunt {
       // The Shell contract redirects Pounce to a planted Slam, so this is right
       // on every body without asking which one it is.
       this.startAttackPresentation('Pounce', performance.now())
-    } else if (shape.kind === 'zone' && target) {
-      this.skillZones.push({
-        x: target.x, z: target.z, radius: shape.radius, remaining: shape.seconds,
-        damagePerSecond: shape.damagePerSecond, slow: shape.slow, carry: 0,
-      })
-      this.spawnSkillZoneVisual(this.skillZones[this.skillZones.length - 1])
+    } else if (shape.kind === 'projectile' && target) {
+      this.lockedPreyId = target.id
+      // Face what is being spat at, and write it to the body.
+      //
+      // The same omission the pounce had: the yaw is only assigned by the
+      // movement pass and by the basic attack, and a cast is neither. Setting
+      // the field alone would leave the animal spitting over its shoulder.
+      this.lastFacing = gloamwoodMovementFacingRadians(
+        target.x - this.playerRoot.position.x,
+        target.z - this.playerRoot.position.z,
+      )
+      this.playerRoot.rotation.y = this.lastFacing
+      this.spawnSporeOrb(target.id, shape)
+      // The form's own bite clip, so the head goes forward and the orb leaves a
+      // mouth rather than appearing in mid-air beside a standing animal. The
+      // cast used to play no motion at all.
+      this.startAttackPresentation('Bite', performance.now())
+      this.castHold = this.attackWindowSeconds('Bite')
     } else if (shape.kind === 'guard') {
       // The shove goes through the same helper the tail sweep's cleave uses, so
       // it stuns and displaces by the rules everything else obeys.
@@ -3717,13 +3816,6 @@ class Gloamwood3DHunt {
   }
 
   /**
-   * Spore blooms burn on their own clock.
-   *
-   * Damage is carried between frames rather than rounded per frame: at nine a
-   * second and sixty frames, per-frame rounding would floor every tick to zero
-   * and the zone would be decoration.
-   */
-  /**
    * Carries a pounce across the ground and lands it.
    *
    * Eased out, so the leap leaves fast and settles rather than sliding at a
@@ -3731,67 +3823,295 @@ class Gloamwood3DHunt {
    * a swing does, so a pounce interrupted by death deals nothing.
    */
   /**
-   * A spore bloom you can see from across the bowl.
+   * A spore orb, spat.
    *
-   * The first pass borrowed the sporehaze mutation's preview burst, which is
-   * authored to be barely there - it is a *preview*, drawn under a menu - and
-   * the effect was reported as "very faint, and useless". A zone the player
-   * cannot find is a zone they will not stand things in.
+   * Three passes at this effect. The first borrowed the sporehaze mutation's
+   * preview burst, which is authored to be barely there because it is drawn
+   * under a menu, and was correctly reported as faint and useless. The second
+   * was two rings on the ground at the zone's radius - bright, readable, and
+   * still an effect about the floor rather than about the creature. This one is
+   * a thing that leaves the mouth and travels, because that is what the player
+   * asked the skill to look like and because a cast with no travel has no
+   * moment in it.
    *
-   * Two rings and a fill on the ground at the zone's own radius, additive and
-   * pulsing, so the edge is where the damage actually stops.
+   * Built as a core inside a halo. The core is pushed well over 1.0 so the
+   * bloom pass catches it and the orb throws light; the halo is soft, larger,
+   * and dimmer, which is what stops a bright sprite from reading as a flat
+   * white disc.
    */
-  private spawnSkillZoneVisual(zone: { x: number; z: number; radius: number; remaining: number }) {
+  private spawnSporeOrb(targetId: string, shape: Extract<GloamwoodSkillShape, { kind: 'projectile' }>) {
+    const map = this.skillFxTextures.get('glow')
     const group = new THREE.Group()
-    group.position.set(zone.x, this.map.height(zone.x, zone.z) + 0.06, zone.z)
-    const fill = new THREE.Mesh(
-      new THREE.CircleGeometry(zone.radius, 48).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({
-        color: new THREE.Color(0.34, 0.62, 0.12), transparent: true, opacity: 0.3,
-        depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-      }),
-    )
-    const rim = new THREE.Mesh(
-      new THREE.RingGeometry(zone.radius * 0.93, zone.radius, 48).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({
-        // Chosen against the tone curve, not against the number. The first pass
-        // put this at luminance 1.78 on the reasoning that the rim is the
-        // information and should therefore glow - and it washed the whole bowl
-        // white. ACES at exposure 1.38 is deep into its shoulder here: 0.55
-        // reads 87% on screen and 1.78 is indistinguishable from paper. At 0.39
-        // the rim lands near 79% and the fill it encloses near 60%, which is a
-        // readable edge instead of a flare.
-        color: new THREE.Color(0.26, 0.47, 0.09), transparent: true, opacity: 0.9,
-        depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-      }),
-    )
-    rim.position.y = 0.02
-    group.add(fill, rim)
+    const sprite = (color: number, gain: number, size: number, order: number) => {
+      const material = new THREE.SpriteMaterial({
+        map, color: new THREE.Color(color).multiplyScalar(gain),
+        transparent: true, opacity: 1, depthWrite: false, depthTest: false,
+        blending: THREE.AdditiveBlending, fog: false,
+      })
+      const value = new THREE.Sprite(material)
+      value.scale.set(size, size, 1)
+      value.renderOrder = order
+      return value
+    }
+    // Green with the core lifted towards white. A pure green core at this gain
+    // saturates its own channel and nothing else, which reads as a flat chip of
+    // colour rather than as something burning.
+    const halo = sprite(0x63c23a, SKILL_FX_LIGHT_GAIN.glow * 0.55, 1.15, 14)
+    const core = sprite(0xd8ffb0, SKILL_FX_LIGHT_GAIN.glow, 0.5, 15)
+    group.add(halo, core)
+    const origin = this.sporeOrbOrigin()
+    group.position.copy(origin)
     this.scene.add(group)
-    this.skillZoneVisuals.push({ group, fill, rim, zone, elapsed: 0 })
+    this.sporeOrbs.push({
+      group, core, halo,
+      position: origin.clone(),
+      targetId, speed: shape.speed,
+      impactDamage: shape.impactDamage,
+      splashRadius: shape.splashRadius,
+      poison: shape.poison,
+      elapsed: 0, trailIn: 0,
+    })
+    // No sound of its own: startAttackPresentation('Bite') already plays the
+    // form's strike cue on the same frame, and two cues on one press reads as
+    // a stutter rather than as a bigger event.
   }
 
-  private updateSkillZoneVisuals(delta: number) {
-    for (let index = this.skillZoneVisuals.length - 1; index >= 0; index -= 1) {
-      const visual = this.skillZoneVisuals[index]
-      visual.elapsed += delta
-      if (visual.zone.remaining <= 0) {
-        this.scene.remove(visual.group)
-        visual.fill.geometry.dispose()
-        ;(visual.fill.material as THREE.Material).dispose()
-        visual.rim.geometry.dispose()
-        ;(visual.rim.material as THREE.Material).dispose()
-        this.skillZoneVisuals.splice(index, 1)
+  /**
+   * Where the orb leaves from: the mouth, as nearly as this rig allows.
+   *
+   * Derived from the body rather than from a bone. The three player forms are
+   * separate exports with different skeletons and no shared head socket, so a
+   * bone lookup would work on one body and silently place the orb inside the
+   * chest of another - the same class of silent substitution the combat profile
+   * used to make. The collision radius and the measured world height are the
+   * two numbers every form has.
+   */
+  private sporeOrbOrigin() {
+    const reach = gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily)
+    const height = gloamwoodCharacterWorldHeight(this.stage, this.characterFamily)
+    return new THREE.Vector3(
+      this.playerRoot.position.x + Math.cos(this.lastFacing) * reach * 1.05,
+      this.playerRoot.position.y + height * 0.62,
+      this.playerRoot.position.z - Math.sin(this.lastFacing) * reach * 1.05,
+    )
+  }
+
+  private updateSporeOrbs(delta: number) {
+    for (let index = this.sporeOrbs.length - 1; index >= 0; index -= 1) {
+      const orb = this.sporeOrbs[index]
+      orb.elapsed += delta
+      const prey = this.nestState.prey.find((value) => value.id === orb.targetId)
+      // Aims at the middle of the body, not at its feet, so the orb strikes a
+      // creature rather than the ground it is standing on.
+      const aim = prey
+        ? new THREE.Vector3(prey.x, this.map.height(prey.x, prey.z) + gloamwoodPreyBodyRadius(prey) * 0.9, prey.z)
+        : null
+      // A target that died mid-flight leaves the orb to finish its arc and burst
+      // where it was going. Deleting it in mid-air is the teleporting pounce
+      // again: the player sees a thing thrown and then nothing at all.
+      const to = aim ?? orb.position.clone().addScaledVector(
+        new THREE.Vector3(Math.cos(this.lastFacing), 0, -Math.sin(this.lastFacing)), 0.001,
+      )
+      const step = orb.speed * delta
+      const distance = orb.position.distanceTo(to)
+      if (!aim || distance <= Math.max(step, gloamwoodPreyBodyRadius(prey!) * 0.55) || orb.elapsed > 2.5) {
+        const at = aim ?? orb.position
+        if (aim && prey) this.resolveSporeOrb(orb, prey)
+        this.spawnSporeBurst(at.clone())
+        this.retireSporeOrb(index)
         continue
       }
-      const pulse = 0.5 + 0.5 * Math.sin(visual.elapsed * 4.2)
-      // Fades over the last second rather than vanishing, so "gone" and "still
-      // burning" are never the same picture.
-      const life = Math.min(1, visual.zone.remaining)
-      ;(visual.fill.material as THREE.MeshBasicMaterial).opacity = (0.22 + pulse * 0.12) * life
-      ;(visual.rim.material as THREE.MeshBasicMaterial).opacity = (0.7 + pulse * 0.3) * life
-      visual.rim.scale.setScalar(1 + pulse * 0.015)
+      orb.position.addScaledVector(to.clone().sub(orb.position).divideScalar(distance), step)
+      orb.group.position.copy(orb.position)
+      const pulse = 0.9 + 0.1 * Math.sin(orb.elapsed * 26)
+      orb.core.scale.set(0.5 * pulse, 0.5 * pulse, 1)
+      orb.halo.scale.set(1.15 * (2 - pulse), 1.15 * (2 - pulse), 1)
+      orb.trailIn -= delta
+      if (orb.trailIn <= 0) {
+        orb.trailIn = 0.028
+        this.spawnSporeTrailMote(orb.position)
+      }
     }
+  }
+
+  /** One fading mote left behind the orb, so the flight has a direction to it. */
+  private spawnSporeTrailMote(at: THREE.Vector3) {
+    const material = new THREE.SpriteMaterial({
+      map: this.skillFxTextures.get('glow'),
+      color: new THREE.Color(0x7fd44a).multiplyScalar(SKILL_FX_LIGHT_GAIN.streak),
+      transparent: true, opacity: 0, depthWrite: false, depthTest: false,
+      blending: THREE.AdditiveBlending, fog: false,
+    })
+    const sprite = new THREE.Sprite(material)
+    sprite.position.copy(at)
+    sprite.scale.set(0.34, 0.34, 1)
+    sprite.renderOrder = 13
+    this.scene.add(sprite)
+    this.mutationParticles.push({
+      object: sprite, material,
+      velocity: new THREE.Vector3((Math.random() - 0.5) * 0.5, 0.35, (Math.random() - 0.5) * 0.5),
+      spin: 0, age: 0, duration: 0.32 * this.feedbackDurationMultiplier, gravity: -0.5,
+      motion: 'ballistic', peakOpacity: 0.5,
+      startScale: new THREE.Vector2(0.34, 0.34), endScale: new THREE.Vector2(0.05, 0.05),
+      attractTarget: at.clone(),
+    })
+    while (this.mutationParticles.length > 110) this.retireMutationParticle(this.mutationParticles.shift()!)
+  }
+
+  /** The orb bursting, at the body it struck. */
+  private spawnSporeBurst(at: THREE.Vector3) {
+    const map = this.skillFxTextures.get('glow')
+    const pace = this.feedbackDurationMultiplier
+    for (let index = 0; index < 10; index += 1) {
+      const angle = (index / 10) * Math.PI * 2
+      const speed = 2 + (index % 3) * 0.8
+      const material = new THREE.SpriteMaterial({
+        map, color: new THREE.Color(0x9ce85a).multiplyScalar(SKILL_FX_LIGHT_GAIN.glow * 0.8),
+        transparent: true, opacity: 0, depthWrite: false, depthTest: false,
+        blending: THREE.AdditiveBlending, fog: false,
+      })
+      const sprite = new THREE.Sprite(material)
+      sprite.position.copy(at)
+      sprite.scale.set(0.3, 0.3, 1)
+      sprite.renderOrder = 15
+      this.scene.add(sprite)
+      this.mutationParticles.push({
+        object: sprite, material,
+        velocity: new THREE.Vector3(Math.cos(angle) * speed, 1.1 + (index % 2) * 0.6, Math.sin(angle) * speed),
+        spin: 0, age: 0, duration: 0.46 * pace, gravity: 3.2, motion: 'ballistic',
+        peakOpacity: 0.8, startScale: new THREE.Vector2(0.3, 0.3),
+        endScale: new THREE.Vector2(0.12, 0.12), attractTarget: at.clone(),
+      })
+    }
+    const flashMaterial = new THREE.SpriteMaterial({
+      map, color: new THREE.Color(0xd6ffa8).multiplyScalar(SKILL_FX_LIGHT_GAIN.glow),
+      transparent: true, opacity: 0, depthWrite: false, depthTest: false,
+      blending: THREE.AdditiveBlending, fog: false,
+    })
+    const flash = new THREE.Sprite(flashMaterial)
+    flash.position.copy(at)
+    flash.scale.set(0.8, 0.8, 1)
+    flash.renderOrder = 16
+    this.scene.add(flash)
+    this.mutationParticles.push({
+      object: flash, material: flashMaterial,
+      velocity: new THREE.Vector3(), spin: 0, age: 0, duration: 0.24 * pace,
+      gravity: 0, motion: 'expand', peakOpacity: 0.9,
+      startScale: new THREE.Vector2(0.8, 0.8), endScale: new THREE.Vector2(2.6, 2.6),
+      attractTarget: at.clone(),
+    })
+    while (this.mutationParticles.length > 110) this.retireMutationParticle(this.mutationParticles.shift()!)
+  }
+
+  private retireSporeOrb(index: number) {
+    const orb = this.sporeOrbs[index]
+    this.scene.remove(orb.group)
+    ;(orb.core.material as THREE.Material).dispose()
+    ;(orb.halo.material as THREE.Material).dispose()
+    this.sporeOrbs.splice(index, 1)
+  }
+
+  /**
+   * Contact: a blow, then the status.
+   *
+   * Both go through the same authority a swing does. The impact is a real hit
+   * with a real number so the strike is worth something on its own; the poison
+   * is what the skill is actually for, and it is applied to the struck body and
+   * to anything close enough to be caught in the cloud.
+   */
+  private resolveSporeOrb(
+    orb: { targetId: string; impactDamage: number; splashRadius: number; poison: GloamwoodPoisonSpec },
+    prey: GloamwoodNestPrey,
+  ) {
+    const hit = damageGloamwoodNestPrey(
+      this.nestState, orb.targetId, Math.round(orb.impactDamage * this.damageMultiplier),
+      'Bite', { x: this.playerRoot.position.x, z: this.playerRoot.position.z }, 0,
+    )
+    this.nestState = hit.state
+    if (hit.effectiveDamage > 0) {
+      this.spawnDamageNumber(
+        new THREE.Vector3(prey.x, this.map.height(prey.x, prey.z) + 1.4, prey.z),
+        hit.effectiveDamage, hit.killed ? 'kill' : 'hit',
+      )
+    }
+    const spec: GloamwoodPoisonSpec = {
+      ...orb.poison,
+      // Modifiers apply to the instalment, not to the total, so a poisoned
+      // creature's numbers still read as the value the skill advertises times
+      // whatever the run has bought.
+      damagePerTick: Math.max(1, Math.round(orb.poison.damagePerTick * this.damageMultiplier)),
+    }
+    const caught = gloamwoodSporeSplashTargets(
+      prey,
+      this.nestState.prey.filter((value) => value.phase !== 'dead'),
+      orb.splashRadius,
+      gloamwoodPreyBodyRadius,
+    )
+    for (const value of caught) this.poisonStacks = applyGloamwoodPoison(this.poisonStacks, value.id, spec)
+    this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.16)
+  }
+
+  /**
+   * Poison paying out.
+   *
+   * Every instalment is a whole number through the same authority a swing uses,
+   * and every instalment puts that number over the creature. That pairing is
+   * the whole point: the previous design drained health at a fraction of a
+   * point per frame, which is arithmetically identical and shows the player
+   * nothing at all.
+   */
+  private updatePoison(delta: number) {
+    if (this.poisonStacks.length === 0) return
+    const stepped = stepGloamwoodPoison(this.poisonStacks, delta)
+    this.poisonStacks = stepped.stacks
+    for (const tick of stepped.ticks) {
+      const prey = this.nestState.prey.find((value) => value.id === tick.preyId)
+      if (!prey || prey.phase === 'dead') continue
+      const hit = damageGloamwoodNestPrey(
+        this.nestState, tick.preyId, tick.damage, 'Bite', { x: prey.x, z: prey.z }, 0,
+      )
+      this.nestState = hit.state
+      if (hit.effectiveDamage <= 0) continue
+      this.spawnDamageNumber(
+        new THREE.Vector3(prey.x, this.map.height(prey.x, prey.z) + 1.5, prey.z),
+        hit.effectiveDamage,
+        hit.killed ? 'kill' : 'poison',
+        hit.killed ? undefined : `-${hit.effectiveDamage}`,
+      )
+      this.spawnPoisonMote(prey)
+    }
+    const live = new Set(this.nestState.prey.filter((prey) => prey.phase !== 'dead').map((prey) => prey.id))
+    this.poisonStacks = pruneGloamwoodPoison(this.poisonStacks, live)
+  }
+
+  /** One spore rising off a poisoned body, on each instalment. */
+  private spawnPoisonMote(prey: GloamwoodNestPrey) {
+    const radius = gloamwoodPreyBodyRadius(prey)
+    const at = new THREE.Vector3(
+      prey.x + (Math.random() - 0.5) * radius,
+      this.map.height(prey.x, prey.z) + radius * 0.8,
+      prey.z + (Math.random() - 0.5) * radius,
+    )
+    const material = new THREE.SpriteMaterial({
+      map: this.skillFxTextures.get('glow'),
+      color: new THREE.Color(0x8ada4c).multiplyScalar(SKILL_FX_LIGHT_GAIN.streak),
+      transparent: true, opacity: 0, depthWrite: false, depthTest: false,
+      blending: THREE.AdditiveBlending, fog: false,
+    })
+    const sprite = new THREE.Sprite(material)
+    sprite.position.copy(at)
+    sprite.scale.set(0.26, 0.26, 1)
+    sprite.renderOrder = 13
+    this.scene.add(sprite)
+    this.mutationParticles.push({
+      object: sprite, material,
+      velocity: new THREE.Vector3((Math.random() - 0.5) * 0.4, 0.85, (Math.random() - 0.5) * 0.4),
+      spin: 0, age: 0, duration: 0.7 * this.feedbackDurationMultiplier, gravity: -0.4,
+      motion: 'ballistic', peakOpacity: 0.55,
+      startScale: new THREE.Vector2(0.26, 0.26), endScale: new THREE.Vector2(0.06, 0.06),
+      attractTarget: at.clone(),
+    })
+    while (this.mutationParticles.length > 110) this.retireMutationParticle(this.mutationParticles.shift()!)
   }
 
   /**
@@ -3904,26 +4224,6 @@ class Gloamwood3DHunt {
       }
     }
     if (progress >= 1) this.dash = null
-  }
-
-  private updateSkillZones(delta: number) {
-    if (this.skillZones.length === 0) return
-    for (const zone of this.skillZones) {
-      zone.remaining -= delta
-      zone.carry += zone.damagePerSecond * delta
-      const tick = Math.floor(zone.carry)
-      if (tick <= 0) continue
-      zone.carry -= tick
-      for (const prey of this.nestState.prey) {
-        if (prey.phase === 'dead') continue
-        if (Math.hypot(prey.x - zone.x, prey.z - zone.z) > zone.radius + gloamwoodPreyBodyRadius(prey)) continue
-        const hit = damageGloamwoodNestPrey(
-          this.nestState, prey.id, tick, 'TailSwipe', { x: zone.x, z: zone.z }, 0,
-        )
-        this.nestState = hit.state
-      }
-    }
-    this.skillZones = this.skillZones.filter((zone) => zone.remaining > 0)
   }
 
   private requestPrimaryAttack() {
@@ -4892,9 +5192,25 @@ class Gloamwood3DHunt {
     visual.materials.length = 0
     body.traverse((node) => {
       if (!(node instanceof THREE.Mesh)) return
-      for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
-        if (material instanceof THREE.MeshStandardMaterial) visual.materials.push(material)
-      }
+      // Cloned per creature, and this is not an optimisation being given up
+      // lightly. SkeletonUtils.clone shares materials across every body wearing
+      // this template, so anything written to one is written to all of them -
+      // which meant the hit flash was already being applied to the whole
+      // species and only the last creature in map order decided what colour
+      // they all were. A per-creature status like poison cannot exist at all
+      // without this. Geometry stays shared, which is the expensive half.
+      const source = Array.isArray(node.material) ? node.material : [node.material]
+      const owned = source.map((material) => {
+        if (!(material instanceof THREE.MeshStandardMaterial)) return material
+        const copy = material.clone()
+        // What the body looks like with nothing on it, so a status can be
+        // lifted off again rather than accumulating.
+        copy.userData.gloamwoodBaseColor = copy.color.clone()
+        visual.materials.push(copy)
+        return copy
+      })
+      node.material = Array.isArray(node.material) ? owned : owned[0]
+      node.userData.ownsMaterial = true
     })
     visual.model = {
       config: template.config,
@@ -5544,12 +5860,32 @@ class Gloamwood3DHunt {
     }
     this.updateDust(delta)
     this.playerFlashRemaining = Math.max(0, this.playerFlashRemaining - delta)
-    for (const visual of this.preyVisuals.values()) {
+    for (const [id, visual] of this.preyVisuals) {
       visual.flashRemaining = Math.max(0, visual.flashRemaining - delta)
       visual.impactRemaining = Math.max(0, visual.impactRemaining - delta)
+      // The status, worn on the body. Without something on the creature itself
+      // the poison exists only as numbers that appear while the player is
+      // looking somewhere else, and there is no way to tell which of five
+      // things in front of you is the one that is dying.
+      const poison = gloamwoodPoisonTint(gloamwoodPoisonOn(this.poisonStacks, id))
+      const pulse = 0.5 + 0.5 * Math.sin(this.runElapsedSeconds() * 5.4)
       for (const material of visual.materials) {
+        // Recorded here as well as at construction. The fallback used to be
+        // `material.color` itself, which aliases: lerping a colour towards
+        // green *from itself* every frame compounds to solid green and never
+        // comes back. Any material that reaches this loop without a base gets
+        // one before it is touched, so no future construction site can
+        // reintroduce that.
+        if (!material.userData.gloamwoodBaseColor) material.userData.gloamwoodBaseColor = material.color.clone()
+        const base = material.userData.gloamwoodBaseColor as THREE.Color
+        if (poison > 0) material.color.copy(base).lerp(GLOAMWOOD_POISON_SKIN, 0.55 * poison)
+        else if (!material.color.equals(base)) material.color.copy(base)
         if (visual.flashRemaining > 0) material.emissive.setHex(0xd33c24)
-        else if (material.color.getHex() === 0x9fcf63) material.emissive.setHex(0x294314)
+        // Under the threshold on purpose: a poisoned creature has to look sick,
+        // not lit. Pushing this into the bloom pass would make a status that
+        // runs for 3.6 seconds the brightest thing in the bowl.
+        else if (poison > 0) material.emissive.copy(GLOAMWOOD_POISON_GLOW).multiplyScalar(poison * (0.45 + pulse * 0.55))
+        else if (base.getHex() === 0x9fcf63) material.emissive.setHex(0x294314)
         else material.emissive.setHex(0x000000)
       }
     }
@@ -5928,9 +6264,15 @@ class Gloamwood3DHunt {
     this.scene.remove(visual.root)
     visual.model?.mixer.stopAllAction()
     visual.root.traverse((node) => {
-      if (!(node instanceof THREE.Mesh) || node.userData.sharedWithTemplate) return
-      node.geometry.dispose()
+      if (!(node instanceof THREE.Mesh)) return
       const materials = Array.isArray(node.material) ? node.material : [node.material]
+      // Materials cloned for this one creature are its own to free even when
+      // the geometry under them belongs to the template.
+      if (node.userData.sharedWithTemplate) {
+        if (node.userData.ownsMaterial) for (const value of materials) value.dispose()
+        return
+      }
+      node.geometry.dispose()
       for (const value of materials) value.dispose()
     })
   }
@@ -8738,7 +9080,7 @@ class Gloamwood3DHunt {
   private spawnDamageNumber(
     world: THREE.Vector3,
     amount: number,
-    tone: 'hit' | 'weakness' | 'blocked' | 'kill' | 'player' | 'heal' | 'drain',
+    tone: 'hit' | 'weakness' | 'blocked' | 'kill' | 'player' | 'heal' | 'drain' | 'poison',
     /**
      * Overrides the text. Every number in this game until now has been a plain
      * quantity of health, so the figure alone was unambiguous. Starving
@@ -9398,6 +9740,14 @@ class Gloamwood3DHunt {
         // readable somewhere a review can check it.
         skillCooldown: round(this.skillState.cooldownRemaining),
         skillGuard: round(this.skillState.guardRemaining),
+        sporeOrbs: this.sporeOrbs.length,
+        poisoned: this.poisonStacks.map((stack) => ({
+          id: stack.preyId,
+          remaining: round(gloamwoodPoisonRemaining(stack)),
+          ticksLeft: stack.ticksLeft,
+          perTick: stack.damagePerTick,
+          tint: round(gloamwoodPoisonTint(stack)),
+        })),
         lockAssist: 'stable-wave-and-attacker',
         knockbackRecoverySeconds: round(this.knockbackRecoverySeconds),
         lastKnockbackDistance: round(this.lastKnockbackDistance),
@@ -9547,6 +9897,7 @@ class Gloamwood3DHunt {
           return meshes
         })(),
         y: round(this.preyVisuals.get(prey.id)?.root.position.y ?? 0),
+        skinHex: `#${(this.preyVisuals.get(prey.id)?.materials[0]?.color.getHex() ?? 0).toString(16).padStart(6, '0')}`,
         playerBearing: round(Math.atan2(-(this.playerRoot.position.z - prey.z), this.playerRoot.position.x - prey.x)),
       })),
       camera: { fov: this.camera.fov, pitch: 36, distance: round(GLOAMWOOD_3D_CAMERA_DISTANCE) },

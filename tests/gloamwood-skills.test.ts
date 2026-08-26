@@ -21,7 +21,7 @@ describe('each line answers distance differently', () => {
     // attacker the same way, the choice between them would be cosmetic again.
     const kinds = (['fang', 'shell', 'swarm'] as const).map((f) => GLOAMWOOD_SKILLS[f].shape.kind)
     expect(new Set(kinds).size).toBe(3)
-    expect(kinds).toEqual(['dash', 'guard', 'zone'])
+    expect(kinds).toEqual(['dash', 'guard', 'projectile'])
   })
 
   it('makes the guard do something outward, not only something to a number', () => {
@@ -45,7 +45,7 @@ describe('each line answers distance differently', () => {
     const pounce = GLOAMWOOD_SKILLS.fang.shape
     const bloom = GLOAMWOOD_SKILLS.swarm.shape
     expect(pounce.kind === 'dash' && pounce.range).toBeGreaterThan(5)
-    expect(bloom.kind === 'zone' && bloom.castRange).toBeGreaterThan(5)
+    expect(bloom.kind === 'projectile' && bloom.castRange).toBeGreaterThan(5)
   })
 
   it('gives the origin form nothing rather than a borrowed skill', () => {

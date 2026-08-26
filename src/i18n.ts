@@ -347,7 +347,7 @@ const STRINGS = {
   'skill.shell-bulwark.name': { en: 'Bulwark', zh: '铁壁' },
   'skill.shell-bulwark.cast': { en: 'You brace, and shove through.', zh: '一沉身，顶开一片。' },
   'skill.swarm-bloom.name': { en: 'Spore Bloom', zh: '孢子绽' },
-  'skill.swarm-bloom.cast': { en: 'The ground turns against them.', zh: '那块地开始咬人了。' },
+  'skill.swarm-bloom.cast': { en: 'It lands, and starts eating.', zh: '打上了，开始烂了。' },
   'hud.skill': { en: 'Skill', zh: '技能' },
   'hud.skillReady': { en: 'Ready', zh: '就绪' },
   'hud.msg.skillCooling': { en: 'Not yet - {seconds}s', zh: '还没好 · {seconds} 秒' },

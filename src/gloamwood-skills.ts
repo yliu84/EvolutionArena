@@ -1,3 +1,4 @@
+import type { GloamwoodPoisonSpec } from './gloamwood-poison'
 import { defineGloamwoodTunable } from './gloamwood-tuning'
 
 /**
@@ -55,8 +56,35 @@ export type GloamwoodSkillShape =
     shoveRadius: number
     shoveKnockback: number
   }
-  /** A patch of ground at a distance, which slows and hurts what stands in it. */
-  | { kind: 'zone'; castRange: number; radius: number; seconds: number; damagePerSecond: number; slow: number }
+  /**
+   * Something spat from the mouth, which flies, strikes a body, and leaves a
+   * poison on it.
+   *
+   * This replaced a patch of burning ground, and the replacement was asked for
+   * in exactly those terms: is this even a skill? The zone was a correct
+   * simulation of area denial and it read as nothing happening. Damage came off
+   * whatever stood in it at a fraction of a point per frame, so no number ever
+   * appeared; the effect was on the floor, so nothing about the creature
+   * changed; and the cast produced no motion from the animal at all.
+   *
+   * Every part of this shape is one of those failures answered. The orb is the
+   * cast made visible. The impact is the moment of contact, on the body. The
+   * poison is the payload, and it is specified in whole instalments on a slow
+   * beat because that is what turns damage into something a player can read.
+   * The splash is the only thing kept from the zone: the Swarm line's answer to
+   * distance is still attrition across a crowd, not a single big hit.
+   */
+  | {
+    kind: 'projectile'
+    castRange: number
+    /** World units a second. Slow enough to watch cross the gap. */
+    speed: number
+    /** Landed on contact, so the strike itself is worth something. */
+    impactDamage: number
+    /** Bodies this close to the struck one are poisoned too. */
+    splashRadius: number
+    poison: GloamwoodPoisonSpec
+  }
 
 export interface GloamwoodSkill {
   id: GloamwoodSkillId
@@ -95,14 +123,19 @@ const BULWARK_SHOVE = defineGloamwoodTunable({
   value: 3.4, min: 0, max: 8, step: 0.1,
   note: 'What the button visibly does. Without it the guard reads as a dropped input.',
 })
-const BLOOM_RADIUS = defineGloamwoodTunable({
-  id: 'swarm-bloom.radius', group: 'Skills', label: 'Spore bloom radius',
-  value: 3.6, min: 1, max: 8, step: 0.1,
+const BLOOM_SPLASH = defineGloamwoodTunable({
+  id: 'swarm-bloom.splashRadius', group: 'Skills', label: 'Spore bloom splash',
+  value: 2.6, min: 0, max: 6, step: 0.1,
+  note: 'The one thing kept from the ground zone this replaced. Attrition across a crowd is the Swarm line\'s identity; a single-target spit would be the Fang line with extra steps.',
 })
-const BLOOM_DPS = defineGloamwoodTunable({
-  id: 'swarm-bloom.damagePerSecond', group: 'Skills', label: 'Spore bloom damage/s',
-  value: 20, min: 1, max: 40, step: 0.5,
-  note: 'Sized against a combo: swarm stage 1 is 11+9+9+21 = 50 on one target with no cooldown. At 9 this was 36 over four seconds on a nine-second cooldown, and was correctly reported as worse than just attacking.',
+const BLOOM_IMPACT = defineGloamwoodTunable({
+  id: 'swarm-bloom.impactDamage', group: 'Skills', label: 'Spore bloom impact',
+  value: 12, min: 0, max: 40, step: 1,
+})
+const BLOOM_TICK_DAMAGE = defineGloamwoodTunable({
+  id: 'swarm-bloom.poisonPerTick', group: 'Skills', label: 'Spore poison per tick',
+  value: 10, min: 1, max: 30, step: 1,
+  note: 'Whole health on a slow beat, because a number the player can read is the point. Sized against a combo: swarm stage 1 is 11+9+9+21 = 50 on one target with no cooldown, so 12 + six tens has to be worth a nine-second wait and a cast from eleven metres.',
 })
 
 export const GLOAMWOOD_SKILLS: Record<GloamwoodSkillFamily, GloamwoodSkill> = {
@@ -140,12 +173,15 @@ export const GLOAMWOOD_SKILLS: Record<GloamwoodSkillFamily, GloamwoodSkill> = {
     needsTarget: true,
     get shape(): GloamwoodSkillShape {
       return {
-        kind: 'zone',
+        kind: 'projectile',
         castRange: 11,
-        radius: BLOOM_RADIUS.value,
-        seconds: 4,
-        damagePerSecond: BLOOM_DPS.value,
-        slow: 0.45,
+        speed: 15,
+        impactDamage: BLOOM_IMPACT.value,
+        splashRadius: BLOOM_SPLASH.value,
+        // Six instalments over 3.6 seconds. The beat is slow on purpose: at a
+        // quarter of this the numbers overlap into a smear and stop being
+        // countable, which is the whole thing the poison is here to be.
+        poison: { tickSeconds: 0.6, damagePerTick: BLOOM_TICK_DAMAGE.value, ticks: 6 },
       }
     },
   },
@@ -213,7 +249,7 @@ export function tryGloamwoodSkill(input: {
   if (input.state.cooldownRemaining > 0) return refuse('cooling')
   if (skill.needsTarget && !input.hasTarget) return refuse('no-target')
   const shape = skill.shape
-  const reach = shape.kind === 'dash' ? shape.range : shape.kind === 'zone' ? shape.castRange : Infinity
+  const reach = shape.kind === 'dash' ? shape.range : shape.kind === 'projectile' ? shape.castRange : Infinity
   if (skill.needsTarget && input.targetDistance > reach) return refuse('out-of-range')
   return {
     fired: true,
