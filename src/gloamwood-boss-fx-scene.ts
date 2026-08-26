@@ -61,22 +61,30 @@ const DECAL_LIFT = 0.14
 /**
  * The linear luminance a telegraph line is written at, at full opacity.
  *
- * Above the bloom threshold, and that is the point: the outline is the one
- * thing on screen that has to stay readable for a whole wind-up, and a line
- * that throws light is easier to find than a line that does not. Bloom adds a
- * halo around the line without moving it, so the edge - which is the actual
- * information, "stand outside this" - is exactly where it was.
+ * Chosen against the tone mapper rather than against the number, which is the
+ * part two earlier passes got wrong. The scene renders through ACES at an
+ * exposure of 1.38, and that curve is deep into its shoulder by the time it
+ * reaches these values: 0.55 lands at about 87% brightness on screen, 1.55 at
+ * 96%, 2.24 at 98%. Everything above about half a unit is already near-white,
+ * and differences that look enormous in the buffer are invisible in the frame.
  *
- * The fill deliberately gets none of this. It is a large area, and an area that
- * blooms washes out the very contrast between inside and outside that the
- * player is reading.
+ * So the outline was too bright at its *authored* colour - amber's own
+ * luminance is 0.55 - before anything here touched it, which is why the answer
+ * came back "too bright" twice. Gaining it to 1.55 made that worse; taking the
+ * gain back to 0.62 would have moved it 87% to 89% and fixed nothing. 0.30 puts
+ * it at about 76%, which is a change a player can actually see.
  *
- * Chosen so the rim crosses the threshold about halfway through a wind-up
- * rather than at the start of it: the outline is at `0.5 + windup * 0.42`
- * opacity, so at 1.55 it lights up as the blow gets close. The glow becomes
- * part of the clock, which is the one job the rim was already doing.
+ * Still the brightest thing on the ground it is drawn over: the area it
+ * outlines peaks at 0.21, about 67%, and the valley floor under both is far
+ * darker than either.
+ *
+ * The normalisation is the part worth keeping from all this, and it was never
+ * about brightness. The bloom pass and the eye both weight green heavily, so
+ * writing every telegraph colour at a stated luminance is what stops the
+ * enraged red (0.29 on its own) from reading dimmer than the wind-up amber
+ * (0.55) - when phase two's entire tell is that nothing changed but the light.
  */
-export const GLOAMWOOD_TELEGRAPH_RIM_GLOW = 1.55
+export const GLOAMWOOD_TELEGRAPH_RIM_GLOW = 0.3
 const RIM_GLOW = GLOAMWOOD_TELEGRAPH_RIM_GLOW
 
 /**
@@ -210,10 +218,10 @@ export function createGloamwoodBossFxScene(): GloamwoodBossFxScene {
           // impact the fill, the rim and this ring are all on the same pixels,
           // and they add.
           material.color.setHex(frame.flashColor)
-          // 0.62 rather than 0.9, for the same reason the fill and rim came
+          // 0.3 rather than 0.9, for the same reason the fill and the rim came
           // down: this ring crosses both of them at the moment they are
           // brightest, and additive layers add.
-          material.opacity = (1 - travel) ** 1.5 * 0.62
+          material.opacity = (1 - travel) ** 1.5 * 0.3
           flashStrength = Math.max(flashStrength, (1 - Math.min(1, frame.impact * 2)) ** 2)
           if (flashStrength > 0) flash.position.set(entry.x, entry.groundY + 1.6, entry.z)
         }

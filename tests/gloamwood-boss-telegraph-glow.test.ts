@@ -31,12 +31,17 @@ describe('a boss telegraph throws light without losing its edge', () => {
     expect(enraged.g).toBeGreaterThan(enraged.b)
   })
 
-  it('lights the outline partway through the wind-up rather than at the start', () => {
-    // The glow is part of the clock. A rim that already glows on the first
-    // frame says nothing about how long is left.
-    const rimAt = (windup: number) => 0.5 + windup * 0.42
-    expect(GLOAMWOOD_TELEGRAPH_RIM_GLOW * rimAt(0)).toBeLessThan(GLOAMWOOD_BLOOM.threshold)
-    expect(GLOAMWOOD_TELEGRAPH_RIM_GLOW * rimAt(1)).toBeGreaterThan(GLOAMWOOD_BLOOM.threshold)
+  it('keeps the outline off the top of the tone curve, not merely under the threshold', () => {
+    // The owner called the area marker too bright twice. The reason both
+    // earlier passes failed to fix it is that the scene renders through ACES at
+    // an exposure of 1.38, and that curve is deep into its shoulder here: 0.55
+    // is already about 87% brightness on screen and 1.55 is 96%. Being under
+    // the bloom threshold is not the same as being visibly dimmer.
+    expect(GLOAMWOOD_TELEGRAPH_RIM_GLOW).toBeLessThan(0.4)
+    // ...and still clearly the brightest thing on the ground it is drawn over.
+    // The area it outlines peaks around 0.21.
+    expect(GLOAMWOOD_TELEGRAPH_RIM_GLOW).toBeGreaterThan(0.21)
+    expect(GLOAMWOOD_TELEGRAPH_RIM_GLOW).toBeLessThan(GLOAMWOOD_BLOOM.threshold)
   })
 
   it('leaves the blow itself ungained, because its layers already add', () => {
@@ -55,9 +60,14 @@ describe('a boss telegraph throws light without losing its edge', () => {
     const rim = Number(fx.match(/rimOpacity: ([\d.]+) \* \(1 - wash\)/)![1])
     const wave = Number(scene.match(/\(1 - travel\) \*\* 1\.5 \* ([\d.]+)/)![1])
     const overlap = luminance(flash) * (fill + rim + wave)
-    // It still flares - it is a blow - but it no longer erases what is under it.
-    expect(overlap).toBeGreaterThan(GLOAMWOOD_BLOOM.threshold)
-    expect(overlap).toBeLessThan(1.7)
+    // Cut until it comes off the shoulder of the tone curve. 2.24 and 1.34 are
+    // 98% and 96% brightness respectively - the same near-white - so the first
+    // reduction looked large in the buffer and changed almost nothing in the
+    // frame. Under about 0.7 is where it starts reading as a flare rather than
+    // as a white hole.
+    expect(overlap).toBeLessThan(0.75)
+    // It is still a blow, and still the brightest moment in the fight.
+    expect(overlap).toBeGreaterThan(GLOAMWOOD_TELEGRAPH_RIM_GLOW * 1.5)
   })
 
   it('leaves the fill under the threshold, so the danger zone keeps its contrast', () => {

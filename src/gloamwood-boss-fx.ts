@@ -133,18 +133,19 @@ export function gloamwoodBossFxFrame(
     impact,
     color,
     flashColor,
-    // Brought down from 0.62 and 1.0. These two and the impact ring are all
-    // additive and all land on the same pixels on the frame the blow resolves,
-    // and their sum - not any one of them - is what the eye sees: measured in
-    // the linear buffer the tone mapper reads, the overlap reached 2.24, which
-    // is past white and well past the bloom threshold. The blow should flare,
-    // not erase what is underneath it.
+    // Down from 0.62 and 1.0, in two steps, and the second one is the one that
+    // mattered. These two and the impact ring are additive and all land on the
+    // same pixels on the frame the blow resolves, so their sum is what the eye
+    // sees: it was 2.24 in the linear buffer. Cutting it to 1.34 sounded like a
+    // large reduction and was not one - through ACES at this exposure those are
+    // 98% and 96% brightness, which is the same near-white. Only getting the sum
+    // under about 0.7 moves it off the top of the curve.
     //
     // The rim is also the layer with least left to say here. Its job is the
     // promise, "this is the area", and by the time the blow has landed the
     // player has either read it or been hit.
-    fillOpacity: 0.34 * (1 - wash) ** 1.6,
-    rimOpacity: 0.55 * (1 - wash) ** 2.2,
+    fillOpacity: 0.2 * (1 - wash) ** 1.6,
+    rimOpacity: 0.28 * (1 - wash) ** 2.2,
     pulse: 0,
     // Paid once, on the frame the authority resolved the blow, and only then.
     trauma: previousPhase === 'strike' ? 0 : pattern.trauma,
