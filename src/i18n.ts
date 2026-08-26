@@ -345,7 +345,7 @@ const STRINGS = {
   'skill.fang-pounce.name': { en: 'Pounce', zh: '扑击' },
   'skill.fang-pounce.cast': { en: 'You close the distance.', zh: '一步贴上去。' },
   'skill.shell-bulwark.name': { en: 'Bulwark', zh: '铁壁' },
-  'skill.shell-bulwark.cast': { en: 'You lower your head and keep walking.', zh: '低下头，照样往前走。' },
+  'skill.shell-bulwark.cast': { en: 'You brace, and shove through.', zh: '一沉身，顶开一片。' },
   'skill.swarm-bloom.name': { en: 'Spore Bloom', zh: '孢子绽' },
   'skill.swarm-bloom.cast': { en: 'The ground turns against them.', zh: '那块地开始咬人了。' },
   'hud.skill': { en: 'Skill', zh: '技能' },

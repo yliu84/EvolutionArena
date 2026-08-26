@@ -20,6 +20,16 @@ describe('each line answers distance differently', () => {
     expect(kinds).toEqual(['dash', 'guard', 'zone'])
   })
 
+  it('makes the guard do something outward, not only something to a number', () => {
+    // Reported from play: the shell fired correctly, cut the damage it said it
+    // cut, and read as an input the game had ignored - nothing on screen moved
+    // and nothing took a hit. A defensive skill still has to be an action.
+    const guard = GLOAMWOOD_SKILLS.shell.shape
+    expect(guard.kind).toBe('guard')
+    expect(guard.kind === 'guard' && guard.shoveRadius).toBeGreaterThan(1)
+    expect(guard.kind === 'guard' && guard.shoveKnockback).toBeGreaterThan(0)
+  })
+
   it('lets the shell fire without a target, because being shot at is the case', () => {
     // A form whose answer to being shot at needed a target it could not reach
     // would have no answer at all.

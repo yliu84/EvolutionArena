@@ -3646,8 +3646,21 @@ class Gloamwood3DHunt {
         new THREE.Vector3(target.x, this.map.height(target.x, target.z), target.z),
       )
     } else if (shape.kind === 'guard') {
-      this.spawnMutationFxBurst('carapace', this.lastFacing)
-      this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.12)
+      // The shove goes through the same helper the tail sweep's cleave uses, so
+      // it stuns and displaces by the rules everything else obeys.
+      this.nestState = suppressGloamwoodNestPreyAround(
+        this.nestState,
+        { x: this.playerRoot.position.x, z: this.playerRoot.position.z },
+        shape.shoveRadius,
+        shape.shoveKnockback,
+        '',
+      )
+      // A ground ring, not the carapace plates this borrowed at first. Those
+      // are the Carapace Symbiosis mutation's own effect and are sized to grow
+      // a shell over the body - on the pangolin it read as the animal
+      // inflating, which is exactly what it was reported as.
+      this.spawnTailSweepHalo()
+      this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.22)
     }
     this.combatMessage = t(`skill.${attempt.skill.id}.cast` as 'skill.fang-pounce.cast')
     this.logSession({ kind: 'mutation-effect', id: attempt.skill.id, effect: 'skill-cast' })

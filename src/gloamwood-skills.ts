@@ -36,8 +36,25 @@ export type GloamwoodSkillId = 'fang-pounce' | 'shell-bulwark' | 'swarm-bloom'
 export type GloamwoodSkillShape =
   /** Travel to the locked target and land a blow on arrival. */
   | { kind: 'dash'; range: number; damage: number; knockback: number }
-  /** No target; a window during which incoming damage is cut. */
-  | { kind: 'guard'; seconds: number; reduction: number; speedMultiplier: number }
+  /**
+   * No target; a window during which incoming damage is cut - and, on the
+   * frame it opens, a shove that clears the ground around the caster.
+   *
+   * The shove is not decoration. A guard with no outward effect fires
+   * correctly, cuts the damage it says it cuts, and still reads to the player
+   * as an input the game ignored: nothing on screen moves, nothing takes a
+   * hit, and the only evidence is a number going down more slowly than it
+   * would have. Shoving the ring of things that were crowding you is the same
+   * fantasy - brace, and come through - said out loud.
+   */
+  | {
+    kind: 'guard'
+    seconds: number
+    reduction: number
+    speedMultiplier: number
+    shoveRadius: number
+    shoveKnockback: number
+  }
   /** A patch of ground at a distance, which slows and hurts what stands in it. */
   | { kind: 'zone'; castRange: number; radius: number; seconds: number; damagePerSecond: number; slow: number }
 
@@ -73,6 +90,11 @@ const BULWARK_REDUCTION = defineGloamwoodTunable({
   id: 'shell-bulwark.reduction', group: 'Skills', label: 'Bulwark reduction',
   value: 0.65, min: 0, max: 0.95, step: 0.05,
 })
+const BULWARK_SHOVE = defineGloamwoodTunable({
+  id: 'shell-bulwark.shoveRadius', group: 'Skills', label: 'Bulwark shove radius',
+  value: 3.4, min: 0, max: 8, step: 0.1,
+  note: 'What the button visibly does. Without it the guard reads as a dropped input.',
+})
 const BLOOM_RADIUS = defineGloamwoodTunable({
   id: 'swarm-bloom.radius', group: 'Skills', label: 'Spore bloom radius',
   value: 3.6, min: 1, max: 8, step: 0.1,
@@ -105,6 +127,8 @@ export const GLOAMWOOD_SKILLS: Record<GloamwoodSkillFamily, GloamwoodSkill> = {
         // Faster than this form normally moves, but nowhere near a dash. The
         // shell fantasy is arriving anyway, not arriving first.
         speedMultiplier: 1.15,
+        shoveRadius: BULWARK_SHOVE.value,
+        shoveKnockback: 1.35,
       }
     },
   },
