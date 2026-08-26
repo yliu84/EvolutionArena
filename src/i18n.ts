@@ -227,6 +227,15 @@ const STRINGS = {
     zh: '十二波怪从传送门沿路而下。守住你身后的祭坛，趁下一波来之前用杀掉的东西长大。',
   },
   'mode.defence.meta': { en: '12 waves · 4 bosses · 3 lives', zh: '12 波 · 4 个 Boss · 3 条命' },
+  // The run's own frame record, shown on the result screen behind ?perf=1.
+  // Goal 5 wants a real device holding 30 FPS for a run, and the only way to
+  // collect that is to put the number where a phone can read it.
+  'result.perf': { en: 'Frames', zh: '帧率' },
+  'result.perfDetail': {
+    en: '{fps} FPS average · {below} of frames under 30 · worst {worst} ms · {frames} frames',
+    zh: '平均 {fps} FPS · {below} 的帧低于 30 · 最差 {worst} ms · 共 {frames} 帧',
+  },
+  'result.perfStalls': { en: ' · {stalls} stalls ignored', zh: ' · 忽略了 {stalls} 次卡顿' },
   'hud.defenceStatus': {
     en: 'Wave {wave} of {waves} · Altar {altar}/{altarMax}',
     zh: '第 {wave} 波 / 共 {waves} 波 · 祭坛 {altar}/{altarMax}',

@@ -4,6 +4,9 @@ import { clone as cloneSkinnedHierarchy } from 'three/examples/jsm/utils/Skeleto
 import {
   formatGloamwoodPerformanceReadout,
   GloamwoodPerformanceSampler,
+  GloamwoodRunPerformance,
+  gloamwoodRunPerformanceVisible,
+  type GloamwoodRunPerformanceReport,
   readJavaScriptHeapMegabytes,
 } from './gloamwood-performance'
 import {
@@ -836,6 +839,7 @@ interface DebugState {
     averageFrameMs: number
     p95FrameMs: number
     sampleCount: number
+    run: GloamwoodRunPerformanceReport
     drawCalls: number
     triangles: number
     geometries: number
@@ -1319,6 +1323,12 @@ class Gloamwood3DHunt {
   private feedbackSettings: CombatFeedbackSettings = { ...DEFAULT_COMBAT_FEEDBACK_SETTINGS }
   private readonly audio: GloamwoodAudioBus
   private readonly performanceSampler = new GloamwoodPerformanceSampler()
+  /**
+   * The whole run's cost, kept beside the rolling sampler rather than instead
+   * of it. The sampler answers "how is it going"; this answers "did this device
+   * hold up", which is the Goal 5 question and the one still unanswered.
+   */
+  private readonly runPerformance = new GloamwoodRunPerformance()
   private paused = false
   private pauseStartedAt = 0
   private lastSoundEvent: GloamwoodSoundEvent | null = null
@@ -3220,6 +3230,10 @@ class Gloamwood3DHunt {
     const frameMilliseconds = Math.max(0, now - this.lastFrameAt)
     this.frameCount += 1
     this.performanceSampler.record(frameMilliseconds)
+    // Not while paused, and not on a stepped review frame: neither is a frame
+    // the device was asked to produce, and both would flatter or ruin the
+    // figure depending on which way they went.
+    if (!this.paused && forcedDelta === undefined) this.runPerformance.record(frameMilliseconds)
     const delta = Math.min(0.05, frameMilliseconds / 1000)
     this.lastFrameAt = now
     this.foliageTime.value += delta
@@ -7341,6 +7355,21 @@ class Gloamwood3DHunt {
       ...(gloamwoodRunPaceVisible(window.location.search)
         ? [`<aside data-pace="${pace.pace}"><strong>${pace.label}</strong><span>${pace.detail}</span></aside>`]
         : []),
+      ...(gloamwoodRunPerformanceVisible(window.location.search)
+        ? [(() => {
+          const run = this.runPerformance.report()
+          const share = (value: number) => `${(value * 100).toFixed(1)}%`
+          return `<aside data-perf="${run.belowThirtyShare > 0.05 ? 'poor' : 'ok'}">`
+            + `<strong>${escapeGloamwoodHtml(t('result.perf'))}</strong>`
+            + `<span>${escapeGloamwoodHtml(t('result.perfDetail', {
+              fps: run.meanFps.toFixed(1),
+              below: share(run.belowThirtyShare),
+              worst: run.worstFrameMs.toFixed(0),
+              frames: run.frames,
+            }) + (run.stalls > 0 ? t('result.perfStalls', { stalls: run.stalls }) : ''))}</span>`
+            + '</aside>'
+        })()]
+        : []),
       '<dl>',
       `<div><dt>${t('result.time')}</dt><dd>${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, '0')}</dd></div>`,
       `<div><dt>${t('result.prey')}</dt><dd>${this.nestState.kills}</dd></div>`,
@@ -8963,6 +8992,9 @@ class Gloamwood3DHunt {
       input: { bindings: { ...this.inputBindings }, rebinding: this.rebindingAction },
       performance: {
         ...performanceSnapshot,
+        // The whole run rather than the last three seconds. A review can read
+        // this without waiting for a result screen or opening an overlay.
+        run: this.runPerformance.report(),
         drawCalls: this.renderer.info.render.calls,
         triangles: this.renderer.info.render.triangles,
         geometries: this.renderer.info.memory.geometries,
