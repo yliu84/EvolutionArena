@@ -335,8 +335,11 @@ describe('A death has to cost something', () => {
     expect(source).toContain('private spendLifeOrEndRun(reason: string)')
     // The budget itself moved onto the map contract, because the valley is a
     // road with three regions on it and could not have a different number while
-    // the constant was global.
-    expect(source).toContain('private livesRemaining = this.map.lives')
+    // the constant was global. Matched loosely: the assignment moved out of a
+    // field initialiser and into the constructor when the map became something
+    // the player picks on the way in, and the rule being guarded here is where
+    // the number comes from, not which line it is written on.
+    expect(source).toMatch(/livesRemaining\s*=\s*this\.map\.lives/)
     // Hunt, guardian and boss all route through it; none may end the run alone.
     const spends = source.match(/this\.spendLifeOrEndRun\(/g) ?? []
     expect(spends.length).toBeGreaterThanOrEqual(2)

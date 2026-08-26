@@ -703,15 +703,22 @@ and glTF validator all pass. Desktop 1440x900 and mobile landscape 844x390 both
 load the form with `matchedFamily`/`matchedForm` true, grounded, one canvas, no
 horizontal overflow and no console errors.
 
-## Active content milestone — Altar defence mode (`?map=defence`)
+## Altar defence mode — shipped to players 2026-08-25
 
 A third map and a different mode, chosen by the owner on 2026-08-25 after the
 Warden shipped: waves come out of a portal, walk a road, and try to reach an
 altar the player has to hold. Built in four slices, each verified before the
 next started.
 
-- entry: `?map=defence` (explicit, like `?map=gloamwood`; the shipped route is
-  still the valley)
+- entry: **the mode picker**, `src/gloamwood-mode-select.ts`, which is now the
+  first screen of the game. `?map=defence` and `?map=valley` still bypass it, so
+  a shared link or a bug report reproduces the mode it was taken from;
+  `gloamwoodMapFromSearch` returns null when no map is named, and that null is
+  what tells the boot sequence to ask. `?map=gloamwood` is unchanged and stays
+  out of the picker — it is a retired combat lab, not a mode.
+  The last choice is remembered in `evolution-arena-mode-v1`; it moves focus
+  rather than skipping the screen, and a stored value naming the retired lab is
+  rejected on read.
 - terrain: `src/gloamwood-defence-terrain.ts` — the shape lives in functions and
   `scripts/render-defence-preview.ts` samples them to draw the plan, so a plan
   cannot go stale against the ground

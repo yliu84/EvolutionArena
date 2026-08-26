@@ -202,6 +202,31 @@ const STRINGS = {
   // ordinary health, so a bare -5 would read as damage taken rather than as the
   // ceiling itself getting lower.
   'hud.maxHealthLost': { en: '-{amount} MAX', zh: '上限 -{amount}' },
+  // The mode picker: the first screen anyone sees. Both modes get a sentence on
+  // what they actually are, because they are different enough that a player
+  // choosing on the names alone would be choosing at random.
+  'mode.eyebrow': { en: 'EVOLUTION ARENA', zh: '进化竞技场' },
+  'mode.title': { en: 'Choose a hunt', zh: '选择一局' },
+  'mode.subtitle': {
+    en: 'Two ways to spend a run. Both start you at the bottom of the food chain.',
+    zh: '两种玩法。两边都让你从食物链底端开始。',
+  },
+  'mode.hint': { en: 'Press 1 or 2', zh: '按 1 或 2' },
+  'mode.lastPlayed': { en: 'Last played', zh: '上次玩的' },
+  'mode.valley.kind': { en: 'Expedition', zh: '探索' },
+  'mode.valley.name': { en: 'River Valley', zh: '河谷' },
+  'mode.valley.body': {
+    en: 'One road upstream. Hunt what you can catch, evolve on what you eat, and meet whatever is waiting at the end of it.',
+    zh: '一条向上游的路。猎杀你抓得住的，靠吃下去的东西进化，走到尽头见等着你的东西。',
+  },
+  'mode.valley.meta': { en: 'About 15 minutes · one life', zh: '约 15 分钟 · 一条命' },
+  'mode.defence.kind': { en: 'Defence', zh: '守护' },
+  'mode.defence.name': { en: 'The Altar', zh: '祭坛' },
+  'mode.defence.body': {
+    en: 'Twelve waves come down the road from the portal. Hold the altar behind you, and grow on what you kill before the next wave lands.',
+    zh: '十二波怪从传送门沿路而下。守住你身后的祭坛，趁下一波来之前用杀掉的东西长大。',
+  },
+  'mode.defence.meta': { en: '12 waves · 4 bosses · 3 lives', zh: '12 波 · 4 个 Boss · 3 条命' },
   'hud.defenceStatus': {
     en: 'Wave {wave} of {waves} · Altar {altar}/{altarMax}',
     zh: '第 {wave} 波 / 共 {waves} 波 · 祭坛 {altar}/{altarMax}',

@@ -12,7 +12,7 @@ import {
   shouldGloamwoodRenderContinuously,
 } from './gloamwood-render-quality'
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
-import { gloamwoodMapFromEntry } from './entry-routing'
+import { gloamwoodMapFromEntry, type GloamwoodMapId } from './entry-routing'
 import { createGloamwoodDefenceMap } from './gloamwood-defence-map'
 import {
   GLOAMWOOD_DEFENCE_RUN,
@@ -929,7 +929,7 @@ export function isGloamwood3DHuntRequested(search = window.location.search) {
     || (params.get('maplab') === '4' && params.get('live') === '1')
 }
 
-export async function launchGloamwood3DHunt() {
+export async function launchGloamwood3DHunt(mapId: GloamwoodMapId = gloamwoodMapFromEntry()) {
   const container = document.querySelector<HTMLElement>('#game-container')
   if (!container) throw new Error('Missing #game-container for Gloamwood 3D hunt')
   document.body.classList.add('is-maplab', 'is-v4-live', 'is-gloamwood-3d')
@@ -937,7 +937,7 @@ export async function launchGloamwood3DHunt() {
   // before any player-facing string is built. ?lang=en|zh overrides for testing.
   applyDocumentLocale()
   document.title = t('document.title')
-  const experience = new Gloamwood3DHunt(container)
+  const experience = new Gloamwood3DHunt(container, mapId)
   if (import.meta.env.DEV) {
     // Lets a review surface with no animation frames drive the loop and read
     // the state that results, rather than reading a snapshot frozen at startup.
@@ -1040,41 +1040,16 @@ class Gloamwood3DHunt {
    * player, the combat, the mutations, the HUD and the session log are the same
    * on either one.
    */
-  private readonly map: GloamwoodMapContract = gloamwoodMapFromEntry() === 'defence'
-    ? createGloamwoodDefenceMap(
-      async () => { await this.buildDefenceScenery() },
-      (_camera, elapsed) => this.defenceScene?.update(elapsed),
-    )
-    : gloamwoodMapFromEntry() === 'valley'
-    ? createGloamwoodValleyMap(
-      Number(new URLSearchParams(window.location.search).get('mapSeed') ?? 0) || 0x5a11e,
-      async () => { await this.buildValleyScenery() },
-      (camera, elapsed, delta) => this.valley?.update(camera, elapsed, delta),
-      () => this.valleyGroundHeight,
-      this.ecologyRunSeed,
-    )
-    : createGloamwoodMap(
-      terrainHeight,
-      { halfWidth: WORLD_HALF_WIDTH, halfDepth: WORLD_HALF_DEPTH },
-      async () => {
-        // Lighting belongs to the map for the same reason the scenery does.
-        // Run unconditionally it stacked on top of the valley's own rig -
-        // hemisphere 3.2 and directional 7.35 against the 1.15 and 2.1 that map
-        // was lit for - which is most of why it read as flat and fake.
-        this.createLighting()
-        this.createTerrain()
-        this.createPath()
-        await this.loadEnvironmentModels()
-        this.createForest()
-        this.createUndergrowth()
-        this.createShrine()
-        this.createAtmosphere()
-      },
-      (state) => ({
-        state: this.nestRingReset(state),
-        playerAt: { x: GLOAMWOOD_BOSS_ARENA.playerX, z: GLOAMWOOD_BOSS_ARENA.playerZ },
-      }),
-    )
+  /**
+   * The ground this run is played on.
+   *
+   * Assigned in the constructor rather than declared with an initialiser,
+   * because the map is now chosen by the player on the way in rather than read
+   * out of the URL from in here. Everything downstream still goes through the
+   * contract, so the player, the combat, the mutations, the HUD and the session
+   * log are the same on either one.
+   */
+  private readonly map: GloamwoodMapContract
   /**
    * The map's progression is authoritative for gates and checkpoint lives.
    * Mutation state records the same opaque milestone ids, but it cannot own
@@ -1082,11 +1057,8 @@ class Gloamwood3DHunt {
    * gate. Keeping both states explicit makes that boundary inspectable.
    */
   private valleyProgression: GloamwoodValleyProgression = createGloamwoodValleyProgression()
-  private readonly cameraOffset = new THREE.Vector3(
-    this.map.cameraOffset.x,
-    this.map.cameraOffset.y,
-    this.map.cameraOffset.z,
-  )
+  /** Set in the constructor, because it is the map's and the map is a parameter. */
+  private readonly cameraOffset = new THREE.Vector3()
   /**
    * Creatures the player hit since the last creature step.
    *
@@ -1188,7 +1160,7 @@ class Gloamwood3DHunt {
   private feedbackDurationMultiplier = 1
   private readonly dustParticles: DustParticle[] = []
   private readonly footstepState = createGloamwoodFootstepState()
-  private nestState: GloamwoodNestState = this.map.createCreatures()
+  private nestState: GloamwoodNestState
   private playerCombat: GloamwoodPlayerCombatState = createGloamwoodPlayerCombatState()
   private attackState: FormalHuntBasicAttackState = createFormalHuntBasicAttackState()
   private combatProfile: GloamwoodCombatProfile = CORAL_GECKO_PRESENTATION.combat
@@ -1214,7 +1186,7 @@ class Gloamwood3DHunt {
    * Three is deliberately forgiving. The point is that the number can reach
    * zero, not that it usually does.
    */
-  private livesRemaining = this.map.lives
+  private livesRemaining: number
   private resultOverlay?: HTMLElement
   /**
    * Modifiers granted by the one form evolution. Mutations stack on top of
@@ -1320,7 +1292,7 @@ class Gloamwood3DHunt {
   // is a nest to walk into; in the valley it is a road with things living
   // beside it, and telling the player to approach a nest that does not exist is
   // the first thing they read.
-  private combatMessage = this.map.hasNest ? t('hud.msg.approachNest') : t('hud.msg.takeTheRoad')
+  private combatMessage: string
   private hud?: HTMLElement
   private onboardingHud?: HTMLElement
   private settingsPanel?: HTMLElement
@@ -1422,8 +1394,50 @@ class Gloamwood3DHunt {
   private readonly weatherRunSeed: string
   private readonly container: HTMLElement
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, mapId: GloamwoodMapId) {
     this.container = container
+    this.map = mapId === 'defence'
+      ? createGloamwoodDefenceMap(
+        async () => { await this.buildDefenceScenery() },
+        (_camera, elapsed) => this.defenceScene?.update(elapsed),
+      )
+      : mapId === 'valley'
+      ? createGloamwoodValleyMap(
+        Number(new URLSearchParams(window.location.search).get('mapSeed') ?? 0) || 0x5a11e,
+        async () => { await this.buildValleyScenery() },
+        (camera, elapsed, delta) => this.valley?.update(camera, elapsed, delta),
+        () => this.valleyGroundHeight,
+        this.ecologyRunSeed,
+      )
+      : createGloamwoodMap(
+        terrainHeight,
+        { halfWidth: WORLD_HALF_WIDTH, halfDepth: WORLD_HALF_DEPTH },
+        async () => {
+          // Lighting belongs to the map for the same reason the scenery does.
+          // Run unconditionally it stacked on top of the valley's own rig -
+          // hemisphere 3.2 and directional 7.35 against the 1.15 and 2.1 that map
+          // was lit for - which is most of why it read as flat and fake.
+          this.createLighting()
+          this.createTerrain()
+          this.createPath()
+          await this.loadEnvironmentModels()
+          this.createForest()
+          this.createUndergrowth()
+          this.createShrine()
+          this.createAtmosphere()
+        },
+        (state) => ({
+          state: this.nestRingReset(state),
+          playerAt: { x: GLOAMWOOD_BOSS_ARENA.playerX, z: GLOAMWOOD_BOSS_ARENA.playerZ },
+        }),
+      )
+    // These four are the map's, so they are set here with it rather than in a
+    // field initialiser - a field initialiser runs before the constructor body
+    // and would be reading a map that does not exist yet.
+    this.cameraOffset.set(this.map.cameraOffset.x, this.map.cameraOffset.y, this.map.cameraOffset.z)
+    this.nestState = this.map.createCreatures()
+    this.livesRemaining = this.map.lives
+    this.combatMessage = this.map.hasNest ? t('hud.msg.approachNest') : t('hud.msg.takeTheRoad')
     try {
       this.feedbackSettings = normalizeCombatFeedbackSettings(JSON.parse(localStorage.getItem(PLAYER_FEEDBACK_SETTINGS_KEY) ?? 'null'))
     } catch {
