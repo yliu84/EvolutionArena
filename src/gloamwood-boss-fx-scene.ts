@@ -58,6 +58,48 @@ export interface GloamwoodBossFxScene {
  */
 const DECAL_LIFT = 0.14
 
+/**
+ * The linear luminance a telegraph line is written at, at full opacity.
+ *
+ * Above the bloom threshold, and that is the point: the outline is the one
+ * thing on screen that has to stay readable for a whole wind-up, and a line
+ * that throws light is easier to find than a line that does not. Bloom adds a
+ * halo around the line without moving it, so the edge - which is the actual
+ * information, "stand outside this" - is exactly where it was.
+ *
+ * The fill deliberately gets none of this. It is a large area, and an area that
+ * blooms washes out the very contrast between inside and outside that the
+ * player is reading.
+ *
+ * Chosen so the rim crosses the threshold about halfway through a wind-up
+ * rather than at the start of it: the outline is at `0.5 + windup * 0.42`
+ * opacity, so at 1.55 it lights up as the blow gets close. The glow becomes
+ * part of the clock, which is the one job the rim was already doing.
+ */
+export const GLOAMWOOD_TELEGRAPH_RIM_GLOW = 1.55
+const RIM_GLOW = GLOAMWOOD_TELEGRAPH_RIM_GLOW
+
+/**
+ * Writes a colour at a stated luminance rather than at its own.
+ *
+ * Normalised rather than given a per-colour multiplier, because the bloom pass
+ * thresholds on luminance and luminance is 71% green. The wind-up amber
+ * (`0xffb648`) sits at 0.55 and the enraged red (`0xff5a3c`) at 0.28, so one
+ * shared gain would have phase two - the hotter phase, whose whole tell is that
+ * nothing changed except the light - glow *less* than phase one, or not at all.
+ */
+export function writeGlowForReview(target: THREE.Color, hex: number, luminance: number) {
+  writeGlow(target, hex, luminance)
+}
+
+function writeGlow(target: THREE.Color, hex: number, luminance: number) {
+  target.setHex(hex)
+  // setHex has already converted to the linear working space, which is the
+  // space the pass reads.
+  const own = 0.2126 * target.r + 0.7152 * target.g + 0.0722 * target.b
+  target.multiplyScalar(luminance / Math.max(1e-4, own))
+}
+
 interface FxVisual {
   root: THREE.Group
   /** Rebuilt when the pattern changes, because the area changes with it. */
@@ -137,14 +179,22 @@ export function createGloamwoodBossFxScene(): GloamwoodBossFxScene {
         // outline never disappears between beats - it is the one thing on
         // screen that has to be readable for the whole wind-up.
         const rimOpacity = Math.min(1, frame.rimOpacity * (0.72 + frame.pulse * 0.42))
+        // Gained during the wind-up and not during the blow. The wind-up is
+        // where the outline is doing work and where it is the only bright thing
+        // on the ground; by the time the blow lands the fill, the rim and the
+        // wave are stacked on the same pixels and adding a gain on top of that
+        // is how the impact became a white hole.
+        const windingUp = frame.impact === null
         for (const rim of visual.rims) {
           const material = rim.material as THREE.MeshBasicMaterial
-          material.color.setHex(color)
+          if (windingUp) writeGlow(material.color, color, RIM_GLOW)
+          else material.color.setHex(color)
           material.opacity = rimOpacity
         }
         for (const wall of visual.walls) {
           const material = wall.material as THREE.MeshBasicMaterial
-          material.color.setHex(color)
+          if (windingUp) writeGlow(material.color, color, RIM_GLOW)
+          else material.color.setHex(color)
           material.opacity = rimOpacity * 0.72
         }
 
@@ -156,8 +206,14 @@ export function createGloamwoodBossFxScene(): GloamwoodBossFxScene {
           visual.wave.visible = true
           visual.wave.scale.set(radius, 1, radius)
           const material = visual.wave.material as THREE.MeshBasicMaterial
+          // Ungained, deliberately. See the note on RIM_GLOW: at the moment of
+          // impact the fill, the rim and this ring are all on the same pixels,
+          // and they add.
           material.color.setHex(frame.flashColor)
-          material.opacity = (1 - travel) ** 1.5 * 0.9
+          // 0.62 rather than 0.9, for the same reason the fill and rim came
+          // down: this ring crosses both of them at the moment they are
+          // brightest, and additive layers add.
+          material.opacity = (1 - travel) ** 1.5 * 0.62
           flashStrength = Math.max(flashStrength, (1 - Math.min(1, frame.impact * 2)) ** 2)
           if (flashStrength > 0) flash.position.set(entry.x, entry.groundY + 1.6, entry.z)
         }
