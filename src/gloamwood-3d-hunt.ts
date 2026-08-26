@@ -15,6 +15,11 @@ import {
   shouldGloamwoodRenderContinuously,
 } from './gloamwood-render-quality'
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
+import {
+  gloamwoodMonsterStrikeFx,
+  type GloamwoodVfxBurst,
+  type GloamwoodVfxRing,
+} from './gloamwood-vfx'
 import { gloamwoodMapFromEntry, type GloamwoodMapId } from './entry-routing'
 import { defineGloamwoodTunable, gloamwoodTuningRequested } from './gloamwood-tuning'
 import {
@@ -789,6 +794,15 @@ interface PreyVisual {
   }
   telegraph: THREE.Mesh
   targetRing: THREE.Mesh
+  /**
+   * What this creature was doing last frame, for the effects alone.
+   *
+   * The model sub-object keeps its own copy and has already advanced it by the
+   * time the effects run, so reading that one means the strike never registers
+   * as new - the same trap the boss effects hit, and the reason they keep a
+   * separate map.
+   */
+  fxPhase?: GloamwoodPreyPhase
   flashRemaining: number
   impactRemaining: number
   impactDuration: number
@@ -936,7 +950,11 @@ interface DebugState {
   onboarding: { phase: GloamwoodOnboardingStep['phase']; step: number; totalSteps: number; title: string }
   settings: { paused: boolean; shake: boolean; flash: boolean; volume: number; muted: boolean }
   audio: GloamwoodAudioSnapshot & { lastEvent: GloamwoodSoundEvent | null; eventCount: number; recentEvents: GloamwoodSoundEvent[] }
-  visualFeedback: { activeSprites: number; activeParticles: number; activeDecals: number; sporeHaze: number; sporeMistDrop: number; slowAuraRadius: number }
+  visualFeedback: {
+    activeSprites: number; activeParticles: number; activeDecals: number
+    sporeHaze: number; sporeMistDrop: number; slowAuraRadius: number
+    vfxBursts: number; vfxParticles: number
+  }
   input: { bindings: GloamwoodInputBindings; rebinding: GloamwoodInputAction | null }
   performance: {
     fps: number
@@ -1243,6 +1261,9 @@ class Gloamwood3DHunt {
    * had, in the one other place that starts a clip outside the attack state.
    */
   private castHold = 0
+  /** Effects played through the described-effect path. Reported, never read. */
+  private vfxBurstsForReview = 0
+  private vfxParticlesForReview = 0
   /** Which combat envelope drove the body last frame. Reported, never read. */
   private attackEnvelopeForReview: 'leap' | 'planted-slam' | 'tail-spin' | 'generic' = 'generic'
   private dash: {
@@ -1324,6 +1345,8 @@ class Gloamwood3DHunt {
     materials: THREE.MeshBasicMaterial[]
   } | null = null
   private readonly skillFxPlane = new THREE.PlaneGeometry(1, 1)
+  /** Unit ring, scaled per effect. One geometry for every strike on the field. */
+  private readonly vfxRingGeometry = new THREE.RingGeometry(0.88, 1, 48)
   private readonly tailSweepShock = new THREE.RingGeometry(1.52, 2.1, 64)
   /** Unit hex prism. Y is thickness; scaled per plate. */
   private readonly carapacePlate = new THREE.CylinderGeometry(0.5, 0.5, 1, 6)
@@ -3960,6 +3983,90 @@ class Gloamwood3DHunt {
    * and dimmer, which is what stops a bright sprite from reading as a flat
    * white disc.
    */
+  /**
+   * Plays a described effect.
+   *
+   * The one place a `GloamwoodVfxBurst` becomes objects, so that every effect
+   * built through `gloamwood-vfx` is allocated, blended, gained, pooled and
+   * retired the same way. The fourteen hand-rolled spawn sites that predate
+   * this each answered those questions separately, and no two of them agree
+   * about renderOrder.
+   *
+   * Nothing here interprets the burst. Reading a number and changing it on the
+   * way to the screen is how a telegraph starts lying about its own reach.
+   */
+  private playVfx(burst: GloamwoodVfxBurst, origin: THREE.Vector3) {
+    this.vfxBurstsForReview += 1
+    this.vfxParticlesForReview += burst.particles.length + (burst.ring ? 1 : 0)
+    const pace = this.feedbackDurationMultiplier
+    for (const particle of burst.particles) {
+      const material = new THREE.SpriteMaterial({
+        map: this.skillFxTextures.get(particle.texture),
+        color: new THREE.Color(particle.color).multiplyScalar(
+          particle.gain === 'glow' ? SKILL_FX_LIGHT_GAIN.glow : SKILL_FX_LIGHT_GAIN.streak,
+        ),
+        transparent: true, opacity: 0, depthWrite: false, depthTest: false,
+        blending: THREE.AdditiveBlending, fog: false,
+      })
+      const sprite = new THREE.Sprite(material)
+      sprite.position.set(
+        origin.x + particle.offsetX,
+        origin.y + particle.offsetY,
+        origin.z + particle.offsetZ,
+      )
+      sprite.scale.set(particle.startScale, particle.startScale, 1)
+      sprite.renderOrder = 13
+      this.scene.add(sprite)
+      this.mutationParticles.push({
+        object: sprite, material,
+        velocity: new THREE.Vector3(particle.velocityX, particle.velocityY, particle.velocityZ),
+        spin: particle.spin, age: 0, duration: particle.duration * pace,
+        // 'rise' passes straight through: the shared updater already gives it
+        // the slower drag a drifting cloud needs, where 'ballistic' snaps.
+        gravity: particle.gravity, motion: particle.motion,
+        peakOpacity: particle.peakOpacity,
+        startScale: new THREE.Vector2(particle.startScale, particle.startScale),
+        endScale: new THREE.Vector2(particle.endScale, particle.endScale),
+        attractTarget: sprite.position.clone(),
+      })
+    }
+    if (burst.ring) this.spawnVfxRing(burst.ring, origin, pace)
+    if (burst.trauma > 0) this.cameraTrauma = Math.min(1, this.cameraTrauma + burst.trauma)
+    while (this.mutationParticles.length > 130) this.retireMutationParticle(this.mutationParticles.shift()!)
+  }
+
+  /**
+   * The ground ring an effect asked for, at exactly the radius it asked for.
+   *
+   * Built flat and horizontal rather than as a billboard, because it is a claim
+   * about ground: a sprite that faces the camera looks the same standing inside
+   * the area and standing beside it.
+   */
+  private spawnVfxRing(ring: GloamwoodVfxRing, origin: THREE.Vector3, pace: number) {
+    const material = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(ring.color).multiplyScalar(SKILL_FX_LIGHT_GAIN.streak),
+      transparent: true, opacity: 0, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    })
+    const mesh = new THREE.Mesh(this.vfxRingGeometry, material)
+    mesh.rotation.x = -Math.PI / 2
+    mesh.position.set(origin.x, this.map.height(origin.x, origin.z) + 0.05, origin.z)
+    mesh.scale.setScalar(ring.radius)
+    mesh.renderOrder = 12
+    this.scene.add(mesh)
+    this.mutationParticles.push({
+      object: mesh, material,
+      velocity: new THREE.Vector3(), spin: 0, age: 0, duration: ring.seconds * pace,
+      gravity: 0, motion: 'expand', peakOpacity: ring.peakOpacity,
+      // Opens from most of its final size rather than from nothing: the radius
+      // is information, and a ring that spends its first frames small is a ring
+      // that spends them describing an area that is not the one being hit.
+      startScale: new THREE.Vector2(ring.radius * 0.86, ring.radius * 0.86),
+      endScale: new THREE.Vector2(ring.radius, ring.radius),
+      attractTarget: mesh.position.clone(),
+    })
+  }
+
   private spawnSporeOrb(targetId: string, shape: Extract<GloamwoodSkillShape, { kind: 'projectile' }>) {
     const map = this.skillFxTextures.get('glow')
     const group = new THREE.Group()
@@ -6465,6 +6572,26 @@ class Gloamwood3DHunt {
       // player's *body* crosses, which is how a mark on the ground is read.
       const reach = gloamwoodPreyTelegraphRadius(prey, gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily))
       visual.telegraph.scale.setScalar(reach * (telegraphing ? 1.12 - telegraphProgress * 0.12 : 1))
+      // The blow, on the frame it commits. Until now an ordinary creature's
+      // attack was a ring that filled and a ring that flared, identically for
+      // all three families - the only enemies in this game with an effect of
+      // their own were the four valley bosses.
+      //
+      // Built from `reach`: the same number the ring above is scaled by and the
+      // same one the authority tests, so the effect cannot describe an area the
+      // blow does not cover.
+      if (visual.fxPhase !== 'strike' && prey.phase === 'strike' && !bossSpec) {
+        this.playVfx(
+          gloamwoodMonsterStrikeFx({
+            family: prey.kind,
+            reach,
+            facingRadians: prey.facingRadians,
+            seed: prey.slot,
+          }),
+          new THREE.Vector3(prey.x, this.map.height(prey.x, prey.z), prey.z),
+        )
+      }
+      visual.fxPhase = prey.phase
       if (visual.model) {
         // One writer for the body. The primitive gait, strike lunge and stun
         // wobble below are the fallback's animation; running them as well would
@@ -9979,6 +10106,11 @@ class Gloamwood3DHunt {
       visualFeedback: {
         activeSprites: this.feedbackSprites.length,
         activeParticles: this.rendingParticles.length + this.rendingSurfaces.length + this.mutationParticles.length,
+        // How many described effects have played, and what they cost. A strike
+        // effect that never fires and a strike effect that fires and is
+        // invisible look identical on screen.
+        vfxBursts: this.vfxBurstsForReview,
+        vfxParticles: this.vfxParticlesForReview,
         activeDecals: 0,
         // The spore count rather than a patch count: the mist is one mesh now,
         // so counting it only ever reported 1 or 0, and what is worth reporting
