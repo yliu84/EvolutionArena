@@ -20,6 +20,8 @@ import { defineGloamwoodTunable, gloamwoodTuningRequested } from './gloamwood-tu
 import {
   createGloamwoodSkillState,
   gloamwoodDashLanding,
+  gloamwoodDashTravel,
+  GLOAMWOOD_DASH_PHASES,
   gloamwoodSkillFor,
   stepGloamwoodSkillState,
   tryGloamwoodSkill,
@@ -1129,7 +1131,7 @@ class Gloamwood3DHunt {
   private dash: {
     fromX: number; fromZ: number; toX: number; toZ: number
     targetId: string; elapsed: number; seconds: number
-    damage: number; knockback: number
+    damage: number; knockback: number; resolved: boolean
   } | null = null
   /** Spore blooms burning on the ground. Authority, not decoration. */
   private skillZones: Array<{ x: number; z: number; radius: number; remaining: number; damagePerSecond: number; slow: number; carry: number }> = []
@@ -3652,7 +3654,14 @@ class Gloamwood3DHunt {
       this.dash = {
         fromX: this.playerRoot.position.x, fromZ: this.playerRoot.position.z,
         toX: held.x, toZ: held.z, targetId: target.id,
-        elapsed: 0, seconds: 0.26, damage: shape.damage, knockback: shape.knockback,
+        elapsed: 0,
+        // The leap's own window, not a number of my own choosing. A 0.26s dash
+        // ended inside the crouch - measured, the phase never left 'crouch' -
+        // and then handed the body back to locomotion, so what played was a
+        // crouching animal sliding across the ground. Which is exactly how it
+        // was described.
+        seconds: this.attackWindowSeconds('Pounce'),
+        damage: shape.damage, knockback: shape.knockback, resolved: false,
       }
       // The form's own leap clip and its full presentation - the lift, the
       // landing dust, the camera - rather than a burst borrowed from a mutation.
@@ -3768,28 +3777,36 @@ class Gloamwood3DHunt {
     const dash = this.dash
     if (!dash) return
     dash.elapsed += delta
-    const progress = Math.min(1, dash.elapsed / dash.seconds)
-    const eased = 1 - (1 - progress) ** 2.2
+    const progress = Math.min(1, dash.elapsed / Math.max(0.001, dash.seconds))
+    // Travel only across the part of the leap the animal is actually committed
+    // to. Before the crouch ends it is still gathering, and after the landing
+    // frame it has arrived; moving through either reads as a slide.
+    const eased = gloamwoodDashTravel(progress)
     const x = dash.fromX + (dash.toX - dash.fromX) * eased
     const z = dash.fromZ + (dash.toZ - dash.fromZ) * eased
     this.playerRoot.position.set(x, this.map.height(x, z), z)
     this.target.set(x, 0, z)
-    if (progress < 1) return
-    this.dash = null
-    if (!this.playerCombat.alive) return
-    const hit = damageGloamwoodNestPrey(
-      this.nestState, dash.targetId, Math.round(dash.damage * this.damageMultiplier),
-      'Pounce', { x, z }, dash.knockback,
-    )
-    this.nestState = hit.state
-    if (hit.effectiveDamage > 0) {
-      const landed = this.nestState.prey.find((prey) => prey.id === dash.targetId)
-      this.spawnDamageNumber(
-        new THREE.Vector3(landed?.x ?? x, this.map.height(landed?.x ?? x, landed?.z ?? z) + 1.4, landed?.z ?? z),
-        hit.effectiveDamage, hit.killed ? 'kill' : 'hit',
-      )
+    // Resolved on the animation's own contact frame, which is the instant the
+    // basic attack's authority uses for the same clip.
+    if (!dash.resolved && progress >= GLOAMWOOD_DASH_PHASES.contact) {
+      dash.resolved = true
+      if (this.playerCombat.alive) {
+        const hit = damageGloamwoodNestPrey(
+          this.nestState, dash.targetId, Math.round(dash.damage * this.damageMultiplier),
+          'Pounce', { x, z }, dash.knockback,
+        )
+        this.nestState = hit.state
+        if (hit.effectiveDamage > 0) {
+          const landed = this.nestState.prey.find((prey) => prey.id === dash.targetId)
+          this.spawnDamageNumber(
+            new THREE.Vector3(landed?.x ?? x, this.map.height(landed?.x ?? x, landed?.z ?? z) + 1.4, landed?.z ?? z),
+            hit.effectiveDamage, hit.killed ? 'kill' : 'hit',
+          )
+        }
+        this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.3)
+      }
     }
-    this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.3)
+    if (progress >= 1) this.dash = null
   }
 
   private updateSkillZones(delta: number) {

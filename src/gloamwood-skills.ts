@@ -242,3 +242,36 @@ export function gloamwoodDashLanding(
   if (distance < 1e-4) return { x: from.x, z: from.z }
   return { x: from.x + (dx / distance) * stop, z: from.z + (dz / distance) * stop }
 }
+
+/**
+ * The phases of a leap, as fractions of its own window.
+ *
+ * Mirrors the values the character motion already drives the stage-1 pounce
+ * with. They live here as well so the *travel* can be tested without a
+ * browser - the first version of this dash used a duration picked out of the
+ * air, 0.26s against a 0.9s window, and the whole move finished while the
+ * animal was still crouching. What played was a crouching body sliding across
+ * the ground, and no amount of looking at numbers like "clip = Pounce" caught
+ * it; only asking what phase it was in did.
+ */
+export const GLOAMWOOD_DASH_PHASES = {
+  crouchEnd: 0.22,
+  contact: 0.478,
+  landing: 0.68,
+} as const
+
+/**
+ * How far along its travel a dash is, at a given point in its window.
+ *
+ * Zero until the crouch ends and one from the landing frame on, so the body is
+ * planted while it gathers and planted again once it arrives. Movement only
+ * happens across the part of the leap the animal is committed to and airborne
+ * for; moving during either of the other two is what reads as a slide.
+ */
+export function gloamwoodDashTravel(progress: number) {
+  const span = GLOAMWOOD_DASH_PHASES.landing - GLOAMWOOD_DASH_PHASES.crouchEnd
+  const t = Math.min(1, Math.max(0, (progress - GLOAMWOOD_DASH_PHASES.crouchEnd) / span))
+  // Smoothstep: leaves the ground quickly and settles into the landing rather
+  // than arriving at a constant rate.
+  return t * t * (3 - 2 * t)
+}

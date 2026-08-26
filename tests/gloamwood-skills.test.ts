@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  GLOAMWOOD_DASH_PHASES,
   GLOAMWOOD_SKILLS,
+  gloamwoodDashTravel,
   createGloamwoodSkillState,
   gloamwoodDashLanding,
   gloamwoodSkillFor,
   stepGloamwoodSkillState,
   tryGloamwoodSkill,
 } from '../src/gloamwood-skills'
+import { CORAL_GECKO_PRESENTATION } from '../src/quality-3d-character-presentation'
 
 const ready = { family: 'fang', state: createGloamwoodSkillState(), alive: true, hasTarget: true, targetDistance: 4 }
 
@@ -117,5 +120,63 @@ describe('a pounce lands beside its target, not inside it', () => {
     const landing = gloamwoodDashLanding({ x: 0, z: 0 }, { x: 2, z: 0 }, 1.5, 1.2)
     expect(landing.x).toBeGreaterThanOrEqual(0)
     expect(landing.x).toBeLessThanOrEqual(2)
+  })
+})
+
+describe('a pounce leaps rather than slides', () => {
+  // The first version of this dash ran for 0.26s against a 0.9s attack window.
+  // The crouch alone runs to 0.198s of that, so the whole move finished while
+  // the animal was still gathering and the body was then handed straight back
+  // to locomotion. Measured in engine at the time: leapBitePhase never left
+  // 'crouch' and the character lift never left 0.000. What played was a
+  // crouching body sliding across the ground, which is exactly how it was
+  // reported. "The clip is called Pounce" was true the whole time and proved
+  // nothing - which is the reason this is asserted here rather than eyeballed.
+
+  it('stays planted through the crouch', () => {
+    expect(gloamwoodDashTravel(0)).toBe(0)
+    expect(gloamwoodDashTravel(GLOAMWOOD_DASH_PHASES.crouchEnd * 0.5)).toBe(0)
+    expect(gloamwoodDashTravel(GLOAMWOOD_DASH_PHASES.crouchEnd)).toBe(0)
+  })
+
+  it('has arrived by the landing frame and does not creep afterwards', () => {
+    expect(gloamwoodDashTravel(GLOAMWOOD_DASH_PHASES.landing)).toBe(1)
+    expect(gloamwoodDashTravel(0.9)).toBe(1)
+    expect(gloamwoodDashTravel(1)).toBe(1)
+  })
+
+  it('does all of its travelling in the airborne stretch', () => {
+    const airborne = gloamwoodDashTravel(GLOAMWOOD_DASH_PHASES.landing)
+      - gloamwoodDashTravel(GLOAMWOOD_DASH_PHASES.crouchEnd)
+    expect(airborne).toBe(1)
+  })
+
+  it('is past halfway by the contact frame, so the blow lands on the way in', () => {
+    expect(gloamwoodDashTravel(GLOAMWOOD_DASH_PHASES.contact)).toBeGreaterThan(0.5)
+    expect(gloamwoodDashTravel(GLOAMWOOD_DASH_PHASES.contact)).toBeLessThan(1)
+  })
+
+  it('eases rather than running at a constant rate', () => {
+    // A constant rate is a slide with a lift bolted on. Early and late steps
+    // must both be smaller than the step through the middle.
+    const at = (p: number) => gloamwoodDashTravel(p)
+    const span = GLOAMWOOD_DASH_PHASES.landing - GLOAMWOOD_DASH_PHASES.crouchEnd
+    const early = at(GLOAMWOOD_DASH_PHASES.crouchEnd + span * 0.15) - at(GLOAMWOOD_DASH_PHASES.crouchEnd)
+    const middle = at(GLOAMWOOD_DASH_PHASES.crouchEnd + span * 0.575) - at(GLOAMWOOD_DASH_PHASES.crouchEnd + span * 0.425)
+    const late = at(GLOAMWOOD_DASH_PHASES.landing) - at(GLOAMWOOD_DASH_PHASES.landing - span * 0.15)
+    expect(middle).toBeGreaterThan(early)
+    expect(middle).toBeGreaterThan(late)
+  })
+
+  it('keeps the phase constants in step with the motion the renderer drives', () => {
+    // These duplicate CORAL_GECKO_PRESENTATION.combat.leapBiteMotion so the
+    // travel can be tested without a browser. If that authored motion moves and
+    // this does not, the body would leap on one clock and travel on another.
+    expect(GLOAMWOOD_DASH_PHASES.crouchEnd)
+      .toBe(CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.crouchEndProgress)
+    expect(GLOAMWOOD_DASH_PHASES.contact)
+      .toBe(CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.contactProgress)
+    expect(GLOAMWOOD_DASH_PHASES.landing)
+      .toBe(CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.landingProgress)
   })
 })
