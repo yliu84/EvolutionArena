@@ -6,6 +6,8 @@
  * flash + shape (slash / ring / swallow) + sparks that live in 3D.
  */
 
+import { defineGloamwoodTunable } from './gloamwood-tuning'
+
 export const SKILL_FX_TEXTURE_KINDS = ['glow', 'slash', 'ring', 'streak', 'dust', 'pebble', 'plate'] as const
 export type SkillFxTextureKind = (typeof SKILL_FX_TEXTURE_KINDS)[number]
 
@@ -73,6 +75,17 @@ const TAIL_SWEEP_SHOCK = {
 } as const
 
 /** Always-on low haze. Soft enough not to fight telegraphs, feet or other FX. */
+const SPORE_MIST_OPACITY = defineGloamwoodTunable({
+  id: 'SPORE_HAZE.hazeOpacity', group: 'Sporehaze', label: 'Mist opacity',
+  value: 0.12, min: 0, max: 0.4, step: 0.005,
+  note: 'The aura slows anything inside it, so its footprint is information. With the orbs gone this is the only thing drawing the edge.',
+})
+const SPORE_MOTE_SIZE = defineGloamwoodTunable({
+  id: 'SPORE_HAZE.moteSize', group: 'Sporehaze', label: 'Spore size',
+  value: 0.145, min: 0.02, max: 0.4, step: 0.005,
+  note: 'World units. At 0.075 they were 2-5 pixels and effectively invisible.',
+})
+
 export const SPORE_HAZE = {
   color: 0xc6e878,
   moteColor: 0xe8f6a8,
@@ -81,7 +94,7 @@ export const SPORE_HAZE = {
    * inside it by 40%, so its footprint is information the player needs, and
    * with the orbs gone the mist is the only thing that still draws the edge.
    */
-  hazeOpacity: 0.12,
+  get hazeOpacity() { return SPORE_MIST_OPACITY.value },
   moteOpacity: 0.9,
   height: 0.18,
   radiusScale: 1.22,
@@ -109,10 +122,10 @@ export const SPORE_HAZE = {
    */
   moteCount: 84,
   /** World units. Small enough that a single one is a spark, not a ball. */
-  moteSize: 0.145,
+  get moteSize() { return SPORE_MOTE_SIZE.value },
   /** How high a spore climbs over its life before it fades and restarts. */
   moteRise: 1.35,
-} as const
+}
 
 export function sporeHazeLayout(radius: number) {
   const span = Math.max(1.4, radius) * SPORE_HAZE.radiusScale

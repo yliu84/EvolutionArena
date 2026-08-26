@@ -7,6 +7,7 @@ import {
   type GloamwoodBossFxFrame,
 } from './gloamwood-boss-fx'
 import type { GloamwoodValleyBossShape } from './gloamwood-valley-boss'
+import { defineGloamwoodTunable } from './gloamwood-tuning'
 
 /**
  * Boss attacks, on screen.
@@ -84,8 +85,18 @@ const DECAL_LIFT = 0.14
  * enraged red (0.29 on its own) from reading dimmer than the wind-up amber
  * (0.55) - when phase two's entire tell is that nothing changed but the light.
  */
-export const GLOAMWOOD_TELEGRAPH_RIM_GLOW = 0.3
-const RIM_GLOW = GLOAMWOOD_TELEGRAPH_RIM_GLOW
+const IMPACT_WAVE = defineGloamwoodTunable({
+  id: 'boss impact ring opacity', group: 'Boss telegraph', label: 'Impact ring',
+  value: 0.3, min: 0, max: 1, step: 0.01,
+  note: 'Adds to the fill and the rim on the same pixels. Their sum is what the eye sees.',
+})
+const RIM_GLOW_TUNABLE = defineGloamwoodTunable({
+  id: 'GLOAMWOOD_TELEGRAPH_RIM_GLOW', group: 'Boss telegraph', label: 'Outline brightness',
+  value: 0.3, min: 0.05, max: 1.6, step: 0.01,
+  note: 'Linear. ACES at exposure 1.38: 0.20 reads 67% on screen, 0.30 76%, 0.55 87%, 1.55 96%.',
+})
+export const GLOAMWOOD_TELEGRAPH_RIM_GLOW = RIM_GLOW_TUNABLE.initial
+export const GLOAMWOOD_TELEGRAPH_IMPACT_WAVE = IMPACT_WAVE.initial
 
 /**
  * Writes a colour at a stated luminance rather than at its own.
@@ -195,13 +206,13 @@ export function createGloamwoodBossFxScene(): GloamwoodBossFxScene {
         const windingUp = frame.impact === null
         for (const rim of visual.rims) {
           const material = rim.material as THREE.MeshBasicMaterial
-          if (windingUp) writeGlow(material.color, color, RIM_GLOW)
+          if (windingUp) writeGlow(material.color, color, RIM_GLOW_TUNABLE.value)
           else material.color.setHex(color)
           material.opacity = rimOpacity
         }
         for (const wall of visual.walls) {
           const material = wall.material as THREE.MeshBasicMaterial
-          if (windingUp) writeGlow(material.color, color, RIM_GLOW)
+          if (windingUp) writeGlow(material.color, color, RIM_GLOW_TUNABLE.value)
           else material.color.setHex(color)
           material.opacity = rimOpacity * 0.72
         }
@@ -221,7 +232,7 @@ export function createGloamwoodBossFxScene(): GloamwoodBossFxScene {
           // 0.3 rather than 0.9, for the same reason the fill and the rim came
           // down: this ring crosses both of them at the moment they are
           // brightest, and additive layers add.
-          material.opacity = (1 - travel) ** 1.5 * 0.3
+          material.opacity = (1 - travel) ** 1.5 * IMPACT_WAVE.value
           flashStrength = Math.max(flashStrength, (1 - Math.min(1, frame.impact * 2)) ** 2)
           if (flashStrength > 0) flash.position.set(entry.x, entry.groundY + 1.6, entry.z)
         }

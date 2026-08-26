@@ -2,7 +2,11 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 
-import { GLOAMWOOD_TELEGRAPH_RIM_GLOW, writeGlowForReview } from '../src/gloamwood-boss-fx-scene'
+import {
+  GLOAMWOOD_TELEGRAPH_IMPACT_WAVE,
+  GLOAMWOOD_TELEGRAPH_RIM_GLOW,
+  writeGlowForReview,
+} from '../src/gloamwood-boss-fx-scene'
 import { GLOAMWOOD_BOSS_FX } from '../src/gloamwood-boss-fx'
 import { GLOAMWOOD_BLOOM } from '../src/gloamwood-bloom'
 
@@ -58,7 +62,7 @@ describe('a boss telegraph throws light without losing its edge', () => {
     const fx = readFileSync(new URL('../src/gloamwood-boss-fx.ts', import.meta.url), 'utf8')
     const fill = Number(fx.match(/fillOpacity: ([\d.]+) \* \(1 - wash\)/)![1])
     const rim = Number(fx.match(/rimOpacity: ([\d.]+) \* \(1 - wash\)/)![1])
-    const wave = Number(scene.match(/\(1 - travel\) \*\* 1\.5 \* ([\d.]+)/)![1])
+    const wave = GLOAMWOOD_TELEGRAPH_IMPACT_WAVE
     const overlap = luminance(flash) * (fill + rim + wave)
     // Cut until it comes off the shoulder of the tone curve. 2.24 and 1.34 are
     // 98% and 96% brightness respectively - the same near-white - so the first

@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
+import { defineGloamwoodTunable } from './gloamwood-tuning'
 
 /**
  * Bloom, and the reason the game did not have any.
@@ -45,10 +46,24 @@ export interface GloamwoodBloomSettings {
   threshold: number
 }
 
+const BLOOM_STRENGTH = defineGloamwoodTunable({
+  id: 'GLOAMWOOD_BLOOM.strength', group: 'Bloom', label: 'Strength',
+  value: 1, min: 0, max: 2.5, step: 0.05,
+})
+const BLOOM_RADIUS = defineGloamwoodTunable({
+  id: 'GLOAMWOOD_BLOOM.radius', group: 'Bloom', label: 'Radius',
+  value: 0.6, min: 0, max: 1.2, step: 0.05,
+})
+const BLOOM_THRESHOLD = defineGloamwoodTunable({
+  id: 'GLOAMWOOD_BLOOM.threshold', group: 'Bloom', label: 'Threshold',
+  value: 1.15, min: 0.3, max: 2.5, step: 0.05,
+  note: 'Read against the linear buffer, not the picture. Measured: below 1.1 the whole image lifts.',
+})
+
 export const GLOAMWOOD_BLOOM: GloamwoodBloomSettings = {
-  strength: 1,
-  radius: 0.6,
-  threshold: 1.15,
+  get strength() { return BLOOM_STRENGTH.value },
+  get radius() { return BLOOM_RADIUS.value },
+  get threshold() { return BLOOM_THRESHOLD.value },
 }
 
 export interface GloamwoodBloomPipeline {
@@ -109,7 +124,15 @@ export function createGloamwoodBloom(
     composer.addPass(new OutputPass())
 
     return {
-      render: () => composer.render(),
+      render: () => {
+        // Re-read every frame rather than only at construction, so the tuning
+        // panel can move these while looking at the thing they change. Three
+        // property writes; the pass reads them on the same frame.
+        bloom.strength = settings.strength
+        bloom.radius = settings.radius
+        bloom.threshold = settings.threshold
+        composer.render()
+      },
       setSize: (width, height, pixelRatio) => {
         composer.setPixelRatio(pixelRatio)
         composer.setSize(width, height)

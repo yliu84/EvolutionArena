@@ -16,6 +16,7 @@ import {
 } from './gloamwood-render-quality'
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import { gloamwoodMapFromEntry, type GloamwoodMapId } from './entry-routing'
+import { defineGloamwoodTunable, gloamwoodTuningRequested } from './gloamwood-tuning'
 import {
   applyGloamwoodRun,
   readGloamwoodAchievements,
@@ -348,12 +349,24 @@ const PLAYER_FEEDBACK_SETTINGS_KEY = 'evolution-arena-combat-feedback-v1'
  * the body at once, all additive, all overlapping. Screen area, not colour, is
  * what decides how much light lands.
  */
+const EMBER_FLOOR = defineGloamwoodTunable({
+  id: 'metabolic ember floor', group: 'Starving Metabolism', label: 'Vein brightness',
+  value: 0.62, min: 0.05, max: 1, step: 0.01,
+  note: 'Two earlier passes at 0.12-0.23 and 0.34-0.53 were both invisible. Under about 0.6 is below the noise floor.',
+})
+const SKILL_FX_GLOW_GAIN = defineGloamwoodTunable({
+  id: 'SKILL_FX_LIGHT_GAIN.glow', group: 'Skill FX', label: 'Glow gain',
+  value: 2.4, min: 0.5, max: 4, step: 0.05,
+})
+const SKILL_FX_STREAK_GAIN = defineGloamwoodTunable({
+  id: 'SKILL_FX_LIGHT_GAIN.streak', group: 'Skill FX', label: 'Streak gain',
+  value: 1.5, min: 0.5, max: 4, step: 0.05,
+  note: 'Lower than glow: a streak is 0.16x0.72 and the tail sweep fires twelve at once.',
+})
 export const SKILL_FX_LIGHT_GAIN = {
-  /** Small, point-like: hit sparks and regeneration motes. */
-  glow: 2.4,
-  /** Long and thin, and fired a dozen at a time. */
-  streak: 1.5,
-} as const
+  get glow() { return SKILL_FX_GLOW_GAIN.value },
+  get streak() { return SKILL_FX_STREAK_GAIN.value },
+}
 
 /**
  * The scene's tone mapping exposure.
@@ -1088,6 +1101,7 @@ class Gloamwood3DHunt {
    * module gets the first hunt on screen earlier without changing authority.
    */
   private bloom?: GloamwoodBloomPipeline
+  private disposeTuningPanel?: () => void
   /** Review-only multiplier on the skill FX gains, so they can be swept live. */
   private skillFxGainScale = 1
   private bossFx?: GloamwoodBossFxScene
@@ -1579,6 +1593,18 @@ class Gloamwood3DHunt {
     // Built here rather than in the constructor because the composer sizes
     // itself from the renderer, and the renderer has no size until its canvas
     // is in the document.
+    if (gloamwoodTuningRequested(window.location.search)) {
+      // Dynamically imported, so it is not in the shipped chunk at all, and
+      // failing to load it must never stop a run starting.
+      void import('./gloamwood-tuning-panel')
+        .then(({ mountGloamwoodTuningPanel }) => {
+          if (this.disposed) return
+          // A changed value has to show while the world is frozen: the point of
+          // this is freezing an effect mid-flight and dragging a slider at it.
+          this.disposeTuningPanel = mountGloamwoodTuningPanel(this.container, () => this.requestNextFrame(false))
+        })
+        .catch((error) => console.warn('Tuning panel unavailable', error))
+    }
     if (gloamwoodBloomRequested(window.location.search)) {
       this.bloom = createGloamwoodBloom(this.renderer, this.scene, this.camera) ?? undefined
       this.resize()
@@ -1648,6 +1674,7 @@ class Gloamwood3DHunt {
     this.moultHuskRight.edges.dispose()
     this.disposeSporeHaze()
     this.disposeMetabolicEmber()
+    this.disposeTuningPanel?.()
     this.sporeHazePlane.dispose()
     this.renderer.domElement.remove()
     this.debugOutput?.remove()
@@ -4960,7 +4987,7 @@ class Gloamwood3DHunt {
       // reaches the frame is a fraction of this number, and it is being added
       // to a hide the scene lights already. Anything under about 0.6 is below
       // the noise floor.
-      material.opacity = (0.62 + spent * 0.16) + stagger * (0.1 + spent * 0.07) + breath * 0.04
+      material.opacity = (EMBER_FLOOR.value + spent * 0.16) + stagger * (0.1 + spent * 0.07) + breath * 0.04
     }
   }
 
