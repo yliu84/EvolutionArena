@@ -1113,6 +1113,24 @@ class Gloamwood3DHunt {
   private bloom?: GloamwoodBloomPipeline
   private disposeTuningPanel?: () => void
   private skillState: GloamwoodSkillState = createGloamwoodSkillState()
+  /**
+   * A pounce in flight.
+   *
+   * It used to be a teleport: the position was set, the damage landed, and a
+   * ring of dust went outward. Reported from play as "it looks like things
+   * scatter, and I never see a pounce" - both of which were exactly right. A
+   * leap that finishes in the same frame it starts cannot read as a leap, and
+   * the only motion on screen was the dust it kicked up.
+   */
+  private readonly skillZoneVisuals: Array<{
+    group: THREE.Group; fill: THREE.Mesh; rim: THREE.Mesh
+    zone: { remaining: number }; elapsed: number
+  }> = []
+  private dash: {
+    fromX: number; fromZ: number; toX: number; toZ: number
+    targetId: string; elapsed: number; seconds: number
+    damage: number; knockback: number
+  } | null = null
   /** Spore blooms burning on the ground. Authority, not decoration. */
   private skillZones: Array<{ x: number; z: number; radius: number; remaining: number; damagePerSecond: number; slow: number; carry: number }> = []
   /** Review-only multiplier on the skill FX gains, so they can be swept live. */
@@ -3345,7 +3363,9 @@ class Gloamwood3DHunt {
     this.updateSessionLog()
     this.updateModelledBoss(delta)
     this.skillState = stepGloamwoodSkillState(this.skillState, delta)
+    this.updateDash(delta)
     this.updateSkillZones(delta)
+    this.updateSkillZoneVisuals(delta)
     this.updateHealthDecay(delta)
     this.updateMutationOffers()
     this.updateCamera(delta)
@@ -3440,7 +3460,11 @@ class Gloamwood3DHunt {
       this.setAction('Death')
       return
     }
-    if (this.attackState.action) return
+    // A pounce in flight owns the body too. Only a basic attack used to hold
+    // this off, so the skill set its leap clip and the very next frame handed
+    // it straight back to Idle - which is why the leap could be measured moving
+    // and still never be seen.
+    if (this.attackState.action || this.dash) return
     this.setAction(this.moving ? 'Run' : this.turning ? 'Turn' : 'Idle')
   }
 
@@ -3620,31 +3644,27 @@ class Gloamwood3DHunt {
         gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily),
       )
       const held = this.map.confine(landing.x, landing.z)
-      this.playerRoot.position.set(held.x, this.map.height(held.x, held.z), held.z)
-      this.target.set(held.x, 0, held.z)
       this.lockedPreyId = target.id
-      this.snapCameraNextFrame = true
-      const hit = damageGloamwoodNestPrey(
-        this.nestState, target.id, Math.round(shape.damage * this.damageMultiplier),
-        'Pounce', { x: held.x, z: held.z }, shape.knockback,
+      this.lastFacing = gloamwoodMovementFacingRadians(
+        target.x - this.playerRoot.position.x,
+        target.z - this.playerRoot.position.z,
       )
-      this.nestState = hit.state
-      this.spawnDamageNumber(
-        new THREE.Vector3(target.x, this.map.height(target.x, target.z) + 1.4, target.z),
-        hit.effectiveDamage, hit.killed ? 'kill' : 'hit',
-      )
-      this.spawnMutationFxBurst('tail-sweep', this.lastFacing)
-      this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.3)
+      this.dash = {
+        fromX: this.playerRoot.position.x, fromZ: this.playerRoot.position.z,
+        toX: held.x, toZ: held.z, targetId: target.id,
+        elapsed: 0, seconds: 0.26, damage: shape.damage, knockback: shape.knockback,
+      }
+      // The form's own leap clip and its full presentation - the lift, the
+      // landing dust, the camera - rather than a burst borrowed from a mutation.
+      // The Shell contract redirects Pounce to a planted Slam, so this is right
+      // on every body without asking which one it is.
+      this.startAttackPresentation('Pounce', performance.now())
     } else if (shape.kind === 'zone' && target) {
       this.skillZones.push({
         x: target.x, z: target.z, radius: shape.radius, remaining: shape.seconds,
         damagePerSecond: shape.damagePerSecond, slow: shape.slow, carry: 0,
       })
-      this.spawnMutationFxBurst(
-        'spore-preview',
-        this.lastFacing,
-        new THREE.Vector3(target.x, this.map.height(target.x, target.z), target.z),
-      )
+      this.spawnSkillZoneVisual(this.skillZones[this.skillZones.length - 1])
     } else if (shape.kind === 'guard') {
       // The shove goes through the same helper the tail sweep's cleave uses, so
       // it stuns and displaces by the rules everything else obeys.
@@ -3673,6 +3693,105 @@ class Gloamwood3DHunt {
    * second and sixty frames, per-frame rounding would floor every tick to zero
    * and the zone would be decoration.
    */
+  /**
+   * Carries a pounce across the ground and lands it.
+   *
+   * Eased out, so the leap leaves fast and settles rather than sliding at a
+   * constant rate. The blow resolves on arrival and through the same authority
+   * a swing does, so a pounce interrupted by death deals nothing.
+   */
+  /**
+   * A spore bloom you can see from across the bowl.
+   *
+   * The first pass borrowed the sporehaze mutation's preview burst, which is
+   * authored to be barely there - it is a *preview*, drawn under a menu - and
+   * the effect was reported as "very faint, and useless". A zone the player
+   * cannot find is a zone they will not stand things in.
+   *
+   * Two rings and a fill on the ground at the zone's own radius, additive and
+   * pulsing, so the edge is where the damage actually stops.
+   */
+  private spawnSkillZoneVisual(zone: { x: number; z: number; radius: number; remaining: number }) {
+    const group = new THREE.Group()
+    group.position.set(zone.x, this.map.height(zone.x, zone.z) + 0.06, zone.z)
+    const fill = new THREE.Mesh(
+      new THREE.CircleGeometry(zone.radius, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color(0.34, 0.62, 0.12), transparent: true, opacity: 0.3,
+        depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      }),
+    )
+    const rim = new THREE.Mesh(
+      new THREE.RingGeometry(zone.radius * 0.93, zone.radius, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({
+        // Chosen against the tone curve, not against the number. The first pass
+        // put this at luminance 1.78 on the reasoning that the rim is the
+        // information and should therefore glow - and it washed the whole bowl
+        // white. ACES at exposure 1.38 is deep into its shoulder here: 0.55
+        // reads 87% on screen and 1.78 is indistinguishable from paper. At 0.39
+        // the rim lands near 79% and the fill it encloses near 60%, which is a
+        // readable edge instead of a flare.
+        color: new THREE.Color(0.26, 0.47, 0.09), transparent: true, opacity: 0.9,
+        depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      }),
+    )
+    rim.position.y = 0.02
+    group.add(fill, rim)
+    this.scene.add(group)
+    this.skillZoneVisuals.push({ group, fill, rim, zone, elapsed: 0 })
+  }
+
+  private updateSkillZoneVisuals(delta: number) {
+    for (let index = this.skillZoneVisuals.length - 1; index >= 0; index -= 1) {
+      const visual = this.skillZoneVisuals[index]
+      visual.elapsed += delta
+      if (visual.zone.remaining <= 0) {
+        this.scene.remove(visual.group)
+        visual.fill.geometry.dispose()
+        ;(visual.fill.material as THREE.Material).dispose()
+        visual.rim.geometry.dispose()
+        ;(visual.rim.material as THREE.Material).dispose()
+        this.skillZoneVisuals.splice(index, 1)
+        continue
+      }
+      const pulse = 0.5 + 0.5 * Math.sin(visual.elapsed * 4.2)
+      // Fades over the last second rather than vanishing, so "gone" and "still
+      // burning" are never the same picture.
+      const life = Math.min(1, visual.zone.remaining)
+      ;(visual.fill.material as THREE.MeshBasicMaterial).opacity = (0.22 + pulse * 0.12) * life
+      ;(visual.rim.material as THREE.MeshBasicMaterial).opacity = (0.7 + pulse * 0.3) * life
+      visual.rim.scale.setScalar(1 + pulse * 0.015)
+    }
+  }
+
+  private updateDash(delta: number) {
+    const dash = this.dash
+    if (!dash) return
+    dash.elapsed += delta
+    const progress = Math.min(1, dash.elapsed / dash.seconds)
+    const eased = 1 - (1 - progress) ** 2.2
+    const x = dash.fromX + (dash.toX - dash.fromX) * eased
+    const z = dash.fromZ + (dash.toZ - dash.fromZ) * eased
+    this.playerRoot.position.set(x, this.map.height(x, z), z)
+    this.target.set(x, 0, z)
+    if (progress < 1) return
+    this.dash = null
+    if (!this.playerCombat.alive) return
+    const hit = damageGloamwoodNestPrey(
+      this.nestState, dash.targetId, Math.round(dash.damage * this.damageMultiplier),
+      'Pounce', { x, z }, dash.knockback,
+    )
+    this.nestState = hit.state
+    if (hit.effectiveDamage > 0) {
+      const landed = this.nestState.prey.find((prey) => prey.id === dash.targetId)
+      this.spawnDamageNumber(
+        new THREE.Vector3(landed?.x ?? x, this.map.height(landed?.x ?? x, landed?.z ?? z) + 1.4, landed?.z ?? z),
+        hit.effectiveDamage, hit.killed ? 'kill' : 'hit',
+      )
+    }
+    this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.3)
+  }
+
   private updateSkillZones(delta: number) {
     if (this.skillZones.length === 0) return
     for (const zone of this.skillZones) {

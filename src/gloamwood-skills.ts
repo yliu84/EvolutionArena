@@ -101,7 +101,8 @@ const BLOOM_RADIUS = defineGloamwoodTunable({
 })
 const BLOOM_DPS = defineGloamwoodTunable({
   id: 'swarm-bloom.damagePerSecond', group: 'Skills', label: 'Spore bloom damage/s',
-  value: 9, min: 1, max: 30, step: 0.5,
+  value: 20, min: 1, max: 40, step: 0.5,
+  note: 'Sized against a combo: swarm stage 1 is 11+9+9+21 = 50 on one target with no cooldown. At 9 this was 36 over four seconds on a nine-second cooldown, and was correctly reported as worse than just attacking.',
 })
 
 export const GLOAMWOOD_SKILLS: Record<GloamwoodSkillFamily, GloamwoodSkill> = {
