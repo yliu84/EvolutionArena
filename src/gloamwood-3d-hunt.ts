@@ -25,8 +25,10 @@ import {
   GLOAMWOOD_DASH_PHASES,
   gloamwoodSkillFor,
   stepGloamwoodSkillState,
+  gloamwoodSkillTargetChoice,
   tryGloamwoodSkill,
   type GloamwoodSkillShape,
+  type GloamwoodSkillTarget,
   type GloamwoodSkillState,
 } from './gloamwood-skills'
 import {
@@ -3717,10 +3719,90 @@ class Gloamwood3DHunt {
    * and turning off every effect in this file changes nothing about what a run
    * costs.
    */
+  /**
+   * What a skill is aimed at, whichever authority owns its health.
+   *
+   * The two boss fights in this game do not keep their boss in `nestState.prey`
+   * - it lives in `bossState` behind `damageGloamwoodBoss` - and skills only
+   * ever knew about prey. The practical result was that both targeted skills
+   * refused to fire in a boss fight with "no target", which is precisely the
+   * fight a player would reach for them in. Two of the three lines had no verb
+   * at the only moment the run is decided.
+   *
+   * Defence-map bosses are ordinary prey and always worked; only the nest and
+   * valley terminal boss goes through the other path. This exists so that
+   * difference stops being visible from up here.
+   */
+  private skillTarget(): GloamwoodSkillTarget | null {
+    const prey = this.lockedPrey() ?? this.nearestLivePrey()
+    return gloamwoodSkillTargetChoice({
+      bossActive: this.bossActive(),
+      bossLocked: this.bossLocked,
+      boss: { id: GLOAMWOOD_BOSS.id, x: this.bossState.x, z: this.bossState.z, radius: GLOAMWOOD_BOSS.bodyRadius },
+      prey: prey ? { id: prey.id, x: prey.x, z: prey.z, radius: gloamwoodPreyBodyRadius(prey) } : null,
+    })
+  }
+
+  /** The same target, re-read now. Creatures move while an orb is in the air. */
+  private skillTargetById(id: string) {
+    if (id === GLOAMWOOD_BOSS.id) {
+      if (!this.bossActive()) return null
+      return {
+        id, x: this.bossState.x, z: this.bossState.z,
+        radius: GLOAMWOOD_BOSS.bodyRadius, boss: true,
+      }
+    }
+    const prey = this.nestState.prey.find((value) => value.id === id)
+    if (!prey || prey.phase === 'dead') return null
+    return { id, x: prey.x, z: prey.z, radius: gloamwoodPreyBodyRadius(prey), boss: false }
+  }
+
+  /**
+   * One blow, resolved through whichever authority owns the target.
+   *
+   * Presentation still decides nothing: this only picks which of the two
+   * existing damage functions to call, and both of them clamp, kill and report
+   * exactly as they did for a basic attack.
+   */
+  private damageSkillTarget(
+    id: string,
+    amount: number,
+    action: FormalHuntBasicAttackAction,
+    from: { x: number; z: number },
+    knockback: number,
+  ): { effectiveDamage: number; killed: boolean } {
+    if (id === GLOAMWOOD_BOSS.id) {
+      const result = damageGloamwoodBoss(this.bossState, amount)
+      this.bossState = result.state
+      if (result.defeated) {
+        this.combatMessage = t('hud.msg.bossDown', { name: t('creature.boss') })
+        this.completeRunVictory()
+      }
+      return { effectiveDamage: result.effectiveDamage, killed: result.defeated }
+    }
+    const hit = damageGloamwoodNestPrey(this.nestState, id, amount, action, from, knockback)
+    this.nestState = hit.state
+    return { effectiveDamage: hit.effectiveDamage, killed: hit.killed }
+  }
+
+  /** Everything a splash could catch, prey and boss alike. */
+  private splashCandidates() {
+    const candidates = this.nestState.prey
+      .filter((prey) => prey.phase !== 'dead')
+      .map((prey) => ({ id: prey.id, x: prey.x, z: prey.z, radius: gloamwoodPreyBodyRadius(prey), boss: false }))
+    if (this.bossActive()) {
+      candidates.push({
+        id: GLOAMWOOD_BOSS.id, x: this.bossState.x, z: this.bossState.z,
+        radius: GLOAMWOOD_BOSS.bodyRadius, boss: true,
+      })
+    }
+    return candidates
+  }
+
   private requestSkill() {
     if (this.paused || this.evolutionState.phase === 'choosing' || this.mutationState.offering) return
     if (this.runPhase === 'victory' || this.runPhase === 'defeat') return
-    const target = this.bossActive() && this.bossLocked ? null : this.lockedPrey() ?? this.nearestLivePrey()
+    const target = this.skillTarget()
     const distance = target
       ? Math.hypot(target.x - this.playerRoot.position.x, target.z - this.playerRoot.position.z)
       : Infinity
@@ -3749,11 +3831,14 @@ class Gloamwood3DHunt {
       const landing = gloamwoodDashLanding(
         this.playerRoot.position,
         target,
-        gloamwoodPreyBodyRadius(target),
+        target.radius,
         gloamwoodPlayerCombatBodyRadius(this.stage, this.characterFamily),
       )
       const held = this.map.confine(landing.x, landing.z)
-      this.lockedPreyId = target.id
+      // Locking a boss is a different flag from locking prey, and pouncing on
+      // one must not silently clear the lock that made the pounce legal.
+      if (target.boss) this.bossLocked = true
+      else this.lockedPreyId = target.id
       const toFacing = gloamwoodMovementFacingRadians(
         target.x - this.playerRoot.position.x,
         target.z - this.playerRoot.position.z,
@@ -3777,7 +3862,8 @@ class Gloamwood3DHunt {
       // on every body without asking which one it is.
       this.startAttackPresentation('Pounce', performance.now())
     } else if (shape.kind === 'projectile' && target) {
-      this.lockedPreyId = target.id
+      if (target.boss) this.bossLocked = true
+      else this.lockedPreyId = target.id
       // Face what is being spat at, and write it to the body.
       //
       // The same omission the pounce had: the yaw is only assigned by the
@@ -3900,11 +3986,11 @@ class Gloamwood3DHunt {
     for (let index = this.sporeOrbs.length - 1; index >= 0; index -= 1) {
       const orb = this.sporeOrbs[index]
       orb.elapsed += delta
-      const prey = this.nestState.prey.find((value) => value.id === orb.targetId)
+      const prey = this.skillTargetById(orb.targetId)
       // Aims at the middle of the body, not at its feet, so the orb strikes a
       // creature rather than the ground it is standing on.
       const aim = prey
-        ? new THREE.Vector3(prey.x, this.map.height(prey.x, prey.z) + gloamwoodPreyBodyRadius(prey) * 0.9, prey.z)
+        ? new THREE.Vector3(prey.x, this.map.height(prey.x, prey.z) + prey.radius * 0.9, prey.z)
         : null
       // A target that died mid-flight leaves the orb to finish its arc and burst
       // where it was going. Deleting it in mid-air is the teleporting pounce
@@ -3914,7 +4000,7 @@ class Gloamwood3DHunt {
       )
       const step = orb.speed * delta
       const distance = orb.position.distanceTo(to)
-      if (!aim || distance <= Math.max(step, gloamwoodPreyBodyRadius(prey!) * 0.55) || orb.elapsed > 2.5) {
+      if (!aim || distance <= Math.max(step, prey!.radius * 0.55) || orb.elapsed > 2.5) {
         const at = aim ?? orb.position
         if (aim && prey) this.resolveSporeOrb(orb, prey)
         this.spawnSporeBurst(at.clone())
@@ -4021,13 +4107,12 @@ class Gloamwood3DHunt {
    */
   private resolveSporeOrb(
     orb: { targetId: string; impactDamage: number; splashRadius: number; poison: GloamwoodPoisonSpec },
-    prey: GloamwoodNestPrey,
+    prey: { id: string; x: number; z: number; radius: number },
   ) {
-    const hit = damageGloamwoodNestPrey(
-      this.nestState, orb.targetId, Math.round(orb.impactDamage * this.damageMultiplier),
+    const hit = this.damageSkillTarget(
+      orb.targetId, Math.round(orb.impactDamage * this.damageMultiplier),
       'Bite', { x: this.playerRoot.position.x, z: this.playerRoot.position.z }, 0,
     )
-    this.nestState = hit.state
     if (hit.effectiveDamage > 0) {
       this.spawnDamageNumber(
         new THREE.Vector3(prey.x, this.map.height(prey.x, prey.z) + 1.4, prey.z),
@@ -4043,9 +4128,9 @@ class Gloamwood3DHunt {
     }
     const caught = gloamwoodSporeSplashTargets(
       prey,
-      this.nestState.prey.filter((value) => value.phase !== 'dead'),
+      this.splashCandidates(),
       orb.splashRadius,
-      gloamwoodPreyBodyRadius,
+      (candidate) => candidate.radius,
     )
     for (const value of caught) this.poisonStacks = applyGloamwoodPoison(this.poisonStacks, value.id, spec)
     this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.16)
@@ -4065,28 +4150,31 @@ class Gloamwood3DHunt {
     const stepped = stepGloamwoodPoison(this.poisonStacks, delta)
     this.poisonStacks = stepped.stacks
     for (const tick of stepped.ticks) {
-      const prey = this.nestState.prey.find((value) => value.id === tick.preyId)
-      if (!prey || prey.phase === 'dead') continue
-      const hit = damageGloamwoodNestPrey(
-        this.nestState, tick.preyId, tick.damage, 'Bite', { x: prey.x, z: prey.z }, 0,
+      const prey = this.skillTargetById(tick.preyId)
+      if (!prey) continue
+      const hit = this.damageSkillTarget(
+        tick.preyId, tick.damage, 'Bite', { x: prey.x, z: prey.z }, 0,
       )
-      this.nestState = hit.state
       if (hit.effectiveDamage <= 0) continue
       this.spawnDamageNumber(
-        new THREE.Vector3(prey.x, this.map.height(prey.x, prey.z) + 1.5, prey.z),
+        // Above the body, whatever the body is. A fixed 1.5 puts the number
+        // inside a boss rather than over it.
+        new THREE.Vector3(prey.x, this.map.height(prey.x, prey.z) + Math.max(1.5, prey.radius * 1.35), prey.z),
         hit.effectiveDamage,
         hit.killed ? 'kill' : 'poison',
         hit.killed ? undefined : `-${hit.effectiveDamage}`,
       )
       this.spawnPoisonMote(prey)
     }
-    const live = new Set(this.nestState.prey.filter((prey) => prey.phase !== 'dead').map((prey) => prey.id))
-    this.poisonStacks = pruneGloamwoodPoison(this.poisonStacks, live)
+    this.poisonStacks = pruneGloamwoodPoison(
+      this.poisonStacks,
+      new Set(this.splashCandidates().map((candidate) => candidate.id)),
+    )
   }
 
   /** One spore rising off a poisoned body, on each instalment. */
-  private spawnPoisonMote(prey: GloamwoodNestPrey) {
-    const radius = gloamwoodPreyBodyRadius(prey)
+  private spawnPoisonMote(prey: { x: number; z: number; radius: number }) {
+    const radius = prey.radius
     const at = new THREE.Vector3(
       prey.x + (Math.random() - 0.5) * radius,
       this.map.height(prey.x, prey.z) + radius * 0.8,
@@ -4201,19 +4289,19 @@ class Gloamwood3DHunt {
     if (!dash.resolved && progress >= GLOAMWOOD_DASH_PHASES.contact) {
       dash.resolved = true
       if (this.playerCombat.alive) {
-        const hit = damageGloamwoodNestPrey(
-          this.nestState, dash.targetId, Math.round(dash.damage * this.damageMultiplier),
+        const hit = this.damageSkillTarget(
+          dash.targetId, Math.round(dash.damage * this.damageMultiplier),
           'Pounce', { x, z }, dash.knockback,
         )
-        this.nestState = hit.state
         if (hit.effectiveDamage > 0) {
-          const landed = this.nestState.prey.find((prey) => prey.id === dash.targetId)
+          const landed = this.skillTargetById(dash.targetId)
           const atX = landed?.x ?? x
           const atZ = landed?.z ?? z
           this.spawnDamageNumber(
             new THREE.Vector3(atX, this.map.height(atX, atZ) + 1.4, atZ),
             hit.effectiveDamage, hit.killed ? 'kill' : 'hit',
           )
+
           this.spawnPounceImpact(
             new THREE.Vector3(atX, this.map.height(atX, atZ) + 0.85, atZ),
             this.lastFacing,
@@ -4965,7 +5053,20 @@ class Gloamwood3DHunt {
     // motion and desynchronise it from the clip.
     visual.body.position.x = visual.model ? 0 : strike * 0.65
     visual.body.position.y = this.bossState.phase === 2 ? Math.sin(performance.now() * 0.009) * 0.05 : 0
-    for (const material of visual.materials) material.emissiveIntensity = this.bossState.phase === 2 ? 0.78 : 0.42
+    // The same status the prey wear, on the one body that does not live in
+    // `nestState.prey`. Without it a poisoned boss is the only poisoned thing
+    // in the game that looks exactly like an unpoisoned one.
+    const bossPoison = gloamwoodPoisonTint(gloamwoodPoisonOn(this.poisonStacks, GLOAMWOOD_BOSS.id))
+    const bossPulse = 0.5 + 0.5 * Math.sin(this.runElapsedSeconds() * 5.4)
+    for (const material of visual.materials) {
+      material.emissiveIntensity = this.bossState.phase === 2 ? 0.78 : 0.42
+      if (!material.userData.gloamwoodBaseColor) material.userData.gloamwoodBaseColor = material.color.clone()
+      const base = material.userData.gloamwoodBaseColor as THREE.Color
+      if (bossPoison > 0) {
+        material.color.copy(base).lerp(GLOAMWOOD_POISON_SKIN, 0.55 * bossPoison)
+        material.emissiveIntensity += bossPoison * (0.2 + bossPulse * 0.24)
+      } else if (!material.color.equals(base)) material.color.copy(base)
+    }
   }
 
   /**

@@ -330,3 +330,44 @@ export function gloamwoodDashTurn(progress: number) {
   const t = Math.min(1, Math.max(0, progress / GLOAMWOOD_DASH_PHASES.crouchEnd))
   return t * t * (3 - 2 * t)
 }
+
+/** A thing a skill can be aimed at, whichever authority owns its health. */
+export interface GloamwoodSkillTarget {
+  id: string
+  x: number
+  z: number
+  /** Body radius, so a dash stops at the surface and a splash measures to it. */
+  radius: number
+  /** Whether damage has to go through the boss authority rather than the prey one. */
+  boss: boolean
+}
+
+/**
+ * What a skill is aimed at.
+ *
+ * Pure, and separated out because of the shape of the bug it replaces. The
+ * runtime read `bossActive() && bossLocked ? null : nearestPrey()` - the boss
+ * branch handed back *nothing*, because the boss does not live in
+ * `nestState.prey` and skills only knew about prey. Both targeted skills
+ * therefore refused to fire in a boss fight, with "no target", which is the one
+ * fight a player would most want them in: two of the three lines had no verb at
+ * the moment the run is decided.
+ *
+ * It is one line of logic and it is here rather than inline so that the
+ * behaviour can be asserted without a WebGL context, since the whole failure
+ * was invisible everywhere except in a boss fight.
+ */
+export function gloamwoodSkillTargetChoice(input: {
+  bossActive: boolean
+  bossLocked: boolean
+  boss: Omit<GloamwoodSkillTarget, 'boss'> | null
+  prey: Omit<GloamwoodSkillTarget, 'boss'> | null
+}): GloamwoodSkillTarget | null {
+  if (input.bossActive && input.bossLocked && input.boss) return { ...input.boss, boss: true }
+  if (input.prey) return { ...input.prey, boss: false }
+  // A boss that is present but not locked is still a legal target when there is
+  // nothing else on the field - otherwise clicking away from it disarms the
+  // skill until the player remembers to re-lock.
+  if (input.bossActive && input.boss) return { ...input.boss, boss: true }
+  return null
+}

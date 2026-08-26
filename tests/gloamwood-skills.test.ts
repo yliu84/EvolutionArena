@@ -8,6 +8,7 @@ import {
   createGloamwoodSkillState,
   gloamwoodDashLanding,
   gloamwoodSkillFor,
+  gloamwoodSkillTargetChoice,
   stepGloamwoodSkillState,
   tryGloamwoodSkill,
 } from '../src/gloamwood-skills'
@@ -241,3 +242,49 @@ function shortestDelta(from: number, to: number) {
 function shortestAngle(angle: number) {
   return Math.atan2(Math.sin(angle), Math.cos(angle))
 }
+
+describe('What a skill is aimed at', () => {
+  // Reported after playtesting the two targeted skills: both refused to fire in
+  // a boss fight, saying there was no target. The boss is real, visible, locked
+  // and being hit by basic attacks - but it does not live in `nestState.prey`,
+  // and the target line handed back `null` the moment a boss was locked. Two of
+  // the three lines had no verb at the only moment the run is decided.
+
+  const boss = { id: 'boss', x: 0, z: 0, radius: 1.72 }
+  const prey = { id: 'prey', x: 4, z: 0, radius: 1 }
+
+  it('aims at a locked boss instead of at nothing', () => {
+    const target = gloamwoodSkillTargetChoice({ bossActive: true, bossLocked: true, boss, prey: null })
+    expect(target).not.toBeNull()
+    expect(target?.id).toBe('boss')
+    // The flag the runtime routes damage on: a boss goes through the boss
+    // authority, and sending it to the prey one would silently deal nothing.
+    expect(target?.boss).toBe(true)
+    expect(target?.radius).toBe(1.72)
+  })
+
+  it('prefers the locked boss over whatever prey is nearest', () => {
+    expect(gloamwoodSkillTargetChoice({ bossActive: true, bossLocked: true, boss, prey })?.id).toBe('boss')
+  })
+
+  it('still offers the boss when the lock has drifted off it', () => {
+    // Otherwise clicking away disarms the skill until the player remembers to
+    // re-lock, which is a rule nothing on screen explains.
+    expect(gloamwoodSkillTargetChoice({ bossActive: true, bossLocked: false, boss, prey: null })?.id).toBe('boss')
+  })
+
+  it('leaves prey to the prey authority', () => {
+    const target = gloamwoodSkillTargetChoice({ bossActive: false, bossLocked: false, boss, prey })
+    expect(target?.id).toBe('prey')
+    expect(target?.boss).toBe(false)
+  })
+
+  it('prefers prey while no boss is awake, whatever the stale lock says', () => {
+    expect(gloamwoodSkillTargetChoice({ bossActive: false, bossLocked: true, boss, prey })?.id).toBe('prey')
+  })
+
+  it('is null only when there is genuinely nothing there', () => {
+    expect(gloamwoodSkillTargetChoice({ bossActive: false, bossLocked: false, boss: null, prey: null })).toBeNull()
+    expect(gloamwoodSkillTargetChoice({ bossActive: true, bossLocked: true, boss: null, prey: null })).toBeNull()
+  })
+})
