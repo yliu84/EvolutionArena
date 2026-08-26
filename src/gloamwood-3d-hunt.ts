@@ -34,6 +34,7 @@ import { gloamwoodMutationIcon } from './gloamwood-mutation-icons'
 import { gloamwoodMutationExpression } from './gloamwood-mutation-expression'
 import {
   carapaceShellLayout,
+  METABOLIC_VEINS,
   metabolicVeinLayout,
   moultHuskLayout,
   moultRhombusMeshData,
@@ -1155,6 +1156,19 @@ class Gloamwood3DHunt {
   private tailSweepHaloTexture: THREE.CanvasTexture | null = null
   private metabolicChevronTexture: THREE.CanvasTexture | null = null
   private metabolicPreviewDecayIn = 0
+  /**
+   * The always-on half of Starving Metabolism.
+   *
+   * The chevrons this mutation already had were one-shot bursts on a gain or a
+   * decay tick, so the animal looked completely ordinary for the 29 seconds in
+   * between - and the mutation is not an event, it is a trade the player is
+   * paying for continuously.
+   */
+  private metabolicEmber: {
+    root: THREE.Group
+    veins: THREE.Mesh[]
+    materials: THREE.MeshBasicMaterial[]
+  } | null = null
   private readonly skillFxPlane = new THREE.PlaneGeometry(1, 1)
   private readonly tailSweepShock = new THREE.RingGeometry(1.52, 2.1, 64)
   /** Unit hex prism. Y is thickness; scaled per plate. */
@@ -1601,6 +1615,7 @@ class Gloamwood3DHunt {
     this.moultHuskRight.fill.dispose()
     this.moultHuskRight.edges.dispose()
     this.disposeSporeHaze()
+    this.disposeMetabolicEmber()
     this.sporeHazePlane.dispose()
     this.renderer.domElement.remove()
     this.debugOutput?.remove()
@@ -4807,6 +4822,120 @@ class Gloamwood3DHunt {
     )
   }
 
+  /**
+   * A slow burn on the flanks for as long as the mutation is held.
+   *
+   * Deliberately not larger than the burst chevrons it sits beside. The
+   * readable-from-the-camera problem is real, but scaling body decoration up
+   * until it reads is how a silhouette gets flattened - the Lantern Lynx paid
+   * that price already. What was missing was not size but *continuity*: this is
+   * quiet, and it is always there.
+   *
+   * And it carries the number. The colour walks from the gain amber toward the
+   * decay red as the ceiling comes down, and the breathing quickens with it, so
+   * a glance at the animal says how deep into the trade this run has gone
+   * rather than merely that the trade was taken.
+   */
+  private updateMetabolicEmber() {
+    const perInterval = this.mutationEffects.healthDecayPerInterval
+    const interval = this.mutationEffects.healthDecayIntervalSeconds
+    const map = this.metabolicChevronTexture
+    if (!perInterval || !interval || !map) {
+      this.disposeMetabolicEmber()
+      return
+    }
+    if (!this.metabolicEmber) {
+      const root = new THREE.Group()
+      root.name = 'MetabolicEmber'
+      const veins: THREE.Mesh[] = []
+      const materials: THREE.MeshBasicMaterial[] = []
+      /**
+       * Pushed out past the hide.
+       *
+       * The shared vein layout places its chevrons at 0.4 to 0.52 of the body
+       * radius, which is *inside* the animal. That works for the burst, whose
+       * particles immediately rise and travel outward, and does not work at all
+       * for something that has to sit still: at full opacity the first build
+       * showed six slivers poking out of a body that had swallowed the rest.
+       */
+      const OUTWARD = 1.45
+      for (const vein of metabolicVeinLayout(this.playerVisualGroundRadius).veins) {
+        const material = new THREE.MeshBasicMaterial({
+          map,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          depthTest: true,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          fog: false,
+          // Tone-mapped, unlike the burst chevrons beside it. `toneMapped:
+          // false` writes a display-referred colour into what is now a linear
+          // HDR buffer, where the bloom pass reads it as light.
+        })
+        const mesh = new THREE.Mesh(this.skillFxPlane, material)
+        // Sideways only. Scaling the fore-aft component as well swung the
+        // chevrons off the flank and out past the shoulder and the tail.
+        mesh.userData.local = [vein.local[0] * OUTWARD, vein.local[1], vein.local[2]]
+        mesh.scale.set(vein.width, vein.height, 1)
+        mesh.renderOrder = 6
+        root.add(mesh)
+        veins.push(mesh)
+        materials.push(material)
+      }
+      this.scene.add(root)
+      this.metabolicEmber = { root, veins, materials }
+    }
+    const ember = this.metabolicEmber
+    const x = this.playerRoot.position.x
+    const z = this.playerRoot.position.z
+    const ground = this.map.height(x, z)
+    const facing = this.lastFacing
+    const forwardX = Math.cos(facing)
+    const forwardZ = -Math.sin(facing)
+    const rightX = Math.cos(facing - Math.PI / 2)
+    const rightZ = -Math.sin(facing - Math.PI / 2)
+    const chestY = ground + 0.72
+    // How far into the trade this run is. Ten ticks - five minutes of holding
+    // it - is taken as fully committed; past that it simply stays there.
+    const spent = Math.min(1, this.decayedMaximumHealth / (perInterval * 10))
+    const seconds = performance.now() * 0.001
+    const breath = 0.5 + 0.5 * Math.sin(seconds * (1.05 + spent * 1.5))
+    const colour = new THREE.Color(METABOLIC_VEINS.gainColor)
+      .lerp(new THREE.Color(METABOLIC_VEINS.decayColor), spent)
+    for (const [index, mesh] of ember.veins.entries()) {
+      const local = mesh.userData.local as [number, number, number]
+      const worldX = x + rightX * local[0] + forwardX * local[2]
+      const worldZ = z + rightZ * local[0] + forwardZ * local[2]
+      mesh.position.set(worldX, chestY + local[1], worldZ)
+      this.carapaceOutward.set(worldX - x, 0, worldZ - z)
+      if (this.carapaceOutward.lengthSq() < 0.0001) this.carapaceOutward.set(local[0], 0, local[2])
+      this.carapaceOutward.normalize()
+      mesh.quaternion.setFromUnitVectors(this.metabolicFace, this.carapaceOutward)
+      const material = ember.materials[index]
+      material.color.copy(colour)
+      // Staggered up the flank, so it reads as something travelling through the
+      // animal rather than six panels switching on together.
+      const stagger = 0.5 + 0.5 * Math.sin(seconds * (1.05 + spent * 1.5) - index * 0.5)
+      // Calibrated against the body, not guessed, and it runs far higher than
+      // the word "subtle" suggests. Two earlier passes sat at 0.12-0.23 and
+      // then 0.34-0.53 and *neither was visible at all*. The chevron's texture
+      // is an hourglass outline that is mostly transparent, so the alpha that
+      // reaches the frame is a fraction of this number, and it is being added
+      // to a hide the scene lights already. Anything under about 0.6 is below
+      // the noise floor.
+      material.opacity = (0.62 + spent * 0.16) + stagger * (0.1 + spent * 0.07) + breath * 0.04
+    }
+  }
+
+  private disposeMetabolicEmber() {
+    const ember = this.metabolicEmber
+    if (!ember) return
+    this.scene.remove(ember.root)
+    for (const material of ember.materials) material.dispose()
+    this.metabolicEmber = null
+  }
+
   /** The metabolism trade must show both hunger and the unusually fast gain. */
   private spawnMetabolicFeedback(event: 'gain' | 'decay' | 'preview') {
     if (event === 'preview') {
@@ -4850,7 +4979,6 @@ class Gloamwood3DHunt {
         side: THREE.DoubleSide,
         blending: event === 'gain' ? THREE.AdditiveBlending : THREE.NormalBlending,
         fog: false,
-        toneMapped: false,
       })
       const mesh = new THREE.Mesh(this.skillFxPlane, material)
       mesh.position.set(worldX, worldY, worldZ)
@@ -4975,6 +5103,7 @@ class Gloamwood3DHunt {
     this.updateRendingParticles(delta)
     this.updateMutationParticles(delta)
     this.updateSporeHazePresentation(delta)
+    this.updateMetabolicEmber()
     if (this.metabolicPreviewDecayIn > 0) {
       this.metabolicPreviewDecayIn = Math.max(0, this.metabolicPreviewDecayIn - delta)
       if (this.metabolicPreviewDecayIn === 0) this.spawnMetabolicFeedback('decay')
@@ -6869,6 +6998,20 @@ class Gloamwood3DHunt {
     this.decayedMaximumHealth += perInterval
     this.applyProgressionModifiers()
     this.spawnMetabolicFeedback('decay')
+    // The cost, said out loud. This tick used to happen in silence: a 0.7s
+    // flicker of veins on the animal's flank and a second number in the HUD
+    // quietly getting smaller. A player could lose forty points of ceiling over
+    // a run and never see the moment they paid for any of it.
+    this.spawnDamageNumber(
+      new THREE.Vector3(
+        this.playerRoot.position.x,
+        this.map.height(this.playerRoot.position.x, this.playerRoot.position.z) + 1.5,
+        this.playerRoot.position.z,
+      ),
+      perInterval,
+      'drain',
+      t('hud.maxHealthLost', { amount: perInterval }),
+    )
     this.logSession({ kind: 'mutation-effect', id: 'neutral-starving-metabolism', effect: 'metabolic-decay' })
   }
 
@@ -7295,7 +7438,7 @@ class Gloamwood3DHunt {
       '<div class="g3d-hud-left">',
       `<header><span data-g3d-nest-title>${t('hud.nestTitle')}</span><strong data-g3d-message>${t('hud.initialMsg')}</strong></header>`,
       '<div class="g3d-combat-bars">',
-      `<label>${t('hud.health')} <b data-g3d-player-health>100 / 100</b><i><em data-g3d-player-bar></em></i></label>`,
+      `<label>${t('hud.health')} <b data-g3d-player-health>100 / 100</b><i><em data-g3d-player-bar></em><s data-g3d-player-scar aria-hidden="true"></s></i></label>`,
       '</div>',
       // The status line belongs with the message: both answer "what is
       // happening right now", and the nest's wave count is only useful while
@@ -8097,18 +8240,33 @@ class Gloamwood3DHunt {
    * @param amount authoritative effective damage, already decided
    * @param tone   presentation only; picks colour and weight, never the number
    */
-  private spawnDamageNumber(world: THREE.Vector3, amount: number, tone: 'hit' | 'weakness' | 'blocked' | 'kill' | 'player' | 'heal') {
+  private spawnDamageNumber(
+    world: THREE.Vector3,
+    amount: number,
+    tone: 'hit' | 'weakness' | 'blocked' | 'kill' | 'player' | 'heal' | 'drain',
+    /**
+     * Overrides the text. Every number in this game until now has been a plain
+     * quantity of health, so the figure alone was unambiguous. Starving
+     * Metabolism spends *maximum* health, which is a different currency and
+     * reads as ordinary damage without a word attached to it.
+     */
+    label?: string,
+  ) {
     if (!this.damageLayer) return
     const element = document.createElement('span')
     element.className = 'g3d-damage-number'
     element.dataset.tone = tone
-    element.textContent = String(amount)
+    element.textContent = label ?? String(amount)
     this.damageLayer.append(element)
     this.damageNumbers.push({
       element,
       world: world.clone(),
       life: 0,
-      duration: tone === 'kill' ? 1.15 : 0.86,
+      // A drain lingers. Every other number here is a quantity read at a glance
+      // during a fast exchange; this one has a word in it, fires once every
+      // thirty seconds, and is the only notice the player gets that their
+      // ceiling just came down.
+      duration: tone === 'drain' ? 1.7 : tone === 'kill' ? 1.15 : 0.86,
       // Spread repeated hits so a fast chain does not stack numbers in one spot.
       drift: (Math.random() - 0.5) * 46,
     })
@@ -8516,8 +8674,27 @@ class Gloamwood3DHunt {
     setText('[data-g3d-swarm]', `${this.nestState.genes.swarm}`)
     setText('[data-g3d-settings-toggle]', t('hud.settingsKey', { key: formatGloamwoodInputCode(this.inputBindings.pause) }))
     this.renderPerformanceReadout()
+    /**
+     * The bar is scaled against the ceiling this run *started* with, so
+     * Starving Metabolism physically shortens it.
+     *
+     * Before this it was drawn as `health / maxHealth`, and maxHealth is the
+     * value the mutation eats. Both numbers shrank together, so the bar stayed
+     * exactly as long as it always was and the one cost the mutation charges
+     * was invisible on the one gauge the player actually watches. The lost
+     * ceiling is left behind as a dim scar at the right end, and because it
+     * accumulates, four ticks in it tells the whole story of the run at a
+     * glance - which no indicator above the animal's head could.
+     */
+    const ceiling = this.playerCombat.maxHealth + this.decayedMaximumHealth
     const playerBar = this.hud.querySelector<HTMLElement>('[data-g3d-player-bar]')
-    if (playerBar) playerBar.style.width = `${Math.max(0, playerRatio) * 100}%`
+    if (playerBar) {
+      playerBar.style.width = `${Math.max(0, ceiling > 0 ? this.playerCombat.health / ceiling : 0) * 100}%`
+    }
+    const playerScar = this.hud.querySelector<HTMLElement>('[data-g3d-player-scar]')
+    if (playerScar) {
+      playerScar.style.width = `${(ceiling > 0 ? this.decayedMaximumHealth / ceiling : 0) * 100}%`
+    }
     this.hud.dataset.critical = playerRatio <= 0.3 ? 'true' : 'false'
     this.updateOnboardingHud()
   }

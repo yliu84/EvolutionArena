@@ -198,6 +198,10 @@ const STRINGS = {
     zh: '祭坛被击中 · {remaining}/{max}',
   },
   'hud.msg.altarFell': { en: 'The altar fell.', zh: '祭坛倒下了。' },
+  // Says which currency was spent. Every other floating number in this game is
+  // ordinary health, so a bare -5 would read as damage taken rather than as the
+  // ceiling itself getting lower.
+  'hud.maxHealthLost': { en: '-{amount} MAX', zh: '上限 -{amount}' },
   'hud.defenceStatus': {
     en: 'Wave {wave} of {waves} · Altar {altar}/{altarMax}',
     zh: '第 {wave} 波 / 共 {waves} 波 · 祭坛 {altar}/{altarMax}',
