@@ -21,6 +21,7 @@ import {
   createGloamwoodSkillState,
   gloamwoodDashLanding,
   gloamwoodDashTravel,
+  gloamwoodDashTurn,
   GLOAMWOOD_DASH_PHASES,
   gloamwoodSkillFor,
   stepGloamwoodSkillState,
@@ -802,6 +803,15 @@ interface DebugState {
     additiveLegRotationDegrees: 0
     turning: boolean
     facingErrorDegrees: number
+    /**
+     * Where the body is actually pointing, in world degrees.
+     *
+     * Here because the yaw is written by three different passes and a bug in
+     * one of them - the skill dash, which wrote none - is invisible in every
+     * other field: the facing *value* was right, the error was zero, the clip
+     * was the leap, and the animal still jumped backwards.
+     */
+    facingDegrees: number
     moveFacingToleranceDegrees: number
     footstepEvents: number
     activeDustParticles: number
@@ -1130,6 +1140,16 @@ class Gloamwood3DHunt {
   }> = []
   private dash: {
     fromX: number; fromZ: number; toX: number; toZ: number
+    /**
+     * Where the body was pointing when the leap was called for, and where it
+     * has to be pointing to jump at what was locked.
+     *
+     * Kept as a pair rather than snapped on the firing frame because the yaw
+     * has to be *written to the model*, and the only two passes that write it
+     * are movement and the basic attack - a skill dash is neither, so a
+     * snapped value sat in the field and never reached the body.
+     */
+    fromFacing: number; toFacing: number
     targetId: string; elapsed: number; seconds: number
     damage: number; knockback: number; resolved: boolean
   } | null = null
@@ -3647,13 +3667,14 @@ class Gloamwood3DHunt {
       )
       const held = this.map.confine(landing.x, landing.z)
       this.lockedPreyId = target.id
-      this.lastFacing = gloamwoodMovementFacingRadians(
+      const toFacing = gloamwoodMovementFacingRadians(
         target.x - this.playerRoot.position.x,
         target.z - this.playerRoot.position.z,
       )
       this.dash = {
         fromX: this.playerRoot.position.x, fromZ: this.playerRoot.position.z,
         toX: held.x, toZ: held.z, targetId: target.id,
+        fromFacing: this.lastFacing, toFacing,
         elapsed: 0,
         // The leap's own window, not a number of my own choosing. A 0.26s dash
         // ended inside the crouch - measured, the phase never left 'crouch' -
@@ -3847,6 +3868,14 @@ class Gloamwood3DHunt {
     const z = dash.fromZ + (dash.toZ - dash.fromZ) * eased
     this.playerRoot.position.set(x, this.map.height(x, z), z)
     this.target.set(x, 0, z)
+    // Turn into the leap while it is still gathering, so the crouch is spent
+    // coming about and the airborne part is head-first. Pouncing on something
+    // standing behind the player used to play the entire leap backwards.
+    this.lastFacing = normalizeAngle(
+      dash.fromFacing
+      + shortestAngleDelta(dash.fromFacing, dash.toFacing) * gloamwoodDashTurn(progress),
+    )
+    this.playerRoot.rotation.y = this.lastFacing
     // Resolved on the animation's own contact frame, which is the instant the
     // basic attack's authority uses for the same clip.
     if (!dash.resolved && progress >= GLOAMWOOD_DASH_PHASES.contact) {
@@ -9335,6 +9364,7 @@ class Gloamwood3DHunt {
         additiveLegRotationDegrees: 0,
         turning: this.turning,
         facingErrorDegrees: round(this.facingErrorDegrees),
+        facingDegrees: round(THREE.MathUtils.radToDeg(this.playerRoot.rotation.y)),
         moveFacingToleranceDegrees: GLOAMWOOD_3D_MOVE_FACING_TOLERANCE_DEGREES,
         footstepEvents: this.footstepEvents,
         activeDustParticles: this.dustParticles.filter((particle) => particle.active).length,

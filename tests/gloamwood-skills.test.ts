@@ -4,6 +4,7 @@ import {
   GLOAMWOOD_DASH_PHASES,
   GLOAMWOOD_SKILLS,
   gloamwoodDashTravel,
+  gloamwoodDashTurn,
   createGloamwoodSkillState,
   gloamwoodDashLanding,
   gloamwoodSkillFor,
@@ -180,3 +181,63 @@ describe('a pounce leaps rather than slides', () => {
       .toBe(CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.landingProgress)
   })
 })
+
+describe('Turning into a pounce', () => {
+  // Reported from play: pouncing on something standing behind the player leapt
+  // the animal backwards rather than turning it round to jump head-first.
+  //
+  // The facing value was in fact computed correctly on the firing frame. It was
+  // never written to the body: the model's yaw is only assigned by the movement
+  // pass and by the basic attack, and a dash holds the body still (so movement
+  // sees no intent) without going through the attack state (so that pass never
+  // runs either). The field said one thing and the animal did another.
+
+  it('is pointing at the target before it leaves the ground', () => {
+    expect(gloamwoodDashTurn(GLOAMWOOD_DASH_PHASES.crouchEnd)).toBe(1)
+    expect(gloamwoodDashTurn(GLOAMWOOD_DASH_PHASES.contact)).toBe(1)
+    expect(gloamwoodDashTurn(1)).toBe(1)
+  })
+
+  it('spends the crouch coming about rather than snapping on the firing frame', () => {
+    expect(gloamwoodDashTurn(0)).toBe(0)
+    const half = gloamwoodDashTurn(GLOAMWOOD_DASH_PHASES.crouchEnd * 0.5)
+    expect(half).toBeGreaterThan(0.2)
+    expect(half).toBeLessThan(0.8)
+  })
+
+  it('finishes the turn before the travel starts, so no frame is airborne backwards', () => {
+    // The two curves are deliberately disjoint: one owns the crouch, the other
+    // owns everything after it.
+    const step = GLOAMWOOD_DASH_PHASES.crouchEnd / 8
+    for (let progress = 0; progress <= 1.0001; progress += step) {
+      if (gloamwoodDashTravel(progress) > 0) expect(gloamwoodDashTurn(progress)).toBe(1)
+    }
+  })
+
+  it('turns the short way round when the target is directly behind', () => {
+    // The worst case, and the one that was reported. A naive lerp between two
+    // raw angles crosses the wrap at +-PI and spins the long way.
+    const from = 0.2
+    const to = from + Math.PI * 1.6
+    const facing = (progress: number) =>
+      shortestAngle(from + shortestDelta(from, to) * gloamwoodDashTurn(progress))
+    let travelled = 0
+    let previous = facing(0)
+    for (let i = 1; i <= 40; i += 1) {
+      const next = facing((i / 40) * GLOAMWOOD_DASH_PHASES.crouchEnd)
+      travelled += Math.abs(shortestDelta(previous, next))
+      previous = next
+    }
+    // 0.4 PI the short way, not 1.6 PI the long way.
+    expect(travelled).toBeCloseTo(Math.PI * 0.4, 5)
+    expect(Math.abs(shortestDelta(previous, to))).toBeLessThan(1e-6)
+  })
+})
+
+/** Mirrors the runtime's own two angle helpers, which are private to it. */
+function shortestDelta(from: number, to: number) {
+  return shortestAngle(to - from)
+}
+function shortestAngle(angle: number) {
+  return Math.atan2(Math.sin(angle), Math.cos(angle))
+}

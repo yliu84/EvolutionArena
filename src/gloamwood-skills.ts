@@ -275,3 +275,22 @@ export function gloamwoodDashTravel(progress: number) {
   // than arriving at a constant rate.
   return t * t * (3 - 2 * t)
 }
+
+/**
+ * How much of the turn toward the pounced-at target is complete, at a point in
+ * the leap's window.
+ *
+ * Finished by the end of the crouch, which is the one part of the leap the
+ * animal spends planted - so it turns while it gathers, and every frame it is
+ * airborne it is airborne head-first.
+ *
+ * Without this the dash set the facing *value* on the frame it fired and
+ * nothing ever wrote that value to the body: the yaw is only pushed to the
+ * model by the movement pass and by the basic attack, and a skill dash is
+ * neither. Pouncing on something behind you played the whole leap backwards,
+ * exactly as it was reported.
+ */
+export function gloamwoodDashTurn(progress: number) {
+  const t = Math.min(1, Math.max(0, progress / GLOAMWOOD_DASH_PHASES.crouchEnd))
+  return t * t * (3 - 2 * t)
+}
