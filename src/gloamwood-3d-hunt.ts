@@ -3773,6 +3773,67 @@ class Gloamwood3DHunt {
     }
   }
 
+  /**
+   * The moment a pounce connects.
+   *
+   * There was nothing here at all: the first pass threw a ring of dust from the
+   * *player* on cast, which read as things scattering, and removing that left
+   * the blow landing in silence with only a damage number to show for it. The
+   * hit is the payoff of the whole move and it happens at the creature, not at
+   * the caster, so this is spawned at the contact point.
+   *
+   * Sparks plus one flash. Deliberately small and short - about a fifth of a
+   * second - because it fires on a body the player is already looking at.
+   */
+  private spawnPounceImpact(at: THREE.Vector3, facing: number) {
+    const pace = this.feedbackDurationMultiplier
+    const flashMap = this.skillFxTextures.get('glow')
+    const sparkCount = 7
+    for (let index = 0; index < sparkCount; index += 1) {
+      const angle = facing + Math.PI + (index / sparkCount - 0.5) * 2.3
+      const speed = 2.6 + (index % 3) * 0.9
+      const material = new THREE.SpriteMaterial({
+        map: flashMap,
+        // Over 1.0 so the cores reach the bloom pass. Warm white: the impact is
+        // the one frame in the move that should read as light.
+        color: new THREE.Color(0xffe7a8).multiplyScalar(SKILL_FX_LIGHT_GAIN.glow),
+        transparent: true, opacity: 0, depthWrite: false, depthTest: false,
+        blending: THREE.AdditiveBlending, fog: false,
+      })
+      const sprite = new THREE.Sprite(material)
+      sprite.position.copy(at)
+      sprite.scale.set(0.34, 0.34, 1)
+      sprite.renderOrder = 15
+      this.scene.add(sprite)
+      this.mutationParticles.push({
+        object: sprite, material,
+        velocity: new THREE.Vector3(Math.cos(angle) * speed, 1.5 + (index % 2) * 0.8, -Math.sin(angle) * speed),
+        spin: 0, age: 0, duration: 0.26 * pace, gravity: 7.5, motion: 'ballistic',
+        peakOpacity: 0.9, startScale: new THREE.Vector2(0.34, 0.34),
+        endScale: new THREE.Vector2(0.1, 0.1), attractTarget: at.clone(),
+      })
+    }
+    const flashMaterial = new THREE.SpriteMaterial({
+      map: flashMap,
+      color: new THREE.Color(0xfff2c4).multiplyScalar(SKILL_FX_LIGHT_GAIN.glow),
+      transparent: true, opacity: 0, depthWrite: false, depthTest: false,
+      blending: THREE.AdditiveBlending, fog: false,
+    })
+    const flash = new THREE.Sprite(flashMaterial)
+    flash.position.copy(at)
+    flash.scale.set(0.7, 0.7, 1)
+    flash.renderOrder = 16
+    this.scene.add(flash)
+    this.mutationParticles.push({
+      object: flash, material: flashMaterial,
+      velocity: new THREE.Vector3(), spin: 0, age: 0, duration: 0.2 * pace,
+      gravity: 0, motion: 'expand', peakOpacity: 0.85,
+      startScale: new THREE.Vector2(0.7, 0.7), endScale: new THREE.Vector2(2.1, 2.1),
+      attractTarget: at.clone(),
+    })
+    while (this.mutationParticles.length > 80) this.retireMutationParticle(this.mutationParticles.shift()!)
+  }
+
   private updateDash(delta: number) {
     const dash = this.dash
     if (!dash) return
@@ -3798,10 +3859,17 @@ class Gloamwood3DHunt {
         this.nestState = hit.state
         if (hit.effectiveDamage > 0) {
           const landed = this.nestState.prey.find((prey) => prey.id === dash.targetId)
+          const atX = landed?.x ?? x
+          const atZ = landed?.z ?? z
           this.spawnDamageNumber(
-            new THREE.Vector3(landed?.x ?? x, this.map.height(landed?.x ?? x, landed?.z ?? z) + 1.4, landed?.z ?? z),
+            new THREE.Vector3(atX, this.map.height(atX, atZ) + 1.4, atZ),
             hit.effectiveDamage, hit.killed ? 'kill' : 'hit',
           )
+          this.spawnPounceImpact(
+            new THREE.Vector3(atX, this.map.height(atX, atZ) + 0.85, atZ),
+            this.lastFacing,
+          )
+          this.playSound('attack-pounce')
         }
         this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.3)
       }

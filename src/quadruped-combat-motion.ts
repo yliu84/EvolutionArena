@@ -190,12 +190,20 @@ export function juvenileLeapBiteMotionFrame(
 
   if (progress < landing) {
     const t = (progress - contact) / (landing - contact)
-    const drop = smoothstep(t)
+    // Falls under something like gravity rather than easing down.
+    //
+    // Two things were wrong with `0.19 * (1 - smoothstep(t))`. Smoothstep is
+    // slow at both ends, so the body drifted into the ground at its slowest -
+    // and a falling thing is fastest at the instant it lands, which is where
+    // the whole sense of weight comes from. And 0.19 did not meet the launch
+    // arc, which exits at 0.3 * sin(0.74pi) = 0.219, so the leap popped down a
+    // step at the contact frame before starting its descent.
+    const APEX_EXIT = 0.3 * Math.sin(0.74 * Math.PI)
     return {
       progress,
       phase: 'land',
       forwardOffset: 0.78 - 0.5 * smoothstep(t),
-      liftOffset: 0.19 * (1 - drop),
+      liftOffset: APEX_EXIT * (1 - t * t),
       pitchRadians: -0.15 + 0.23 * smoothstep(t),
       yawRadians: 0,
       forwardScale: 1,

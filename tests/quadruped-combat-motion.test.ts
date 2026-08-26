@@ -115,3 +115,42 @@ describe('deformation-safe stage-zero attack envelopes', () => {
     expect(end.landingStrength).toBe(0)
   })
 })
+
+describe('the leap falls like something with weight', () => {
+  const at = (progress: number) => juvenileLeapBiteMotionFrame(progress, 1)
+
+  it('does not step down at the contact frame', () => {
+    // The launch arc exits at 0.3 * sin(0.74pi) = 0.219 and the descent used to
+    // start from 0.19, so the body dropped a visible step at the exact frame the
+    // blow lands - the one frame nobody is going to miss.
+    const lastAir = at(0.4779)
+    const firstFall = at(0.4781)
+    expect(Math.abs(lastAir.liftOffset - firstFall.liftOffset)).toBeLessThan(0.01)
+  })
+
+  it('accelerates downward instead of easing into the floor', () => {
+    // Smoothstep is slow at both ends, so the old descent arrived at the ground
+    // at its slowest. A falling body is fastest at the instant it lands, and
+    // that is where the whole sense of weight comes from.
+    const contact = 0.478
+    const landing = 0.68
+    const span = landing - contact
+    const drop = (from: number, to: number) =>
+      at(contact + span * from).liftOffset - at(contact + span * to).liftOffset
+    const early = drop(0, 0.2)
+    const late = drop(0.8, 1)
+    expect(late).toBeGreaterThan(early)
+  })
+
+  it('is on the ground by the landing frame and stays there', () => {
+    expect(at(0.6799).liftOffset).toBeGreaterThanOrEqual(0)
+    expect(at(0.6799).liftOffset).toBeLessThan(0.01)
+    expect(at(0.8).liftOffset).toBe(0)
+  })
+
+  it('still leaves the ground at all', () => {
+    // The guard against fixing the fall by flattening the leap.
+    const peak = Math.max(...Array.from({ length: 40 }, (_, i) => at(0.22 + (i / 40) * 0.46).liftOffset))
+    expect(peak).toBeGreaterThan(0.25)
+  })
+})
