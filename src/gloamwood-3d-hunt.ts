@@ -115,7 +115,14 @@ import {
   stabilizeScarletGeckoLocomotionClip,
 } from './scarlet-gecko-character-presentation'
 import { SCARLET_HUNTER_PRESENTATION } from './scarlet-hunter-character-presentation'
-import { juvenileLeapBiteMotionFrame, juvenileSpinTailSwipeMotionFrame, quadrupedAttackMotionFrame } from './quadruped-combat-motion'
+import {
+  juvenileLeapBiteMotionFrame,
+  juvenileSpinTailSwipeMotionFrame,
+  quadrupedAttackMotionFrame,
+  quadrupedBodyIsPlated,
+  quadrupedPlantedSlamFrame,
+  quadrupedPounceEnvelope,
+} from './quadruped-combat-motion'
 import {
   canFormalHuntBasicAttackContact,
   cancelFormalHuntBasicAttack,
@@ -823,7 +830,21 @@ interface DebugState {
   combatProfileMatchedForm: boolean
   presentation: { baselineId: string; artStyle: string; triangles: number; modelUrl: string }
   activeClip: string
-  attack: { visualOffset: number; liftOffset: number; pitchDegrees: number; yawDegrees: number; elapsedSeconds: number; leapBitePhase: string; landingEvents: number }
+  attack: {
+    visualOffset: number; liftOffset: number; pitchDegrees: number; yawDegrees: number
+    elapsedSeconds: number; leapBitePhase: string; landingEvents: number
+    /**
+     * What the body is being stretched to, and which envelope decided it.
+     *
+     * Both are here because the combat envelope is applied on top of an
+     * authored clip: the GLB and this layer can disagree, and the only place
+     * that disagreement is visible is the silhouette. A name like "Slam" says
+     * nothing about whether the body is being lifted off the ground while it
+     * plays.
+     */
+    scale: [number, number, number]
+    envelope: 'leap' | 'planted-slam' | 'tail-spin' | 'generic'
+  }
   moving: boolean
   grounded: boolean
   locomotion: {
@@ -1222,6 +1243,8 @@ class Gloamwood3DHunt {
    * had, in the one other place that starts a clip outside the attack state.
    */
   private castHold = 0
+  /** Which combat envelope drove the body last frame. Reported, never read. */
+  private attackEnvelopeForReview: 'leap' | 'planted-slam' | 'tail-spin' | 'generic' = 'generic'
   private dash: {
     fromX: number; fromZ: number; toX: number; toZ: number
     /**
@@ -1516,6 +1539,17 @@ class Gloamwood3DHunt {
   private leapBiteLandingEvents = 0
   private animationFrame = 0
   private lastFrameAt = performance.now()
+  /**
+   * The clock the combat presentation runs on.
+   *
+   * Equal to `performance.now()` on a real frame and to the simulated time on a
+   * stepped review frame, which is the whole point: the attack envelope used to
+   * read the wall clock directly, so `stepFramesForReview` advanced the world
+   * and left every attack pose frozen at progress zero. A whole combo could be
+   * stepped through and measured as a body that never moved - which is exactly
+   * the sort of reading this project has twice mistaken for proof.
+   */
+  private frameClock = performance.now()
   /**
    * Frames run, and keys currently held.
    *
@@ -3417,6 +3451,7 @@ class Gloamwood3DHunt {
     if (!this.paused && forcedDelta === undefined) this.runPerformance.record(frameMilliseconds)
     const delta = Math.min(0.05, frameMilliseconds / 1000)
     this.lastFrameAt = now
+    this.frameClock = now
     this.foliageTime.value += delta
     this.updateFeedback(delta)
     this.updateDamageNumbers(delta)
@@ -3860,7 +3895,7 @@ class Gloamwood3DHunt {
       // landing dust, the camera - rather than a burst borrowed from a mutation.
       // The Shell contract redirects Pounce to a planted Slam, so this is right
       // on every body without asking which one it is.
-      this.startAttackPresentation('Pounce', performance.now())
+      this.startAttackPresentation('Pounce', this.frameClock)
     } else if (shape.kind === 'projectile' && target) {
       if (target.boss) this.bossLocked = true
       else this.lockedPreyId = target.id
@@ -3878,7 +3913,7 @@ class Gloamwood3DHunt {
       // The form's own bite clip, so the head goes forward and the orb leaves a
       // mouth rather than appearing in mid-air beside a standing animal. The
       // cast used to play no motion at all.
-      this.startAttackPresentation('Bite', performance.now())
+      this.startAttackPresentation('Bite', this.frameClock)
       this.castHold = this.attackWindowSeconds('Bite')
     } else if (shape.kind === 'guard') {
       // The shove goes through the same helper the tail sweep's cleave uses, so
@@ -4358,7 +4393,7 @@ class Gloamwood3DHunt {
       this.combatMessage = t('hud.msg.closingIn')
       return
     }
-    const now = performance.now()
+    const now = this.frameClock
     const previous = this.attackState.action
     this.attackState = requestFormalHuntBasicAttack(this.attackState, now, this.combatProfile)
     const action = this.attackState.action
@@ -7118,12 +7153,23 @@ class Gloamwood3DHunt {
     const { contact, compression } = weight
     const settle = this.stopSettle > 0 ? Math.sin((1 - this.stopSettle / 0.24) * Math.PI) : 0
     const baseY = weight.yOffset - settle * GLOAMWOOD_3D_LOCOMOTION_FEEL.stopSettleDepth
-    const now = performance.now()
+    const now = this.frameClock
     const attackAction = now < this.attackUntil && isBasicAttackAction(this.activeClip)
       ? this.activeClip
       : null
     const attackElapsedSeconds = (now - this.attackStartedAt) / 1000
-    const leapBite = attackAction === 'Pounce'
+    // A form whose Pounce is a planted Slam must not be moved by a leap arc.
+    // Same answer the clip redirect uses, so the body cannot be animated as one
+    // thing and moved as another.
+    const plantedSlam = attackAction === 'Pounce'
+      && quadrupedPounceEnvelope(this.characterFamily) === 'planted-slam'
+      ? quadrupedPlantedSlamFrame(
+          attackElapsedSeconds,
+          Math.max(0.001, this.attackDurationSeconds),
+          this.attackContactSeconds(attackAction),
+        )
+      : null
+    const leapBite = attackAction === 'Pounce' && !plantedSlam
       ? this.stage === 1
         ? gloamwoodStageOnePounceFrame(attackElapsedSeconds, Math.max(0.001, this.attackDurationSeconds))
         : juvenileLeapBiteMotionFrame(attackElapsedSeconds, Math.max(0.001, this.attackDurationSeconds))
@@ -7135,7 +7181,7 @@ class Gloamwood3DHunt {
           this.attackContactSeconds(attackAction),
         )
       : null
-    const attack = leapBite ?? juvenileTailSpin ?? (attackAction
+    const attack = plantedSlam ?? leapBite ?? juvenileTailSpin ?? (attackAction
       ? quadrupedAttackMotionFrame(
           attackAction,
           (now - this.attackStartedAt) / 1000,
@@ -7143,6 +7189,20 @@ class Gloamwood3DHunt {
           this.attackContactSeconds(attackAction),
         )
       : quadrupedAttackMotionFrame('Claw', 0, 1, 0.5))
+    if (plantedSlam
+      && plantedSlam.progress >= this.attackContactSeconds('Pounce') / Math.max(0.001, this.attackDurationSeconds)
+      && !this.leapBiteLandingResolved) {
+      // A slam has no landing, but it has a moment the weight arrives, and that
+      // is the frame the dust and the jolt belong on. Without this the Shell's
+      // heaviest step was its quietest.
+      this.leapBiteLandingResolved = true
+      this.leapBiteLandingEvents += 1
+      this.playSound('land')
+      this.spawnFootstepDust(-1)
+      this.spawnFootstepDust(1)
+      this.locomotionImpact = 1
+      this.cameraTrauma = Math.min(1, this.cameraTrauma + CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.landingCameraTrauma)
+    }
     if (leapBite && leapBite.progress >= CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.landingProgress && !this.leapBiteLandingResolved) {
       this.leapBiteLandingResolved = true
       this.leapBiteLandingEvents += 1
@@ -7156,12 +7216,22 @@ class Gloamwood3DHunt {
     this.characterRoot.position.y = baseY + attack.liftOffset
     this.characterRoot.rotation.y = attack.yawRadians
     this.characterRoot.rotation.z = weight.bodyRock + attack.pitchRadians
-    if (leapBite || juvenileTailSpin) this.characterRoot.scale.setScalar(1)
+    this.attackEnvelopeForReview = plantedSlam ? 'planted-slam'
+      : leapBite ? 'leap' : juvenileTailSpin ? 'tail-spin' : 'generic'
+    if (plantedSlam || leapBite || juvenileTailSpin) this.characterRoot.scale.setScalar(1)
     else {
+      // A plated body takes no squash and stretch from the combat envelope. The
+      // generic envelope stretches a striking body about 5% along one axis and
+      // squashes it 5% along another, which sells weight on a soft silhouette
+      // and slides rigid plates through each other on this one. Measured on the
+      // pangolin's Bite at 1.05 / 0.95 / 1.04, and reported as the attacks
+      // deforming the body. The authored clip still owns the motion; the
+      // locomotion foot-plant still owns the body weight.
+      const plated = quadrupedBodyIsPlated(this.characterFamily)
       this.characterRoot.scale.set(
-        (1 + compression * 0.42) * attack.forwardScale,
-        (1 - compression) * attack.verticalScale,
-        (1 + compression * 0.42) * attack.widthScale,
+        (1 + compression * 0.42) * (plated ? 1 : attack.forwardScale),
+        (1 - compression) * (plated ? 1 : attack.verticalScale),
+        (1 + compression * 0.42) * (plated ? 1 : attack.widthScale),
       )
     }
     for (const [index, material] of this.shadowMaterials.entries()) {
@@ -7230,7 +7300,7 @@ class Gloamwood3DHunt {
     // The Shell form has no Pounce: short stout forelimbs cannot sell a leap, so
     // the contract replaces it with a planted Slam. Only the clip is redirected -
     // damage, range and timing stay on the existing authority untouched.
-    const clipName = this.characterFamily === 'shell' && name === 'Pounce'
+    const clipName = quadrupedPounceEnvelope(this.characterFamily) === 'planted-slam' && name === 'Pounce'
       ? 'Slam'
       : this.stage <= 1 && name === 'Pounce'
         ? CORAL_GECKO_PRESENTATION.combat.leapBiteMotion.clipName
@@ -9767,8 +9837,8 @@ class Gloamwood3DHunt {
     const playerBodyRadius = gloamwoodPlayerCombatBodyRadius(stage, this.characterFamily)
     const leapBite = this.activeClip === 'Pounce'
       ? this.stage === 1
-        ? gloamwoodStageOnePounceFrame(Math.max(0, performance.now() - this.attackStartedAt) / 1000, Math.max(0.001, this.attackDurationSeconds))
-        : juvenileLeapBiteMotionFrame(Math.max(0, performance.now() - this.attackStartedAt) / 1000, Math.max(0.001, this.attackDurationSeconds))
+        ? gloamwoodStageOnePounceFrame(Math.max(0, this.frameClock - this.attackStartedAt) / 1000, Math.max(0.001, this.attackDurationSeconds))
+        : juvenileLeapBiteMotionFrame(Math.max(0, this.frameClock - this.attackStartedAt) / 1000, Math.max(0.001, this.attackDurationSeconds))
       : juvenileLeapBiteMotionFrame(0, 1)
     const performanceSnapshot = this.performanceSampler.snapshot()
     return {
@@ -9795,9 +9865,15 @@ class Gloamwood3DHunt {
         liftOffset: round(this.characterRoot.position.y),
         pitchDegrees: round(THREE.MathUtils.radToDeg(this.characterRoot.rotation.z)),
         yawDegrees: round(THREE.MathUtils.radToDeg(this.characterRoot.rotation.y)),
-        elapsedSeconds: round(this.attackStartedAt > 0 ? Math.max(0, performance.now() - this.attackStartedAt) / 1000 : 0),
+        elapsedSeconds: round(this.attackStartedAt > 0 ? Math.max(0, this.frameClock - this.attackStartedAt) / 1000 : 0),
         leapBitePhase: leapBite.phase,
         landingEvents: this.leapBiteLandingEvents,
+        scale: [
+          round(this.characterRoot.scale.x),
+          round(this.characterRoot.scale.y),
+          round(this.characterRoot.scale.z),
+        ],
+        envelope: this.attackEnvelopeForReview,
       },
       moving: this.moving,
       grounded: Math.abs(this.playerRoot.position.y - this.map.height(this.playerRoot.position.x, this.playerRoot.position.z)) < 0.001,

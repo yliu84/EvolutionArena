@@ -116,6 +116,83 @@ export function quadrupedAttackMotionFrame(
   }
 }
 
+/**
+ * Whether this family wears a rigid plated body.
+ *
+ * One fact with two consequences, which is why it is one function. A heavy
+ * plated silhouette cannot sell a leap - the forelimbs are short and stout -
+ * and it cannot take squash and stretch either, because the plates read as
+ * rigid and any non-uniform scale slides them through one another. Both
+ * failures were reported from play together, as the Shell's attacks deforming
+ * the body and hauling it upward.
+ */
+export function quadrupedBodyIsPlated(family: string | null | undefined) {
+  return family === 'shell'
+}
+
+/**
+ * Whether a family's Pounce is a leap or a planted slam.
+ *
+ * The Shell contract already says this: short stout forelimbs cannot sell a
+ * leap, so `setAction` redirects the Pounce *clip* to a planted `Slam`. What it
+ * did not say was anything to the motion layer, which keyed its envelope off
+ * the action name - so the plated body played a planted slam while the root was
+ * lifted 0.49 off the ground and pitched 8 degrees by a gecko's leap arc.
+ * Measured, and reported from play as the body being hauled up and deformed.
+ *
+ * Both the clip redirect and the envelope now read this one answer, so a body
+ * cannot again be animated as one thing and moved as another.
+ */
+export function quadrupedPounceEnvelope(family: string | null | undefined) {
+  return quadrupedBodyIsPlated(family) ? 'planted-slam' as const : 'leap' as const
+}
+
+/**
+ * A planted slam: the front mass driven down, not a body thrown forward.
+ *
+ * Deliberately the inverse of the leap it replaces. The leap gathers low and
+ * rises; this gathers *up* a little and then drives down through the contact
+ * frame, and it never leaves the ground - the lift is negative for the whole
+ * strike, because the whole idea is weight arriving rather than distance being
+ * crossed.
+ *
+ * Root only, and no scale at all. A plated body is the worst possible candidate
+ * for squash and stretch: the plates are rigid in the silhouette and any
+ * non-uniform scale slides them through each other.
+ */
+export function quadrupedPlantedSlamFrame(
+  elapsedSeconds: number,
+  durationSeconds: number,
+  contactSeconds: number,
+): QuadrupedAttackMotionFrame {
+  const duration = Math.max(0.001, durationSeconds)
+  const progress = clamp01(elapsedSeconds / duration)
+  if (progress <= 0 || progress >= 1) return { progress, ...NEUTRAL_ATTACK_FRAME }
+  const contactProgress = clamp01(contactSeconds / duration)
+  const windup = trianglePulse(progress, Math.max(0.06, contactProgress * 0.52), Math.max(0.08, contactProgress * 0.54))
+  const strike = asymmetricPulse(
+    progress,
+    contactProgress,
+    Math.max(0.035, contactProgress * 0.24),
+    Math.max(0.1, (1 - contactProgress) * 0.72),
+  )
+  return {
+    progress,
+    // A short shove, not a charge. The reach is the same either way; this is
+    // only what the body does with its weight.
+    forwardOffset: -0.06 * windup + 0.24 * strike,
+    // Rears a little, then drops. Never above the ground it started on.
+    liftOffset: 0.07 * windup - 0.15 * strike,
+    // Nose up to gather, hard down through contact.
+    pitchRadians: 0.13 * windup - 0.19 * strike,
+    yawRadians: 0,
+    forwardScale: 1,
+    verticalScale: 1,
+    widthScale: 1,
+    impactStrength: trianglePulse(progress, contactProgress, 0.055),
+  }
+}
+
 export function quadrupedPounceFrame(
   elapsedSeconds: number,
   durationSeconds: number,

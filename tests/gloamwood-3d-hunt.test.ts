@@ -156,10 +156,26 @@ describe('Shell attack chain', () => {
   it('plays Slam for the Shell second step without touching combat authority', () => {
     // The Slam clip shipped in the GLB but nothing played it: the form ran the
     // gecko profile's Pounce, which it has no clip for, so step two was silent.
-    expect(source).toContain("this.characterFamily === 'shell' && name === 'Pounce'")
+    expect(source).toContain("quadrupedPounceEnvelope(this.characterFamily) === 'planted-slam' && name === 'Pounce'")
     expect(source).toContain("? 'Slam'")
     // Only the clip is redirected - no per-form damage, range or timing override.
     expect(source).not.toMatch(/slamDamage|slamRange|slamDurationSeconds/)
+  })
+
+  it('moves the body with the same envelope it animates it with', () => {
+    // The half that was missing. The clip redirect said "planted Slam" and the
+    // motion layer keyed off the action name, so the plated body played a
+    // planted slam while a gecko's leap arc lifted its root 0.49 off the ground
+    // and pitched it eight degrees - measured, and reported from play as the
+    // body being hauled up and deformed.
+    //
+    // Both now ask `quadrupedPounceEnvelope`, so a form cannot again be
+    // animated as one thing and moved as another.
+    const redirects = source.match(/quadrupedPounceEnvelope\(this\.characterFamily\)/g) ?? []
+    expect(redirects.length).toBeGreaterThanOrEqual(2)
+    expect(source).toContain('quadrupedPlantedSlamFrame(')
+    // And the leap must be reachable only when the envelope is not the slam.
+    expect(source).toContain("const leapBite = attackAction === 'Pounce' && !plantedSlam")
   })
 
   it('never names the chain steps on screen, because they are not skills', () => {

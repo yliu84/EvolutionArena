@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { juvenileLeapBiteMotionFrame, juvenileSpinTailSwipeMotionFrame, quadrupedAttackMotionFrame, quadrupedPounceFrame } from '../src/quadruped-combat-motion'
+import {
+  juvenileLeapBiteMotionFrame,
+  juvenileSpinTailSwipeMotionFrame,
+  quadrupedAttackMotionFrame,
+  quadrupedPlantedSlamFrame,
+  quadrupedPounceEnvelope,
+  quadrupedPounceFrame,
+} from '../src/quadruped-combat-motion'
 
 describe('reusable quadruped pounce presentation', () => {
   it('launches forward to one stable peak and returns without moving authority', () => {
@@ -152,5 +159,72 @@ describe('the leap falls like something with weight', () => {
     // The guard against fixing the fall by flattening the leap.
     const peak = Math.max(...Array.from({ length: 40 }, (_, i) => at(0.22 + (i / 40) * 0.46).liftOffset))
     expect(peak).toBeGreaterThan(0.25)
+  })
+})
+
+describe('The Shell slam, which is not a leap', () => {
+  // Reported from play as the plated body being deformed and hauled upward on
+  // its second step. The contract already said this form has no leap - short
+  // stout forelimbs cannot sell one, so the Pounce *clip* is redirected to a
+  // planted Slam. Nothing had told the motion layer, which keyed its envelope
+  // off the action name. Measured in engine at the time: the root was lifted
+  // 0.49 off the ground and pitched eight degrees while a planted animation
+  // played underneath it.
+
+  const DURATION = 0.9
+  const CONTACT = 0.42
+  const sample = (count = 90) => Array.from({ length: count + 1 }, (_, index) =>
+    quadrupedPlantedSlamFrame((index / count) * DURATION, DURATION, CONTACT))
+
+  it('answers for the Shell family and only the Shell family', () => {
+    expect(quadrupedPounceEnvelope('shell')).toBe('planted-slam')
+    expect(quadrupedPounceEnvelope('fang')).toBe('leap')
+    expect(quadrupedPounceEnvelope('swarm')).toBe('leap')
+    expect(quadrupedPounceEnvelope('origin')).toBe('leap')
+    expect(quadrupedPounceEnvelope(null)).toBe('leap')
+  })
+
+  it('never leaves the ground it started on', () => {
+    // The whole defect in one assertion: a planted slam that rises is a leap
+    // played over an animation that is not one.
+    const peak = Math.max(...sample().map((frame) => frame.liftOffset))
+    expect(peak).toBeLessThan(0.08)
+    // And nowhere near the leap it replaced, which reaches past 0.4.
+    expect(peak).toBeLessThan(quadrupedPounceFrame(0.45, DURATION, 1, 0.5).liftOffset)
+  })
+
+  it('drives down through the contact frame rather than up', () => {
+    const atContact = quadrupedPlantedSlamFrame(CONTACT, DURATION, CONTACT)
+    expect(atContact.liftOffset).toBeLessThan(0)
+    // Nose down as the weight arrives, having gathered nose-up before it.
+    expect(atContact.pitchRadians).toBeLessThan(0)
+    const gathering = quadrupedPlantedSlamFrame(CONTACT * 0.45, DURATION, CONTACT)
+    expect(gathering.pitchRadians).toBeGreaterThan(0)
+    expect(gathering.liftOffset).toBeGreaterThan(0)
+  })
+
+  it('applies no scale at all, because plates do not squash', () => {
+    // A plated silhouette is the worst candidate for squash and stretch: the
+    // plates are rigid to the eye and any non-uniform scale slides them
+    // through each other, which is what "the body is deformed" described.
+    for (const frame of sample()) {
+      expect(frame.forwardScale).toBe(1)
+      expect(frame.verticalScale).toBe(1)
+      expect(frame.widthScale).toBe(1)
+    }
+  })
+
+  it('shoves forward without crossing ground the way a leap does', () => {
+    const forward = Math.max(...sample().map((frame) => frame.forwardOffset))
+    expect(forward).toBeGreaterThan(0.1)
+    expect(forward).toBeLessThan(0.4)
+  })
+
+  it('starts and ends neutral, so nothing is left behind on the body', () => {
+    for (const frame of [quadrupedPlantedSlamFrame(0, DURATION, CONTACT), quadrupedPlantedSlamFrame(DURATION, DURATION, CONTACT)]) {
+      expect(frame.liftOffset).toBe(0)
+      expect(frame.forwardOffset).toBe(0)
+      expect(frame.pitchRadians).toBe(0)
+    }
   })
 })
