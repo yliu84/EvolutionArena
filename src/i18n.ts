@@ -458,6 +458,8 @@ const STRINGS = {
   'touch.attack': { en: 'Attack', zh: '攻击' },
   'touch.attackHint': { en: 'hold to chain', zh: '按住连招' },
   'touch.attackAria': { en: 'Hold to run the basic attack chain', zh: '按住执行普通攻击连招' },
+  'touch.skill': { en: 'Skill', zh: '技能' },
+  'touch.skillAria': { en: 'Use your evolution line\u2019s skill', zh: '使用当前进化线的专属技能' },
   'mute': { en: 'Muted', zh: '静音' },
 
   // ---- dynamic HUD, settings and bindings ---------------------------------

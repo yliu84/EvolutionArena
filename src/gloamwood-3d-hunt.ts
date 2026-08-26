@@ -1261,6 +1261,8 @@ class Gloamwood3DHunt {
    * had, in the one other place that starts a clip outside the attack state.
    */
   private castHold = 0
+  private touchSkillButton?: HTMLButtonElement
+  private touchSkillState?: HTMLElement
   /** Effects played through the described-effect path. Reported, never read. */
   private vfxBurstsForReview = 0
   private vfxParticlesForReview = 0
@@ -9691,6 +9693,10 @@ class Gloamwood3DHunt {
       '</div>',
       '<div class="g3d-actions">',
       `<button data-lock aria-label="${t('bind.lock')}">${t('touch.lock')}</button>`,
+      // Touch had a joystick, a lock and an attack, and that was the whole
+      // control set - so the skill every evolution line now has was reachable
+      // on a keyboard and nowhere else. On a phone the button did not exist.
+      `<button class="g3d-skill-button" data-skill hidden aria-label="${t('touch.skillAria')}">${t('touch.skill')}<small data-skill-state></small></button>`,
       `<button class="primary" data-attack aria-label="${t('touch.attackAria')}">${t('touch.attack')}<small>${t('touch.attackHint')}</small></button>`,
       '</div>',
     ].join('')
@@ -9747,10 +9753,48 @@ class Gloamwood3DHunt {
     attack?.addEventListener('pointerup', releaseAttack)
     attack?.addEventListener('pointercancel', releaseAttack)
     attack?.addEventListener('lostpointercapture', releaseAttack)
+    const skill = controls.querySelector<HTMLButtonElement>('[data-skill]')
+    // Fires on press, not on click: a click needs the finger to come back down
+    // in the same place, and this button is pressed mid-fight with a thumb that
+    // is already moving. The attack button next to it works the same way.
+    skill?.addEventListener('pointerdown', (event) => {
+      event.preventDefault()
+      this.audio.unlock()
+      if (this.paused) return
+      this.requestSkill()
+    })
+    this.touchSkillButton = skill ?? undefined
+    this.touchSkillState = controls.querySelector<HTMLElement>('[data-skill-state]') ?? undefined
     this.container.append(controls)
   }
 
+  /**
+   * The touch skill button, told the truth every frame.
+   *
+   * Hidden entirely for the origin form, which has no skill: a button that
+   * always refuses is worse than no button, because the player spends the
+   * fight wondering what they are doing wrong. Once a line is chosen it shows
+   * the seconds left, so a cooling skill reads as cooling rather than broken.
+   */
+  private updateTouchSkillButton() {
+    const button = this.touchSkillButton
+    if (!button) return
+    const skill = gloamwoodSkillFor(this.characterFamily)
+    if (!skill) {
+      if (!button.hidden) button.hidden = true
+      return
+    }
+    if (button.hidden) button.hidden = false
+    const cooling = this.skillState.cooldownRemaining > 0
+    if (button.disabled !== cooling) button.disabled = cooling
+    const label = cooling ? `${Math.ceil(this.skillState.cooldownRemaining)}s` : t('hud.skillReady')
+    if (this.touchSkillState && this.touchSkillState.textContent !== label) {
+      this.touchSkillState.textContent = label
+    }
+  }
+
   private updateHud() {
+    this.updateTouchSkillButton()
     this.updateValleyRadar()
     this.updateDefenceRadar()
     this.updateAltarPlate()

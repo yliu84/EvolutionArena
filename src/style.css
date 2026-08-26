@@ -1572,6 +1572,25 @@ body.is-gloamwood-3d * {
   .g3d-actions { display: flex; align-items: end; gap: 9px; }
   .g3d-actions button.primary { width: 82px; height: 82px; border-color: rgba(255, 197, 111, .7); background: radial-gradient(circle at 40% 30%, rgba(181, 86, 48, .96), rgba(83, 34, 28, .92)); font-weight: 900; }
   .g3d-actions button small { display: block; color: #f4c47d; font-size: 8px; }
+  /* Smaller than Attack and a different colour, because it is a different
+     decision: Attack is held continuously, this is spent once and waited for.
+     Sized to the 44px touch-target floor even so. */
+  .g3d-actions button.g3d-skill-button {
+    width: 62px;
+    height: 62px;
+    border-color: rgba(150, 214, 118, .68);
+    background: radial-gradient(circle at 40% 30%, rgba(72, 122, 55, .95), rgba(28, 54, 32, .93));
+    font-weight: 800;
+  }
+  .g3d-actions button.g3d-skill-button[hidden] { display: none; }
+  .g3d-actions button.g3d-skill-button small { color: #b9e88c; letter-spacing: .04em; }
+  /* Cooling reads as spent, not as broken - it still shows its own countdown. */
+  .g3d-actions button.g3d-skill-button:disabled {
+    border-color: rgba(255, 255, 255, .14);
+    background: radial-gradient(circle at 40% 30%, rgba(52, 62, 50, .9), rgba(24, 32, 26, .9));
+    color: rgba(233, 240, 226, .5);
+  }
+  .g3d-actions button.g3d-skill-button:disabled small { color: rgba(185, 232, 140, .55); }
 }
 
 @media (max-width: 900px), (max-height: 520px) {
