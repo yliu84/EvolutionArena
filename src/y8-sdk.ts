@@ -1,0 +1,182 @@
+/**
+ * The Y8 portal SDK, kept at arm's length.
+ *
+ * Y8 hosts games in a cross-origin iframe and serves its SDK from its own CDN.
+ * That is fine on Y8 and wrong everywhere else: this build ships to itch.io as
+ * a zip that has to run from disk with no network at all, and to GitHub Pages
+ * where a request to `cdn.y8.com` buys nothing and adds a way to fail. The
+ * script tag is therefore injected only into the Y8 build, and everything here
+ * is written to be completely inert when it is absent.
+ *
+ * Nothing in this file decides anything about a run. It reports whether an ad
+ * was actually watched; the game decides what that is worth.
+ */
+
+export interface GloamwoodY8Config {
+  appId: string
+  gameId: string
+}
+
+/** Y8's published credentials for this game. */
+export const GLOAMWOOD_Y8: GloamwoodY8Config = {
+  appId: '6a8f7d191ee8fcff5a7242fb',
+  gameId: '281491',
+}
+
+/** How a rewarded ad ended. Only `viewed` earns anything. */
+export type GloamwoodY8AdResult = 'viewed' | 'dismissed' | 'unavailable' | 'error'
+
+interface Y8AdRequest {
+  type: 'reward' | 'start' | 'pause' | 'next' | 'browse'
+  name: string
+  beforeAd?: () => void
+  afterAd?: () => void
+  beforeReward?: (showAd: () => void) => void
+  adDismissed?: () => void
+  adViewed?: () => void
+  adBreakDone?: (info: { breakStatus?: string }) => void
+}
+
+interface Y8Sdk {
+  init: (app: { appId: string; autoLogin: boolean }, ads?: unknown) => void
+  onAuth?: (handler: (user: unknown, error: unknown) => void) => void
+  login?: () => void
+  showAd: (request: Y8AdRequest) => Promise<unknown>
+}
+
+interface Y8Global {
+  sdk: () => Y8Sdk
+  emitReadyEvent?: () => void
+}
+
+let sdk: Y8Sdk | null = null
+let signedIn = false
+/**
+ * Set the first time init succeeds, and never cleared.
+ *
+ * The portal script is async, so the game arms two ready events *and* tries
+ * immediately - three ways in, because any of them can be the one that wins.
+ * Without this they are not mutually exclusive: `y8sdk.ready` and the shim
+ * event both fire, `sdk.init` runs twice, and the SDK logs a duplicated OAuth
+ * state mismatch for the second attempt.
+ */
+let initialised = false
+
+function y8(): Y8Global | null {
+  // `globalThis`, not `window`: this module is imported by the test runner,
+  // which has no window at all, and reaching for one there throws before any
+  // of the logic worth checking can run.
+  const value = (globalThis as unknown as { y8?: Y8Global }).y8
+  return value && typeof value.sdk === 'function' ? value : null
+}
+
+/** Whether the portal SDK is present at all. False in every non-Y8 build. */
+export function gloamwoodY8Available() {
+  return sdk !== null
+}
+
+/** Whether a player is signed in to their Y8 account. Presentation only. */
+export function gloamwoodY8SignedIn() {
+  return signedIn
+}
+
+/**
+ * Wires up the SDK if this build has it, and does nothing at all if not.
+ *
+ * Sign-in is switched on because on Y8 it costs the player nothing - they are
+ * already signed in to the portal - and it gives the run record a name to hang
+ * on later. Saves deliberately stay in `localStorage` for now: moving them to
+ * Y8's cloud is a separate piece of work, and doing half of it would leave two
+ * disagreeing copies of a player's progress.
+ */
+export function initGloamwoodY8(config: GloamwoodY8Config = GLOAMWOOD_Y8) {
+  if (initialised) return true
+  const global = y8()
+  if (!global) return false
+  try {
+    initialised = true
+    sdk = global.sdk()
+    sdk.init({ appId: config.appId, autoLogin: true })
+    sdk.onAuth?.((user, error) => { signedIn = Boolean(user) && !error })
+    return true
+  } catch {
+    // A portal SDK that throws must not take the game down with it.
+    sdk = null
+    initialised = false
+    return false
+  }
+}
+
+/**
+ * Shows a rewarded ad and resolves with what actually happened.
+ *
+ * `pause` and `resume` are handed in rather than assumed: an ad plays over a
+ * live scene, and a game that keeps simulating - and keeps making noise -
+ * behind a full-screen advert is the complaint every portal hears.
+ *
+ * Resolves rather than rejects on every path, including failure, because the
+ * caller has a player sitting in front of a dialog waiting for an answer. A
+ * rejected promise here would leave them looking at a frozen menu.
+ */
+export function showGloamwoodY8RewardedAd(options: {
+  name: string
+  pause: () => void
+  resume: () => void
+}): Promise<GloamwoodY8AdResult> {
+  const active = sdk
+  if (!active) return Promise.resolve('unavailable')
+  return new Promise<GloamwoodY8AdResult>((resolve) => {
+    let settled = false
+    const finish = (result: GloamwoodY8AdResult) => {
+      if (settled) return
+      settled = true
+      resolve(result)
+    }
+    try {
+      void active.showAd({
+        type: 'reward',
+        name: options.name,
+        beforeAd: () => options.pause(),
+        afterAd: () => options.resume(),
+        // Y8 hands over a function to open the ad. Not calling it means no ad.
+        beforeReward: (showAd) => showAd(),
+        adDismissed: () => finish('dismissed'),
+        adViewed: () => finish('viewed'),
+        // Always fires, whatever happened. Anything still unsettled by here was
+        // neither watched nor explicitly skipped - a filled slot with no
+        // inventory, most often - and earns nothing.
+        adBreakDone: () => {
+          options.resume()
+          finish('dismissed')
+        },
+      }).catch(() => {
+        options.resume()
+        finish('error')
+      })
+    } catch {
+      options.resume()
+      finish('error')
+    }
+  })
+}
+
+/**
+ * Whether to offer a life for an ad, and why not when the answer is no.
+ *
+ * Pure, because this is the rule that decides whether a run ends, and it must
+ * be checkable without a portal, an ad server or a browser.
+ *
+ * One per run. A rewarded life that can be taken again every time the last one
+ * runs out is not a reward, it is an infinite continue with a video tax, and
+ * it deletes the only cost a death in this game carries.
+ */
+export function gloamwoodExtraLifeOffer(input: {
+  adAvailable: boolean
+  alreadyTakenThisRun: boolean
+  livesRemaining: number
+}): { offer: boolean; reason: 'ok' | 'no-ad' | 'already-taken' | 'lives-left' } {
+  if (input.livesRemaining > 0) return { offer: false, reason: 'lives-left' }
+  if (!input.adAvailable) return { offer: false, reason: 'no-ad' }
+  if (input.alreadyTakenThisRun) return { offer: false, reason: 'already-taken' }
+  return { offer: true, reason: 'ok' }
+}

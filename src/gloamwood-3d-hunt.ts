@@ -16,6 +16,11 @@ import {
 } from './gloamwood-render-quality'
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import {
+  gloamwoodExtraLifeOffer,
+  gloamwoodY8Available,
+  showGloamwoodY8RewardedAd,
+} from './y8-sdk'
+import {
   gloamwoodMonsterStrikeFx,
   type GloamwoodVfxBurst,
   type GloamwoodVfxRing,
@@ -1261,6 +1266,14 @@ class Gloamwood3DHunt {
    * had, in the one other place that starts a clip outside the attack state.
    */
   private castHold = 0
+  /**
+   * Whether this run has already bought a life with an ad.
+   *
+   * One per run. A rewarded life available every time the last one runs out is
+   * an infinite continue with a video tax, and it deletes the only cost a
+   * death in this game carries.
+   */
+  private extraLifeTaken = false
   private touchSkillButton?: HTMLButtonElement
   private touchSkillState?: HTMLElement
   /** Effects played through the described-effect path. Reported, never read. */
@@ -8253,6 +8266,17 @@ class Gloamwood3DHunt {
     this.logSession({ kind: 'death', who: 'player', livesLeft: Math.max(0, this.livesRemaining - 1) })
     this.livesRemaining -= 1
     if (this.livesRemaining <= 0) {
+      // The one moment a rewarded ad is worth anything to the player: the run
+      // is otherwise over. Offered here rather than on every death, so it is
+      // something they want instead of something in the way.
+      if (gloamwoodExtraLifeOffer({
+        adAvailable: gloamwoodY8Available(),
+        alreadyTakenThisRun: this.extraLifeTaken,
+        livesRemaining: this.livesRemaining,
+      }).offer) {
+        this.offerExtraLifeForAd(reason)
+        return true
+      }
       this.completeRunDefeat(reason)
       return true
     }
@@ -8305,6 +8329,76 @@ class Gloamwood3DHunt {
       window.location.reload()
     }, { once: true })
     this.deathOverlay.querySelector<HTMLButtonElement>('[data-g3d-revive]')?.focus()
+  }
+
+  /**
+   * "The run is over - unless you want to watch something."
+   *
+   * Deliberately not a modal that appears mid-fight. The world is already
+   * stopped, the player has already lost, and declining costs them nothing but
+   * the tap they were going to make anyway. Declining is also the default: the
+   * dialog opens with the ending button focused.
+   *
+   * Every failure path ends the run rather than silently granting a life. An ad
+   * that did not play has not been paid for.
+   */
+  private offerExtraLifeForAd(reason: string) {
+    this.paused = true
+    this.keys.clear()
+    this.primaryHeld = false
+    if (!this.deathOverlay) {
+      const overlay = document.createElement('section')
+      overlay.className = 'gloamwood-death-prompt'
+      overlay.setAttribute('role', 'dialog')
+      overlay.setAttribute('aria-modal', 'true')
+      this.deathOverlay = overlay
+      this.container.append(overlay)
+    }
+    this.deathOverlay.innerHTML = [
+      '<div>',
+      `<h2>${escapeGloamwoodHtml(t('death.lastLife'))}</h2>`,
+      `<p>${escapeGloamwoodHtml(t('death.adOffer'))}</p>`,
+      '<menu>',
+      `<button type="button" data-g3d-ad-life>${escapeGloamwoodHtml(t('death.adAccept'))}</button>`,
+      `<button type="button" data-g3d-ad-decline>${escapeGloamwoodHtml(t('death.adDecline'))}</button>`,
+      '</menu>',
+      '</div>',
+    ].join('')
+    this.deathOverlay.hidden = false
+    const decline = () => {
+      if (this.deathOverlay) this.deathOverlay.hidden = true
+      this.paused = false
+      this.completeRunDefeat(reason)
+    }
+    const accept = this.deathOverlay.querySelector<HTMLButtonElement>('[data-g3d-ad-life]')
+    accept?.addEventListener('click', () => {
+      // Marked before the ad runs, not after. A player who taps twice, or whose
+      // ad fails halfway, must not be able to come back for a second one.
+      this.extraLifeTaken = true
+      if (accept) accept.disabled = true
+      void showGloamwoodY8RewardedAd({
+        name: 'extra-life',
+        pause: () => {
+          this.paused = true
+          this.audio.setMuted(true)
+        },
+        resume: () => {
+          this.audio.setMuted(this.feedbackSettings.muted)
+        },
+      }).then((result) => {
+        if (result !== 'viewed') {
+          decline()
+          return
+        }
+        this.livesRemaining = 1
+        this.logSession({ kind: 'mutation-effect', id: 'y8-extra-life', effect: 'granted' })
+        if (this.deathOverlay) this.deathOverlay.hidden = true
+        this.combatMessage = t('hud.msg.livesLeft', { count: this.livesRemaining })
+        this.showDeathPrompt()
+      })
+    })
+    this.deathOverlay.querySelector<HTMLButtonElement>('[data-g3d-ad-decline]')?.addEventListener('click', decline, { once: true })
+    this.deathOverlay.querySelector<HTMLButtonElement>('[data-g3d-ad-decline]')?.focus()
   }
 
   private dismissDeathPrompt() {

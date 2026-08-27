@@ -11,7 +11,9 @@
     "package:itch": "node scripts/package-itch.mjs",
     "preview": "vite preview --host",
     "test": "vitest run",
-    "validate:gltf": "node scripts/validate-glb.mjs"
+    "validate:gltf": "node scripts/validate-glb.mjs",
+    "build:y8": "Y8=1 DEPLOY_BASE=./ npm run build",
+    "package:y8": "node scripts/package-y8.mjs"
   },
   "devDependencies": {
     "@types/three": "^0.185.4",

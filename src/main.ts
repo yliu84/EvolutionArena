@@ -2,6 +2,7 @@ import './style.css'
 import { applyDocumentLocale, t } from './i18n'
 import { gloamwoodMapFromSearch } from './entry-routing'
 import { presentGloamwoodModeSelect } from './gloamwood-mode-select'
+import { initGloamwoodY8 } from './y8-sdk'
 
 function createGameLoadingState() {
   const container = document.querySelector<HTMLElement>('#game-container')
@@ -60,6 +61,14 @@ document.documentElement.classList.add('is-gloamwood-3d')
 // saved choice and the browser.
 applyDocumentLocale()
 document.body.classList.add('is-maplab', 'is-v4-live', 'is-gloamwood-3d')
+// Portal SDK, if this build has one. Tried now and again on the ready event,
+// because the script is async: it can settle either side of this line, and
+// both orders have to end with the SDK initialised exactly once. Every
+// non-portal build takes the no-op path.
+if (!initGloamwoodY8()) {
+  window.addEventListener('y8sdk.ready', () => { initGloamwoodY8() }, { once: true })
+  window.addEventListener('gloamwood:y8-ready', () => { initGloamwoodY8() }, { once: true })
+}
 /**
  * A link that names a map goes straight in; anything else gets the picker.
  *

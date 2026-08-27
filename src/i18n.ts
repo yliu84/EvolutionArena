@@ -458,6 +458,13 @@ const STRINGS = {
   'touch.attack': { en: 'Attack', zh: '攻击' },
   'touch.attackHint': { en: 'hold to chain', zh: '按住连招' },
   'touch.attackAria': { en: 'Hold to run the basic attack chain', zh: '按住执行普通攻击连招' },
+  'death.lastLife': { en: 'That was your last life', zh: '这是最后一条命' },
+  'death.adOffer': {
+    en: 'Watch a short ad and the hunt continues with one more.',
+    zh: '看一段短广告，这局可以再续一条命。',
+  },
+  'death.adAccept': { en: 'Watch for one more life', zh: '看广告，换一条命' },
+  'death.adDecline': { en: 'End the run', zh: '结束本局' },
   'touch.skill': { en: 'Skill', zh: '技能' },
   'touch.skillAria': { en: 'Use your evolution line\u2019s skill', zh: '使用当前进化线的专属技能' },
   'mute': { en: 'Muted', zh: '静音' },
