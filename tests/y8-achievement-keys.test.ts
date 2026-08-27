@@ -37,6 +37,16 @@ describe('Y8 unlock keys', () => {
     expect(new Set(keys).size).toBe(keys.length)
   })
 
+  it('maps every achievement the game has', () => {
+    // All nine now exist on the dashboard, so a gap here is no longer work in
+    // progress - it is an achievement a player can earn and never be credited
+    // for, with nothing in the game to show for it. Adding a tenth achievement
+    // without creating it on Y8 fails here rather than in silence.
+    const missing = [...ids].filter((id) => !(id in GLOAMWOOD_Y8_ACHIEVEMENT_KEYS))
+    expect(missing, `run: npm run y8:keys`).toEqual([])
+    expect(Object.keys(GLOAMWOOD_Y8_ACHIEVEMENT_KEYS)).toHaveLength(ids.size)
+  })
+
   it('returns null for an achievement Y8 does not know yet', () => {
     // A half-filled table has to degrade rather than break: the local unlock
     // still happens, and only the portal mirror is skipped.

@@ -30,20 +30,49 @@ if (titles.size === 0) {
   process.exit(1)
 }
 
-const response = await fetch('https://playtomic.y8.com/v1', {
-  method: 'POST',
-  headers: { 'Content-Type': 'text/plain' },
-  body: JSON.stringify({ appid: APP_ID, section: 'achievements', action: 'list' }),
-})
-const payload = await response.json()
-if (!payload.success) {
-  console.error('Y8 refused the request:', payload)
-  process.exit(1)
+/**
+ * Y8's list endpoint answers inconsistently.
+ *
+ * Measured: the same request returned nine achievements, then zero, then two -
+ * stale snapshots from a cache, all reported as `success: true`. A single call
+ * is therefore worthless here, because a short answer is indistinguishable
+ * from "you have not created those yet", and acting on one would print a table
+ * missing most of the game's achievements while looking entirely correct.
+ *
+ * So ask repeatedly and keep the fullest answer. Reporting the spread makes
+ * the flakiness visible rather than something the next person rediscovers.
+ */
+async function fetchAchievements(attempts = 10) {
+  const seen = []
+  let best = []
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const response = await fetch('https://playtomic.y8.com/v1', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ appid: APP_ID, section: 'achievements', action: 'list' }),
+    })
+    const payload = await response.json()
+    if (!payload.success) {
+      console.error('Y8 refused the request:', payload)
+      process.exit(1)
+    }
+    const list = payload.achievements ?? []
+    seen.push(list.length)
+    if (list.length > best.length) best = list
+    // Nothing more to gain once every local achievement is accounted for.
+    if (best.length >= titles.size) break
+  }
+  if (new Set(seen).size > 1) {
+    console.log(`Y8 returned ${seen.join(', ')} achievements across ${seen.length} calls - using the fullest.`)
+  }
+  return best
 }
+
+const achievements = await fetchAchievements()
 
 const rows = []
 const unmatched = []
-for (const entry of payload.achievements ?? []) {
+for (const entry of achievements) {
   const id = titles.get(entry.achievement)
   if (!id) { unmatched.push(entry.achievement); continue }
   if (!KEY_PATTERN.test(entry.achievementkey)) {

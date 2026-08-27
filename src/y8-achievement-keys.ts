@@ -18,16 +18,15 @@
  * half-filled table degrades rather than breaks.
  */
 export const GLOAMWOOD_Y8_ACHIEVEMENT_KEYS: Readonly<Record<string, string>> = {
+  'altar-held': '7d8626be7d92196561e9',
+  'altar-unspent': '16dd756feb28cfdfbcc7',
+  'altar-untouched': '04e4ef2a6ecfc3c50f38',
   'altar-wave-six': '7150613e9af31a6ac9fc',
+  'both-ways': 'ad66dd03eca17565459a',
+  'hundred-kills': 'f4d55ee7fb8abf356649',
+  'many-mutations': 'e4552f82c1935901a3aa',
   'valley-cleared': '331d330138e23495e99a',
-  // Pending: created on Y8, then filled in by `npm run y8:keys`.
-  // 'many-mutations': '',
-  // 'altar-held': '',
-  // 'hundred-kills': '',
-  // 'valley-unspent': '',
-  // 'altar-unspent': '',
-  // 'altar-untouched': '',
-  // 'both-ways': '',
+  'valley-unspent': '6d6c16baa4c40c8535c9',
 }
 
 /** Y8's own shape for a key: twenty lowercase hex characters. */
