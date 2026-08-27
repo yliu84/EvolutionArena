@@ -37,8 +37,15 @@ interface Y8AdRequest {
   adBreakDone?: (info: { breakStatus?: string }) => void
 }
 
+interface Y8AdConfig {
+  gameId: string
+  preloadAdBreaks: 'on' | 'off'
+  sound: 'on' | 'off'
+  onReady: () => void
+}
+
 interface Y8Sdk {
-  init: (app: { appId: string; autoLogin: boolean }, ads?: unknown) => void
+  init: (app: { appId: string; autoLogin: boolean }, ads?: Y8AdConfig) => void
   onAuth?: (handler: (user: unknown, error: unknown) => void) => void
   login?: () => void
   showAd: (request: Y8AdRequest) => Promise<unknown>
@@ -51,6 +58,15 @@ interface Y8Global {
 
 let sdk: Y8Sdk | null = null
 let signedIn = false
+/**
+ * Set when Y8's ad module reports itself ready.
+ *
+ * Separate from "the SDK is present" on purpose. The SDK loads long before ads
+ * can play - it has to fetch this game's ad settings first - and offering a
+ * player a life for an ad that cannot run is worse than not offering one: they
+ * spend their last life on a tap and get nothing back.
+ */
+let adsReady = false
 /**
  * Set the first time init succeeds, and never cleared.
  *
@@ -75,6 +91,11 @@ export function gloamwoodY8Available() {
   return sdk !== null
 }
 
+/** Whether an ad could actually play right now. */
+export function gloamwoodY8AdsReady() {
+  return adsReady
+}
+
 /** Whether a player is signed in to their Y8 account. Presentation only. */
 export function gloamwoodY8SignedIn() {
   return signedIn
@@ -96,13 +117,28 @@ export function initGloamwoodY8(config: GloamwoodY8Config = GLOAMWOOD_Y8) {
   try {
     initialised = true
     sdk = global.sdk()
-    sdk.init({ appId: config.appId, autoLogin: true })
+    // `adConfig` is only optional for a game with no ads. This one has a
+    // rewarded life, and without it Y8's own SDK throws "Ads not initialized.
+    // Pass adConfig to init() to enable ads." - `gameId` is what fetches this
+    // game's ad settings. Omitting it was a real defect: the failure was
+    // caught, the run ended correctly, and the reason was entirely wrong.
+    //
+    // `preloadAdBreaks` and `sound` are Y8's own defaults, written out because
+    // an ad that arrives silently is an ad the player thinks is broken. The
+    // game mutes itself for the duration instead.
+    sdk.init({ appId: config.appId, autoLogin: true }, {
+      gameId: config.gameId,
+      preloadAdBreaks: 'on',
+      sound: 'on',
+      onReady: () => { adsReady = true },
+    })
     sdk.onAuth?.((user, error) => { signedIn = Boolean(user) && !error })
     return true
   } catch {
     // A portal SDK that throws must not take the game down with it.
     sdk = null
     initialised = false
+    adsReady = false
     return false
   }
 }
@@ -118,6 +154,23 @@ export function initGloamwoodY8(config: GloamwoodY8Config = GLOAMWOOD_Y8) {
  * caller has a player sitting in front of a dialog waiting for an answer. A
  * rejected promise here would leave them looking at a frozen menu.
  */
+/**
+ * How long to wait for the ad slot to open at all, and then for it to finish.
+ *
+ * Measured, not guessed: with a correct `adConfig` the SDK opened two ad
+ * frames, fired `beforeAd` - so the game muted and paused - and then never
+ * called back. Nothing resolved, and the player was left staring at a frozen,
+ * silent dialog with no way forward. Whatever the cause, a portal SDK that
+ * goes quiet must not be able to end someone's session.
+ *
+ * Two stages, because they are different failures. If the break never starts
+ * the slot is simply not there and there is no reason to keep anyone waiting.
+ * Once it has started an ad may legitimately be playing, and cutting a running
+ * rewarded ad short would rob a player who is watching one.
+ */
+const AD_START_TIMEOUT_MS = 8_000
+const AD_COMPLETE_TIMEOUT_MS = 60_000
+
 export function showGloamwoodY8RewardedAd(options: {
   name: string
   pause: () => void
@@ -127,34 +180,40 @@ export function showGloamwoodY8RewardedAd(options: {
   if (!active) return Promise.resolve('unavailable')
   return new Promise<GloamwoodY8AdResult>((resolve) => {
     let settled = false
+    let timer: ReturnType<typeof setTimeout>
     const finish = (result: GloamwoodY8AdResult) => {
       if (settled) return
       settled = true
+      clearTimeout(timer)
+      // Resume on every exit, including the timeouts. Leaving the game muted
+      // and paused is the one outcome no result justifies.
+      options.resume()
       resolve(result)
     }
+    const arm = (ms: number) => {
+      clearTimeout(timer)
+      timer = setTimeout(() => finish('error'), ms)
+    }
+    arm(AD_START_TIMEOUT_MS)
     try {
       void active.showAd({
         type: 'reward',
         name: options.name,
-        beforeAd: () => options.pause(),
+        beforeAd: () => {
+          // The break opened, so an ad may really be playing now. Give it room.
+          arm(AD_COMPLETE_TIMEOUT_MS)
+          options.pause()
+        },
         afterAd: () => options.resume(),
         // Y8 hands over a function to open the ad. Not calling it means no ad.
         beforeReward: (showAd) => showAd(),
         adDismissed: () => finish('dismissed'),
         adViewed: () => finish('viewed'),
         // Always fires, whatever happened. Anything still unsettled by here was
-        // neither watched nor explicitly skipped - a filled slot with no
-        // inventory, most often - and earns nothing.
-        adBreakDone: () => {
-          options.resume()
-          finish('dismissed')
-        },
-      }).catch(() => {
-        options.resume()
-        finish('error')
-      })
+        // neither watched nor explicitly skipped, and earns nothing.
+        adBreakDone: () => finish('dismissed'),
+      }).catch(() => finish('error'))
     } catch {
-      options.resume()
       finish('error')
     }
   })

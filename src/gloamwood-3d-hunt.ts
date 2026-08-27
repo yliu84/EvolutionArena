@@ -17,7 +17,7 @@ import {
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import {
   gloamwoodExtraLifeOffer,
-  gloamwoodY8Available,
+  gloamwoodY8AdsReady,
   showGloamwoodY8RewardedAd,
 } from './y8-sdk'
 import {
@@ -8270,7 +8270,10 @@ class Gloamwood3DHunt {
       // is otherwise over. Offered here rather than on every death, so it is
       // something they want instead of something in the way.
       if (gloamwoodExtraLifeOffer({
-        adAvailable: gloamwoodY8Available(),
+        // Ads ready, not merely "the SDK loaded". Offering a life for an ad
+        // that cannot play spends the player's last life on a tap that returns
+        // nothing.
+        adAvailable: gloamwoodY8AdsReady(),
         alreadyTakenThisRun: this.extraLifeTaken,
         livesRemaining: this.livesRemaining,
       }).offer) {

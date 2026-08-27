@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { GLOAMWOOD_Y8, gloamwoodExtraLifeOffer, gloamwoodY8Available, initGloamwoodY8 } from '../src/y8-sdk'
+import {
+  GLOAMWOOD_Y8,
+  gloamwoodExtraLifeOffer,
+  gloamwoodY8AdsReady,
+  gloamwoodY8Available,
+  initGloamwoodY8,
+  showGloamwoodY8RewardedAd,
+} from '../src/y8-sdk'
 
 describe('Rewarded life offer', () => {
   // This rule decides whether a run ends, so it is checkable without a portal,
@@ -75,6 +82,158 @@ describe('Portal wiring', () => {
       expect(gloamwoodY8Available()).toBe(true)
     } finally {
       ;(globalThis as unknown as { y8?: unknown }).y8 = original
+    }
+  })
+})
+
+describe('Ad configuration', () => {
+  // Y8's SDK throws "Ads not initialized. Pass adConfig to init() to enable
+  // ads." without this, and `gameId` is what fetches the game's ad settings.
+  // It was omitted on the first pass because their docs call adConfig optional
+  // - true only for a game with no ads, which this is not.
+  function initWithStub() {
+    const calls: Array<{ app: unknown; ads: unknown }> = []
+    let onReady: (() => void) | undefined
+    const stub = {
+      sdk: () => ({
+        init: (app: unknown, ads: unknown) => {
+          calls.push({ app, ads })
+          onReady = (ads as { onReady?: () => void } | undefined)?.onReady
+        },
+        onAuth: () => {},
+        showAd: () => Promise.resolve(),
+      }),
+    }
+    const original = (globalThis as unknown as { y8?: unknown }).y8
+    ;(globalThis as unknown as { y8?: unknown }).y8 = stub
+    const restore = () => { (globalThis as unknown as { y8?: unknown }).y8 = original }
+    return { calls, restore, ready: () => onReady?.() }
+  }
+
+  it('passes the Game ID Y8 issued, so ads can initialise at all', () => {
+    const harness = initWithStub()
+    try {
+      initGloamwoodY8({ appId: 'app-under-test', gameId: 'game-under-test' })
+      const [call] = harness.calls
+      // A fresh module would record the call; if an earlier test already
+      // initialised, the guard correctly suppresses this one.
+      if (!call) return
+      expect((call.app as { appId: string }).appId).toBe('app-under-test')
+      expect((call.ads as { gameId: string }).gameId).toBe('game-under-test')
+      expect((call.ads as { preloadAdBreaks: string }).preloadAdBreaks).toBe('on')
+    } finally {
+      harness.restore()
+    }
+  })
+
+  it('does not claim ads are ready before Y8 says so', () => {
+    // The SDK loads long before an ad can play - it fetches this game's ad
+    // settings first. Offering a life for an ad that cannot run spends the
+    // player's last life on a tap that returns nothing.
+    const offerWithoutAds = gloamwoodExtraLifeOffer({
+      adAvailable: gloamwoodY8AdsReady(),
+      alreadyTakenThisRun: false,
+      livesRemaining: 0,
+    })
+    if (!gloamwoodY8AdsReady()) {
+      expect(offerWithoutAds.offer).toBe(false)
+      expect(offerWithoutAds.reason).toBe('no-ad')
+    }
+  })
+})
+
+describe('An ad that goes quiet', () => {
+  // Measured against the real SDK: with a correct adConfig it opened two ad
+  // frames, fired beforeAd - so the game muted and paused - and then never
+  // called back at all. The player was left on a frozen, silent dialog with no
+  // way forward. Whatever the cause, a portal SDK going quiet must not be able
+  // to end someone's session.
+
+  /**
+   * A freshly imported module wired to a stub whose showAd only calls back
+   * when told to.
+   *
+   * Re-imported per test on purpose: the module deliberately initialises only
+   * once, so a shared instance would leave every test after the first talking
+   * to the first test's stub - which is exactly how these were failing.
+   */
+  async function withSdk(behaviour: (handlers: Record<string, (...args: never[]) => void>) => void) {
+    vi.resetModules()
+    const stub = {
+      sdk: () => ({
+        init: () => {},
+        onAuth: () => {},
+        showAd: (request: Record<string, (...args: never[]) => void>) => {
+          behaviour(request)
+          return Promise.resolve()
+        },
+      }),
+    }
+    const original = (globalThis as unknown as { y8?: unknown }).y8
+    ;(globalThis as unknown as { y8?: unknown }).y8 = stub
+    const module = await import('../src/y8-sdk')
+    module.initGloamwoodY8()
+    return {
+      showAd: module.showGloamwoodY8RewardedAd,
+      restore: () => { (globalThis as unknown as { y8?: unknown }).y8 = original },
+    }
+  }
+
+  it('gives up when the break never opens, and always resumes', async () => {
+    // Never calls anything back - the slot simply is not there.
+    const { showAd, restore } = await withSdk(() => {})
+    vi.useFakeTimers()
+    try {
+      let resumed = 0
+      const pending = showAd({ name: 'extra-life', pause: () => {}, resume: () => { resumed += 1 } })
+      await vi.advanceTimersByTimeAsync(8_000)
+      await expect(pending).resolves.toBe('error')
+      // The one outcome no result justifies is leaving the game muted.
+      expect(resumed).toBeGreaterThan(0)
+    } finally {
+      vi.useRealTimers()
+      restore()
+    }
+  })
+
+  it('waits far longer once an ad is genuinely playing', async () => {
+    // Opens the break and then goes silent, which is what was measured.
+    const { showAd, restore } = await withSdk((handlers) => { handlers.beforeAd?.() })
+    vi.useFakeTimers()
+    try {
+      let resumed = 0
+      let settled = false
+      const pending = showAd({ name: 'extra-life', pause: () => {}, resume: () => { resumed += 1 } })
+      void pending.then(() => { settled = true })
+      // Past the start timeout: cutting a running rewarded ad short here would
+      // rob a player who is actually watching one.
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(settled).toBe(false)
+      // But it cannot wait forever either.
+      await vi.advanceTimersByTimeAsync(31_000)
+      await expect(pending).resolves.toBe('error')
+      expect(resumed).toBeGreaterThan(0)
+    } finally {
+      vi.useRealTimers()
+      restore()
+    }
+  })
+
+  it('pays out only for an ad that was actually watched', async () => {
+    const { showAd, restore } = await withSdk((handlers) => { handlers.beforeAd?.(); handlers.adViewed?.() })
+    try {
+      await expect(showAd({ name: 'extra-life', pause: () => {}, resume: () => {} })).resolves.toBe('viewed')
+    } finally {
+      restore()
+    }
+  })
+
+  it('earns nothing when the player skips', async () => {
+    const { showAd, restore } = await withSdk((handlers) => { handlers.beforeAd?.(); handlers.adDismissed?.() })
+    try {
+      await expect(showAd({ name: 'extra-life', pause: () => {}, resume: () => {} })).resolves.toBe('dismissed')
+    } finally {
+      restore()
     }
   })
 })
