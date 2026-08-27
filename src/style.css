@@ -1749,7 +1749,16 @@ body.is-gloamwood-3d * {
   .gloamwood-onboarding p { display: -webkit-box; margin: 2px 0 0; overflow: hidden; font-size: 8px; line-height: 1.3; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+/* "Turn your phone sideways" belongs to phones.
+   
+   Width and orientation alone do not identify one. CSS counts a square as
+   portrait, so an 800x800 frame - a desktop browser window, or the box a
+   portal hands an embedded game - was being told to rotate a phone it does not
+   have. `pointer: coarse` is the part that actually means "a finger", and the
+   rotate prompt is only ever advice to someone holding a device. A small
+   landscape-less window on a desktop is a window, and the game should simply
+   render into it. */
+@media (max-width: 900px) and (orientation: portrait) and (pointer: coarse) {
   .gloamwood-orientation-gate:not([data-dismissed="true"]) {
     position: absolute;
     inset: 0;
