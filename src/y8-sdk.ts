@@ -96,7 +96,19 @@ export function gloamwoodY8AdsReady() {
   return adsReady
 }
 
-/** Whether a player is signed in to their Y8 account. Presentation only. */
+/**
+ * Whether a player is signed in to their Y8 account.
+ *
+ * Nothing reads this yet, and that is deliberate rather than an oversight:
+ * sign-in is on so the portal has an identity for this player, but saves stay
+ * in `localStorage` for now. This is the seam cloud saves would attach to, and
+ * it is kept because the alternative - wiring auth up again later - is how two
+ * disagreeing copies of a player's progress get created.
+ *
+ * Sign-in only works on y8.com itself. Everywhere else the SDK reports an
+ * OAuth state mismatch and the player stays anonymous, which is Y8's own
+ * documented behaviour and costs the game nothing.
+ */
 export function gloamwoodY8SignedIn() {
   return signedIn
 }
