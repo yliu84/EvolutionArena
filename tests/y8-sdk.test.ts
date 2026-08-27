@@ -260,12 +260,30 @@ describe('Mirroring an achievement to the portal', () => {
     }
   }
 
-  it('sends the achievement id as the key Y8 matches on', async () => {
+  it("sends Y8's own key, not the game's achievement id", async () => {
+    // The two systems share no identifier. Y8 generates an opaque twenty-hex
+    // key when the achievement is created on their dashboard, and sending the
+    // game's own id instead awards nothing - silently, with nothing inside the
+    // game able to tell. That was the first version of this call.
     const sent: unknown[] = []
     const { award, restore } = await withSdk(async (request) => { sent.push(request); return null })
     try {
-      await expect(award('altar-held', 'Still standing')).resolves.toBe(true)
-      expect(sent).toEqual([{ achievement: 'Still standing', achievementKey: 'altar-held' }])
+      await expect(award('valley-cleared', 'The river ends')).resolves.toBe(true)
+      expect(sent).toEqual([{ achievement: 'The river ends', achievementKey: '331d330138e23495e99a' }])
+    } finally {
+      restore()
+    }
+  })
+
+  it('skips an achievement that has no key on Y8 yet', async () => {
+    // The keys arrive one at a time as each achievement is created on the
+    // dashboard. Until then the local unlock still happens and only the portal
+    // mirror is skipped - no call, and certainly no guessed key.
+    const sent: unknown[] = []
+    const { award, restore } = await withSdk(async (request) => { sent.push(request); return null })
+    try {
+      await expect(award('not-created-on-y8-yet', 'Nothing')).resolves.toBe(false)
+      expect(sent).toEqual([])
     } finally {
       restore()
     }
@@ -278,7 +296,7 @@ describe('Mirroring an achievement to the portal', () => {
     // finished a run - the local achievement is already stored either way.
     const { award, restore } = await withSdk(async () => { throw new Error("The token can't be null.") })
     try {
-      await expect(award('altar-held', 'Still standing')).resolves.toBe(false)
+      await expect(award('valley-cleared', 'The river ends')).resolves.toBe(false)
     } finally {
       restore()
     }
@@ -287,7 +305,7 @@ describe('Mirroring an achievement to the portal', () => {
   it('does nothing at all in a build with no portal', async () => {
     const { award, restore } = await withSdk(undefined)
     try {
-      await expect(award('altar-held', 'Still standing')).resolves.toBe(false)
+      await expect(award('valley-cleared', 'The river ends')).resolves.toBe(false)
     } finally {
       restore()
     }

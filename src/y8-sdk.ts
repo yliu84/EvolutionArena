@@ -12,6 +12,8 @@
  * was actually watched; the game decides what that is worth.
  */
 
+import { gloamwoodY8AchievementKey } from './y8-achievement-keys'
+
 export interface GloamwoodY8Config {
   appId: string
   gameId: string
@@ -267,9 +269,13 @@ export function gloamwoodExtraLifeOffer(input: {
  * anything, and that has to be an ordinary quiet outcome rather than an error
  * in front of someone who just finished a run.
  */
-export async function awardGloamwoodY8Achievement(key: string, title: string): Promise<boolean> {
+export async function awardGloamwoodY8Achievement(achievementId: string, title: string): Promise<boolean> {
   const active = sdk
   if (!active?.awardAchievement) return false
+  // Y8's own key, not this game's id. They share no identifier, and sending
+  // the wrong one awards nothing without saying so.
+  const key = gloamwoodY8AchievementKey(achievementId)
+  if (!key) return false
   try {
     await active.awardAchievement({ achievement: title, achievementKey: key })
     return true
