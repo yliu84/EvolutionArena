@@ -46,6 +46,7 @@ interface Y8AdConfig {
 
 interface Y8Sdk {
   init: (app: { appId: string; autoLogin: boolean }, ads?: Y8AdConfig) => void
+  awardAchievement?: (request: { achievement: string; achievementKey: string }) => Promise<unknown>
   onAuth?: (handler: (user: unknown, error: unknown) => void) => void
   login?: () => void
   showAd: (request: Y8AdRequest) => Promise<unknown>
@@ -250,4 +251,31 @@ export function gloamwoodExtraLifeOffer(input: {
   if (!input.adAvailable) return { offer: false, reason: 'no-ad' }
   if (input.alreadyTakenThisRun) return { offer: false, reason: 'already-taken' }
   return { offer: true, reason: 'ok' }
+}
+
+/**
+ * Mirrors an unlocked achievement onto the player's Y8 profile.
+ *
+ * The game's own achievements are decided and stored locally and stay that way:
+ * this only tells the portal about one that has already been earned. Nothing
+ * here can grant, withhold or re-order anything.
+ *
+ * Signing in is not optional for this, and that is Y8's rule rather than a
+ * choice: `awardAchievement` reads the auth token first and throws "The token
+ * can't be null." without one. Anonymous players - which is everyone outside
+ * y8.com, and anyone on it who is signed out - therefore cannot be awarded
+ * anything, and that has to be an ordinary quiet outcome rather than an error
+ * in front of someone who just finished a run.
+ */
+export async function awardGloamwoodY8Achievement(key: string, title: string): Promise<boolean> {
+  const active = sdk
+  if (!active?.awardAchievement) return false
+  try {
+    await active.awardAchievement({ achievement: title, achievementKey: key })
+    return true
+  } catch {
+    // Anonymous player, offline, or the portal having a bad day. The local
+    // achievement is already stored either way, so nothing is lost by failing.
+    return false
+  }
 }

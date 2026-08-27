@@ -8,6 +8,7 @@ import {
   initGloamwoodY8,
   showGloamwoodY8RewardedAd,
 } from '../src/y8-sdk'
+import { GLOAMWOOD_ACHIEVEMENTS } from '../src/gloamwood-achievements'
 
 describe('Rewarded life offer', () => {
   // This rule decides whether a run ends, so it is checkable without a portal,
@@ -235,5 +236,76 @@ describe('An ad that goes quiet', () => {
     } finally {
       restore()
     }
+  })
+})
+
+describe('Mirroring an achievement to the portal', () => {
+  async function withSdk(award?: (request: unknown) => Promise<unknown>) {
+    vi.resetModules()
+    const stub = {
+      sdk: () => ({
+        init: () => {},
+        onAuth: () => {},
+        showAd: () => Promise.resolve(),
+        ...(award ? { awardAchievement: award } : {}),
+      }),
+    }
+    const original = (globalThis as unknown as { y8?: unknown }).y8
+    ;(globalThis as unknown as { y8?: unknown }).y8 = stub
+    const module = await import('../src/y8-sdk')
+    module.initGloamwoodY8()
+    return {
+      award: module.awardGloamwoodY8Achievement,
+      restore: () => { (globalThis as unknown as { y8?: unknown }).y8 = original },
+    }
+  }
+
+  it('sends the achievement id as the key Y8 matches on', async () => {
+    const sent: unknown[] = []
+    const { award, restore } = await withSdk(async (request) => { sent.push(request); return null })
+    try {
+      await expect(award('altar-held', 'Still standing')).resolves.toBe(true)
+      expect(sent).toEqual([{ achievement: 'Still standing', achievementKey: 'altar-held' }])
+    } finally {
+      restore()
+    }
+  })
+
+  it('stays quiet when the player is signed out', async () => {
+    // Y8's own code reads the auth token first and throws "The token can't be
+    // null." without one. Anonymous is the normal state everywhere outside
+    // y8.com, and it must not surface as an error to someone who has just
+    // finished a run - the local achievement is already stored either way.
+    const { award, restore } = await withSdk(async () => { throw new Error("The token can't be null.") })
+    try {
+      await expect(award('altar-held', 'Still standing')).resolves.toBe(false)
+    } finally {
+      restore()
+    }
+  })
+
+  it('does nothing at all in a build with no portal', async () => {
+    const { award, restore } = await withSdk(undefined)
+    try {
+      await expect(award('altar-held', 'Still standing')).resolves.toBe(false)
+    } finally {
+      restore()
+    }
+  })
+
+  it('keys every achievement the game can actually earn', () => {
+    // The keys entered on Y8's dashboard have to be these exact ids, so a
+    // rename here without a matching rename there silently stops awarding.
+    expect(GLOAMWOOD_ACHIEVEMENTS.map((entry) => entry.id)).toEqual([
+      'valley-cleared',
+      'valley-unspent',
+      'many-mutations',
+      'altar-wave-six',
+      'altar-held',
+      'altar-untouched',
+      'altar-unspent',
+      'hundred-kills',
+      'both-ways',
+    ])
   })
 })

@@ -16,6 +16,7 @@ import {
 } from './gloamwood-render-quality'
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
 import {
+  awardGloamwoodY8Achievement,
   gloamwoodExtraLifeOffer,
   gloamwoodY8AdsReady,
   showGloamwoodY8RewardedAd,
@@ -8489,6 +8490,13 @@ class Gloamwood3DHunt {
     const outcome = applyGloamwoodRun(this.runSummary(victory), readGloamwoodAchievements())
     writeGloamwoodAchievements(outcome.progress)
     this.earnedThisRun = outcome.earned
+    // Mirrored onto the portal profile, never awaited. The result panel is
+    // being built on this frame and must not wait on a network call, and a
+    // player who is signed out - everyone outside y8.com - simply gets nothing
+    // back. The local unlock above has already happened regardless.
+    for (const id of outcome.earned) {
+      void awardGloamwoodY8Achievement(id, t(`achievement.${id}.name` as 'achievement.valley-cleared.name'))
+    }
     if (!this.resultOverlay) {
       const overlay = document.createElement('section')
       overlay.className = 'gloamwood-run-result'
