@@ -45,9 +45,20 @@ damage, hit confirmation, kills or progression.
 - Files: `footstep-grass-01.ogg`, `footstep-grass-02.ogg`,
   `land-soft-heavy-01.ogg`.
 - SHA-256, in filename order:
-  - `9d49497777405d78d7cf7f2888e28277f3a23192300cfd1d79d54876b20f479f`
-  - `0546e1d8ab2def714425701a18bd34c5ee2794b12e858e5b595aabcf38a34137`
-  - `49e7ca88743fca974bb8676ea138b751cfd8f9033b5e7af8736c2a215d6edbc1`
+  - `54442ef23c8dd8775d2db2462468ed3085862e29851dd4d3f18e6eb4cb47284c`
+  - `ecda6c93558bceb35321d28b6daaee78eddd6f67a7c68839eaf9c1ad0f45711e`
+  - `6d75c5c95090d8202c0abd6070031214a6012b460158e38bd18b0409d72db1d4`
+
+Goal 16's decoded-PCM audit found that `footstep-grass-02.ogg` carried more
+than half a second of inaudible tail and decoded at -0.90 dBFS. The retained
+CC0 source was re-edited to 146 ms with a short release and -3.1 dBFS decoded
+peak; the hash above records that presentation edit.
+The same audit subsequently shortened `footstep-grass-01.ogg` from 775 ms to
+approximately 178 ms and lowered it to -3.47 dBFS. `land-soft-heavy-01.ogg`
+keeps its full release but was lowered from -0.92 to -3.5 dBFS so every active
+foley file clears the strict -1 dBFS decoded-peak gate.
+`ACTIVE-SHA256SUMS` is the machine-checked inventory for the three Goal 8
+foley files still referenced by the Goal 16 runtime.
 
 ## Active CC0 creature-combat palette
 

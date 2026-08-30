@@ -1,4 +1,5 @@
 import { t } from './i18n'
+import { playGloamwoodModeMotif } from './gloamwood-mode-audio'
 import {
   GLOAMWOOD_ACHIEVEMENTS,
   gloamwoodAchievementsUnlocked,
@@ -160,6 +161,7 @@ export function presentGloamwoodModeSelect(
     const choose = (mode: GloamwoodMode) => {
       if (settled) return
       settled = true
+      playGloamwoodModeMotif()
       rememberGloamwoodMode(mode)
       window.removeEventListener('keydown', onKey)
       overlay.dataset.leaving = 'true'

@@ -355,9 +355,25 @@ The Goal 7 release includes the exact protocol in
 Do not claim the three required external no-explanation runs have occurred
 until their locally captured reports and tester answers exist.
 
-## Current implementation milestone — Goal 8 audio candidate
+## Rejected implementation milestone — Goal 8 audio candidate
 
-River Valley now has a review-ready external-audio trial. The former procedural
+The project owner rejected the complete Goal 8 listening candidate on
+2026-08-29. Independent inspection also found that the active light/heavy hit
+files were stopped before their real contact transients, the one orchestral bed
+did not change for combat or Boss encounters, and Boss arrival/phase cues were
+low-frequency oscillator signals rather than authored music. Goal 8 remains
+historical evidence for autoplay, lifecycle, deployment-path and presentation
+event boundaries only.
+
+The active replacement is
+`docs/GOAL-16-LIVING-HUNT-AUDIO-REMASTER.md`: a complete mature-product audio
+redesign with dynamic music, family/material-specific combat, authored Boss
+entrances and pattern warnings, weather/environment, separate mix controls and
+owner listening as the final gate.
+
+### Historical Goal 8 evidence — superseded, not active
+
+The rejected Goal 8 candidate had a review-ready external-audio trial. The former procedural
 attack-noise layer was rejected during listening and removed. nene's CC0
 `Beautiful Forest [Orchestra]` now supplies the single forest music bed,
 fading in over 2.4 seconds after trusted playback begins at a deliberately
@@ -374,7 +390,7 @@ consume only confirmed combat results. Footsteps, Pounce landing, player
 hit/death, evolution, Elite/Boss arrival and victory remain separate audible
 events.
 
-The shared Settings panel retains the saved 60/100/0 volume cycle and adds a
+That candidate's shared Settings panel retained the saved 60/100/0 volume cycle and added a
 saved explicit mute. Audio is created only after a keyboard, pointer, touch or
 fullscreen gesture, resumes on visible/fullscreen lifecycle changes, and also
 retries on the next gesture. A compressor/limiter caps stacked combat feedback,
@@ -400,8 +416,8 @@ buffers ready, `contextState=running`, `ambientActive=true`, no console errors
 and about 107 FPS; a simulated 844×390 reload restored context and ambience
 with all nine buffers ready at about 120 FPS. This verifies routing and
 lifecycle, not subjective mix quality; real-device listening and 30-FPS
-evidence remain outstanding. The implementation remains a listening candidate
-pending owner approval; source and provenance are now recorded in Git.
+evidence remained outstanding. This evidence is historical only. Goal 8 is
+rejected and is not the active listening candidate.
 
 The strict timing/separation pass passed focused audio/combat/mobile checks
 (3 files / 32 tests), the full suite (105 files / 971 tests) and the production
@@ -417,6 +433,81 @@ no music before trusted input; after the 2.4-second fade, 1440×900 reported
 `contextState=running`, `ambientActive=true`, no console warnings/errors and
 about 120 FPS. Simulated 844×390 restored the same state after its trusted
 gesture.
+
+### Current Goal 16 audio acceptance candidate
+
+Goal 16 replaces the single Goal 8 bed and nine-sample palette with six
+continuous authored layers and 40 edited event files. Exploration, threat,
+Elite, Boss entrance, Boss phases 1/2 and results resolve from gameplay facts;
+dawn/mist/rain and Altar Defence drive an independent environment bed.
+Mode selection and Defence wave starts state the same short evolution motif.
+Fang/Shell/Swarm swings,
+flesh/shell/swarm contacts, player damage, kills, three River Valley Boss
+identities, Warden arrival and disc/line/ring warnings use context-specific
+assets. Meat recovery has its own light `heal-pickup` cue; successful Fang,
+Shell and Swarm skills have separate family casts instead of reusing the large
+evolution confirmation. Master, Music, Combat & UI and World Ambience are
+separately saved.
+
+The refreshed 2026-08-30 candidate passed 137 files / 1358 tests,
+production/itch/Y8 relative builds, a 52-reference runtime asset audit and a
+46 Goal 16 + 3 retained Goal 8 OGG audit covering hashes, 44.1 kHz source sample
+rate, channels, duration bounds and source records. Codec peak
+inspection caught and corrected 23 Vorbis overshoots; corrected files measure
+-3.0 to -4.2 dBTP, all others no higher than -1.0 dBTP. The Boss loop's former
+1.4-second silent tail was removed with a bar-aligned 68-second seamless edit.
+
+Browser evidence covers first-gesture start, ordinary combat, all three Valley
+Boss entrances, Defence Warden entrance, Boss phases 1/2, dawn/mist/rain,
+separate saved mix controls, 844x390 and 390x844 Settings, and the pre-unlock
+Boss-intro recovery path. A strict follow-up found that automatic Defence
+simulation could advance before the run's own first trusted gesture, dropping
+its first warning while audio was still closed. The run now freezes at wave 0
+until canvas/key/touch input unlocks audio; browser evidence then shows the
+wave motif, `weatherState=defence`, forest+portal ambience, and Warden's
+`bossIdentity=warden`. The final reload decoded all 43 external event buffers;
+a single-tab Warden run stabilised at 68.9 mean FPS / 16 ms p95 / zero stalls.
+The explicit decoded-PCM browser audit now checks all 49 active URLs and passes
+on onset, silent tail, decoded peak, final-window release, loop edge and
+120 Hz–6 kHz warning energy. It found and drove fixes for the world-loop click,
+Shell prefix, Fang hard cut, old foley overshoot and 22 inaudible tails. The
+maximum-source 4× oversampled stress render passes at -1.34 dBTP after adding a
+soft-knee master limiter and final ceiling. True 844×390 touch Chrome evidence
+reported 95.6 mean FPS / 17.5 ms p95 / zero stalls; 390×844 preserved audio and
+showed the orientation gate, with zero console/page errors.
+The owner-feedback follow-up also verified a real Shell cast as
+`lastEvent=skill-cast`, `playerFamily=shell`; all four new healing/skill files
+start within 6.1 ms, end with no more than 47.2 ms decoded silence and preserve
+phone-readable energy. Their final artistic fit still belongs to the owner
+listening gate.
+The first healing candidate was rejected as bell-like; the noise-only V2 was
+then rejected as rustling. Current V3 restores an unmistakable but continuous
+upward life-energy motion rather than separated struck notes. It combines an
+original 430–930 Hz glide, a quiet reversed/band-limited CC0 recovery reference
+and only 8% of the former organic absorption texture. It is 0.780 seconds,
+44.1 kHz mono and peaks at -7.65 dBFS before runtime gain. The refreshed browser
+decoded it as 0.777 seconds with 8.40 ms onset and 28.92 ms trailing silence;
+the complete 49/49 audit and -1.34 dBTP stress render pass. It remains pending
+owner listening.
+Owner subsequently found V3 too forward in the mix, so current V3.1 keeps the
+same recovery timbre and reduces only runtime gain from 0.72 to 0.48 (-3.52 dB).
+The same review rejected both ordinary monster death cues as electronically
+processed. Current death V2 returns to unpitched CC0 `die_01`/`die_03` creature
+throats, with only quiet breath/body contact, file peaks near -7.9 dBFS and
+0.66/0.64 runtime gains. These remain pending owner listening.
+The cache-isolated browser V5 pass measured 10.04/10.17 ms onset,
+18.73/23.29 ms silent tail and -7.72/-7.90 dBFS decoded peaks for those deaths;
+49/49 PCM records and the -1.35 dBTP stress render pass with zero failures.
+The resonant Shell skill candidate was also rejected as the wrong physical
+material. Current Shell V3.1 contains no pitched layer: shell/stone impact,
+ground body, a secondary rock crack and short granular gravel/sand scatter
+carry the Bulwark shove. Its decoded onset is 0.46 ms, silent tail 31.33 ms,
+peak -6.18 dBFS and useful 120 Hz–6 kHz energy 0.815; the 49-file browser audit
+passes. It remains pending owner listening.
+Goal 16 remains unaccepted until the
+owner completes the headphone plus phone/laptop-speaker listening protocol in
+`docs/GOAL-16-LIVING-HUNT-AUDIO-REMASTER.md`; real-device thermal/FPS evidence
+also remains outside this browser simulation.
 
 The first explicit cooling pass keeps gameplay authority and map content
 unchanged. Retina desktop output is capped at 1.35 render pixels per CSS pixel,
@@ -984,4 +1075,3 @@ The required credit line is unchanged and must appear on the itch page and in
 the in-game credits: *"3D assets include Meshy-generated source material.
 CC BY 4.0 source assets: Meshy."* The runtime already renders it in the Settings
 panel, checked by `tests/asset-credit.test.ts` against the register.
-

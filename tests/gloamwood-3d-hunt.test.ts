@@ -193,12 +193,12 @@ describe('Shell attack chain', () => {
   })
 })
 
-describe('Goal 8 audio event boundaries', () => {
+describe('Goal 16 audio event boundaries', () => {
   const source = readFileSync(new URL('../src/gloamwood-3d-hunt.ts', import.meta.url), 'utf8')
 
   it('keeps swing, confirmed contact and landing on separate presentation hooks', () => {
     expect(source).toContain("this.playSound(action === 'Bite' ? 'attack-bite'")
-    expect(source).toContain("damage.killed ? 'kill' : action === 'Pounce' || action === 'TailSwipe' ? 'hit-heavy' : 'hit-light'")
+    expect(source).toContain("damage.killed ? 'kill' : damage.blocked ? 'hit-blocked' : action === 'Pounce' || action === 'TailSwipe' ? 'hit-heavy' : 'hit-light'")
     expect(source).toContain("this.playSound('land')")
   })
 
@@ -214,10 +214,29 @@ describe('Goal 8 audio event boundaries', () => {
     expect(source).toContain('this.audio.resume()')
   })
 
+  it('does not advance an automatic Defence wave before a trusted run gesture unlocks its warnings', () => {
+    expect(source).toContain('private hasTrustedRunGesture = false')
+    expect(source).toContain('private unlockAudioFromRunGesture()')
+    expect(source).toContain('if (!this.hasTrustedRunGesture) {')
+    expect(source).toContain('this.runStartedAt += Math.max(0, performance.now() - this.awaitingRunGestureSince)')
+    expect(source).not.toContain('this.audio.unlock()\n    if (this.paused)')
+  })
+
+  it('runs the decoded PCM audit only behind its explicit debug query', () => {
+    expect(source).toContain("get('audioAudit') === '1'")
+    expect(source).toContain('this.audio.auditDecodedAssetsForReview()')
+    expect(source).toContain('audioAudit: this.audioAudit')
+  })
+
   it('announces elite and boss arrivals without changing their authority', () => {
-    expect(source).toContain("creature.tier === 'boss' ? 'boss-intro' : 'elite-intro'")
-    expect(source).toContain("this.playSound('boss-intro')")
-    expect(source).toContain("this.playSound('elite-intro')")
+    expect(source).toContain("creature.tier !== 'elite' && creature.tier !== 'boss'")
+    expect(source).toContain("this.playSound('boss-intro', { bossIdentity })")
+    expect(source).toContain("this.playSound('elite-intro', { targetMaterial:")
+    expect(source).toContain("this.playSound('elite-intro', { targetMaterial: 'shell' })")
+    expect(source).toContain('gloamwoodDefenceBossScale(creature.id)?.bodyId')
+    expect(source).not.toContain("if (this.map.id !== 'valley') return\n    for (const creature of this.map.prey)")
+    expect(source).toContain('lastContext: { ...this.lastSoundContext }')
+    expect(source).toContain("if (event === 'elite-intro' || event === 'boss-intro') this.lastEncounterContext = { ...context }")
   })
 })
 

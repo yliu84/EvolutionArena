@@ -62,6 +62,7 @@ import {
 import { createGloamwoodDefenceMap } from './gloamwood-defence-map'
 import {
   GLOAMWOOD_DEFENCE_RUN,
+  gloamwoodDefenceBossScale,
   gloamwoodDefenceReward,
   type GloamwoodDefenceState,
 } from './gloamwood-defence-director'
@@ -162,6 +163,7 @@ import {
   awakenGloamwoodNestGuardian,
   clampGloamwoodPreyToArena,
   damageGloamwoodNestPrey,
+  type GloamwoodPreyDamageResult,
   inspectGloamwoodPlayerPreyClearance,
   inspectGloamwoodPlayerPreyActionClearance,
   inspectGloamwoodPreyPairClearance,
@@ -230,10 +232,24 @@ import {
 } from './gloamwood-3d-boss'
 import { classifyGloamwoodRunPace, gloamwoodRunPaceVisible } from './gloamwood-3d-run'
 import { deriveGloamwoodOnboardingStep, type GloamwoodOnboardingStep } from './gloamwood-3d-onboarding'
-import { GloamwoodAudioBus, type GloamwoodAudioSnapshot, type GloamwoodSoundEvent } from './gloamwood-3d-audio'
+import {
+  GloamwoodAudioBus,
+  type GloamwoodAudioBodyFamily,
+  type GloamwoodDecodedAudioAudit,
+  type GloamwoodAudioSnapshot,
+  type GloamwoodSoundContext,
+  type GloamwoodSoundEvent,
+} from './gloamwood-3d-audio'
+import {
+  DEFAULT_GLOAMWOOD_AUDIO_MIX,
+  GLOAMWOOD_AUDIO_MIX_STORAGE_KEY,
+  cycleGloamwoodAudioLevel,
+  normalizeGloamwoodAudioMix,
+  resolveGloamwoodMusicState,
+  type GloamwoodAudioMixSettings,
+} from './gloamwood-audio-director'
 import {
   DEFAULT_COMBAT_FEEDBACK_SETTINGS,
-  cycleFeedbackVolume,
   normalizeCombatFeedbackSettings,
   type CombatFeedbackSettings,
 } from './player-hit-feedback'
@@ -955,7 +971,8 @@ interface DebugState {
   } | null
   onboarding: { phase: GloamwoodOnboardingStep['phase']; step: number; totalSteps: number; title: string }
   settings: { paused: boolean; shake: boolean; flash: boolean; volume: number; muted: boolean }
-  audio: GloamwoodAudioSnapshot & { lastEvent: GloamwoodSoundEvent | null; eventCount: number; recentEvents: GloamwoodSoundEvent[] }
+  audio: GloamwoodAudioSnapshot & { lastEvent: GloamwoodSoundEvent | null; lastContext: GloamwoodSoundContext; lastEncounterContext: GloamwoodSoundContext; eventCount: number; recentEvents: GloamwoodSoundEvent[] }
+  audioAudit: ({ status: 'running' } | { status: 'complete'; result: GloamwoodDecodedAudioAudit } | { status: 'failed'; error: string }) | null
   visualFeedback: {
     activeSprites: number; activeParticles: number; activeDecals: number
     sporeHaze: number; sporeMistDrop: number; slowAuraRadius: number
@@ -1393,6 +1410,10 @@ class Gloamwood3DHunt {
   private bossLocked = false
   private runPhase: GloamwoodRunPhase = 'hunt'
   private runStartedAt = performance.now()
+  private awaitingRunGestureSince = this.runStartedAt
+  private hasTrustedRunGesture = false
+  private readonly audioAuditRequested = new URLSearchParams(window.location.search).get('audioAudit') === '1'
+  private audioAudit: DebugState['audioAudit'] = null
   private runDeaths = 0
   /**
    * Lives left this run.
@@ -1540,7 +1561,9 @@ class Gloamwood3DHunt {
    */
   private valleyOpeningSafetySeconds = 18
   private feedbackSettings: CombatFeedbackSettings = { ...DEFAULT_COMBAT_FEEDBACK_SETTINGS }
+  private audioMix: GloamwoodAudioMixSettings = { ...DEFAULT_GLOAMWOOD_AUDIO_MIX }
   private readonly audio: GloamwoodAudioBus
+  private bossMusicIntroUntil = 0
   private readonly performanceSampler = new GloamwoodPerformanceSampler()
   /**
    * The whole run's cost, kept beside the rolling sampler rather than instead
@@ -1551,6 +1574,8 @@ class Gloamwood3DHunt {
   private paused = false
   private pauseStartedAt = 0
   private lastSoundEvent: GloamwoodSoundEvent | null = null
+  private lastSoundContext: GloamwoodSoundContext = {}
+  private lastEncounterContext: GloamwoodSoundContext = {}
   private soundEventCount = 0
   private readonly recentSoundEvents: GloamwoodSoundEvent[] = []
   private inputBindings: GloamwoodInputBindings = { ...DEFAULT_GLOAMWOOD_INPUT_BINDINGS }
@@ -1684,11 +1709,23 @@ class Gloamwood3DHunt {
       this.feedbackSettings = { ...DEFAULT_COMBAT_FEEDBACK_SETTINGS }
     }
     try {
+      const savedMix = localStorage.getItem(GLOAMWOOD_AUDIO_MIX_STORAGE_KEY)
+      this.audioMix = savedMix
+        ? normalizeGloamwoodAudioMix(JSON.parse(savedMix))
+        : normalizeGloamwoodAudioMix({
+          ...DEFAULT_GLOAMWOOD_AUDIO_MIX,
+          master: this.feedbackSettings.volume,
+          muted: this.feedbackSettings.muted,
+        })
+    } catch {
+      this.audioMix = { ...DEFAULT_GLOAMWOOD_AUDIO_MIX }
+    }
+    try {
       this.inputBindings = normalizeGloamwoodInputBindings(JSON.parse(localStorage.getItem(GLOAMWOOD_INPUT_BINDINGS_STORAGE_KEY) ?? 'null'))
     } catch {
       this.inputBindings = { ...DEFAULT_GLOAMWOOD_INPUT_BINDINGS }
     }
-    this.audio = new GloamwoodAudioBus(this.feedbackSettings.volume, this.feedbackSettings.muted)
+    this.audio = new GloamwoodAudioBus(this.audioMix)
     const params = new URLSearchParams(window.location.search)
     this.weatherRunSeed = resolveGloamwoodWeatherRunSeed(
       params.get(GLOAMWOOD_WEATHER_SEED_PARAM),
@@ -3330,8 +3367,31 @@ class Gloamwood3DHunt {
     if (fog && scale !== 1) fog.density = authored
   }
 
-  private readonly keyDown = (event: KeyboardEvent) => {
+  /**
+   * The mode card's click can start its own short HTMLAudio motif, but the run's
+   * Web Audio graph does not exist until after that handler returns. Defence
+   * begins spawning immediately, so advancing simulation before the next
+   * trusted canvas/key/touch gesture can silently consume the first wave and
+   * Boss warning. Freeze authority until that gesture both unlocks audio and
+   * starts the run clock.
+   */
+  private unlockAudioFromRunGesture() {
     this.audio.unlock()
+    if (this.hasTrustedRunGesture) return
+    this.hasTrustedRunGesture = true
+    this.runStartedAt += Math.max(0, performance.now() - this.awaitingRunGestureSince)
+    if (this.audioAuditRequested && this.audioAudit === null) {
+      this.audioAudit = { status: 'running' }
+      void this.audio.auditDecodedAssetsForReview().then((result) => {
+        this.audioAudit = { status: 'complete', result }
+      }).catch((error: unknown) => {
+        this.audioAudit = { status: 'failed', error: error instanceof Error ? error.message : String(error) }
+      })
+    }
+  }
+
+  private readonly keyDown = (event: KeyboardEvent) => {
+    this.unlockAudioFromRunGesture()
     if (this.paused && this.rebindingAction) {
       event.preventDefault()
       if (event.code === 'Escape') this.rebindingAction = null
@@ -3383,7 +3443,7 @@ class Gloamwood3DHunt {
   }
 
   private readonly pointerDown = (event: PointerEvent) => {
-    this.audio.unlock()
+    this.unlockAudioFromRunGesture()
     if (this.paused) return
     if (this.evolutionState.phase === 'choosing') return
     const rect = this.renderer.domElement.getBoundingClientRect()
@@ -3487,10 +3547,17 @@ class Gloamwood3DHunt {
     // Not while paused, and not on a stepped review frame: neither is a frame
     // the device was asked to produce, and both would flatter or ruin the
     // figure depending on which way they went.
-    if (!this.paused && forcedDelta === undefined) this.runPerformance.record(frameMilliseconds)
+    if (!this.paused && this.hasTrustedRunGesture && forcedDelta === undefined) this.runPerformance.record(frameMilliseconds)
     const delta = Math.min(0.05, frameMilliseconds / 1000)
     this.lastFrameAt = now
     this.frameClock = now
+    if (!this.hasTrustedRunGesture) {
+      this.present()
+      this.updateHud()
+      this.updateDebug()
+      return
+    }
+    this.updateAudioDirector()
     this.foliageTime.value += delta
     this.updateFeedback(delta)
     this.updateDamageNumbers(delta)
@@ -3854,8 +3921,15 @@ class Gloamwood3DHunt {
       }
       return { effectiveDamage: result.effectiveDamage, killed: result.defeated }
     }
+    // Read before the hit: `damageGloamwoodNestPrey` returns a new state, and
+    // the dead creature is what the drops, the gene core and the region gate
+    // are all keyed on.
+    const struck = this.nestState.prey.find((prey) => prey.id === id)
     const hit = damageGloamwoodNestPrey(this.nestState, id, amount, action, from, knockback)
     this.nestState = hit.state
+    // A kill is worth the same whatever landed it. Skills used to route damage
+    // here and stop, which paid out nothing at all.
+    if (struck) this.resolvePreyKill(struck, hit)
     return { effectiveDamage: hit.effectiveDamage, killed: hit.killed }
   }
 
@@ -3900,7 +3974,7 @@ class Gloamwood3DHunt {
       return
     }
     const shape = attempt.skill.shape
-    this.playSound('evolution-select')
+    this.playSound('skill-cast', { playerFamily: attempt.skill.family })
     if (shape.kind === 'dash' && target) {
       const landing = gloamwoodDashLanding(
         this.playerRoot.position,
@@ -4684,34 +4758,13 @@ class Gloamwood3DHunt {
       this.logSession({ kind: 'mutation-effect', id: 'shell-quake', effect: 'tail-suppression' })
     }
     this.struckThisFrame.push(target.id)
-    this.playSound(damage.killed ? 'kill' : action === 'Pounce' || action === 'TailSwipe' ? 'hit-heavy' : 'hit-light')
-    let displayedBiomass = damage.biomassGained
-    if (damage.killed && this.biomassMultiplier !== 1) {
-      displayedBiomass = Math.round(damage.biomassGained * this.biomassMultiplier)
-      this.nestState = { ...this.nestState, biomass: this.nestState.biomass + displayedBiomass - damage.biomassGained }
-      if (this.mutationState.taken.includes('neutral-starving-metabolism')) {
-        this.spawnMetabolicFeedback('gain')
-        this.logSession({ kind: 'mutation-effect', id: 'neutral-starving-metabolism', effect: 'metabolic-gain' })
-      }
-    }
-    if (damage.killed && this.mutationEffects.bonusOfferEveryKills) {
-      this.killsTowardBonusOffer += 1
-      if (this.killsTowardBonusOffer >= this.mutationEffects.bonusOfferEveryKills) {
-        this.killsTowardBonusOffer = 0
-        this.bonusOffersEarned += 1
-      }
-    }
-    if (damage.killed && this.killHeal > 0) {
-      const before = this.playerCombat.health
-      this.playerCombat = { ...this.playerCombat, health: Math.min(this.playerCombat.maxHealth, before + this.killHeal) }
-      const restored = this.playerCombat.health - before
-      if (restored > 0) {
-        this.spawnFeedingFeedback(restored)
-        if (this.mutationState.taken.includes('neutral-gluttony')) {
-          this.logSession({ kind: 'mutation-effect', id: 'neutral-gluttony', effect: 'feeding-heal' })
-        }
-      }
-    }
+    this.playSound(
+      damage.killed ? 'kill' : damage.blocked ? 'hit-blocked' : action === 'Pounce' || action === 'TailSwipe' ? 'hit-heavy' : 'hit-light',
+      { targetMaterial: target.kind === 'fang' ? 'flesh' : target.kind },
+    )
+    // Swing-specific presentation: the hit stop, the stagger and the slash all
+    // belong to a blow that was actually swung, and stay here rather than
+    // moving into the shared kill path.
     const recipe = getQuality3DAttackFeedback(action)
     this.hitStopRemaining = recipe.hitStopSeconds
     this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.4 * recipe.cameraTraumaMultiplier)
@@ -4743,6 +4796,52 @@ class Gloamwood3DHunt {
     // sharpest decision in the game - and a player who has not been told simply
     // reads it as "my attack is weak now" and grinds through fifteen hits.
     if (damage.blocked && !damage.killed) this.combatMessage = t('hud.msg.blockedFront')
+    this.resolvePreyKill(target, damage)
+  }
+
+  /**
+   * Everything a death is worth, wherever the killing blow came from.
+   *
+   * This used to live inline in the basic attack, which meant a creature killed
+   * by anything else quietly paid out nothing: no meat, no gene core, no
+   * Gluttony heal, no biomass multiplier, no progress toward a bonus offer, no
+   * elite burst or brood split, and - worst of the set - no region gate, so a
+   * valley boss finished off by a poison tick left its gate shut and the run
+   * unable to continue. Reported from play as "monsters killed by poison do not
+   * drop meat", which was the visible corner of it.
+   *
+   * The lesson is the one this project keeps relearning: a consequence written
+   * into one caller is a consequence the next caller silently loses. Skills
+   * were added long after this code, and nothing pointed at the gap.
+   */
+  private resolvePreyKill(target: GloamwoodNestPrey, damage: GloamwoodPreyDamageResult) {
+    let displayedBiomass = damage.biomassGained
+    if (damage.killed && this.biomassMultiplier !== 1) {
+      displayedBiomass = Math.round(damage.biomassGained * this.biomassMultiplier)
+      this.nestState = { ...this.nestState, biomass: this.nestState.biomass + displayedBiomass - damage.biomassGained }
+      if (this.mutationState.taken.includes('neutral-starving-metabolism')) {
+        this.spawnMetabolicFeedback('gain')
+        this.logSession({ kind: 'mutation-effect', id: 'neutral-starving-metabolism', effect: 'metabolic-gain' })
+      }
+    }
+    if (damage.killed && this.mutationEffects.bonusOfferEveryKills) {
+      this.killsTowardBonusOffer += 1
+      if (this.killsTowardBonusOffer >= this.mutationEffects.bonusOfferEveryKills) {
+        this.killsTowardBonusOffer = 0
+        this.bonusOffersEarned += 1
+      }
+    }
+    if (damage.killed && this.killHeal > 0) {
+      const before = this.playerCombat.health
+      this.playerCombat = { ...this.playerCombat, health: Math.min(this.playerCombat.maxHealth, before + this.killHeal) }
+      const restored = this.playerCombat.health - before
+      if (restored > 0) {
+        this.spawnFeedingFeedback(restored)
+        if (this.mutationState.taken.includes('neutral-gluttony')) {
+          this.logSession({ kind: 'mutation-effect', id: 'neutral-gluttony', effect: 'feeding-heal' })
+        }
+      }
+    }
     if (damage.killed) {
       this.dropMeat(target)
       if ((target as GloamwoodValleyCreature).tier === 'elite') this.dropGeneCore(target, 'elite')
@@ -4825,7 +4924,10 @@ class Gloamwood3DHunt {
     )
     this.bossState = result.state
     if (result.effectiveDamage <= 0) return
-    this.playSound(result.defeated ? 'kill' : action === 'Pounce' || action === 'TailSwipe' ? 'hit-heavy' : 'hit-light')
+    this.playSound(
+      result.defeated ? 'kill' : action === 'Pounce' || action === 'TailSwipe' ? 'hit-heavy' : 'hit-light',
+      { targetMaterial: 'boss' },
+    )
     this.hitStopRemaining = result.defeated ? 0.13 : 0.065
     this.cameraTrauma = Math.min(1, this.cameraTrauma + (result.defeated ? 0.9 : 0.5))
     this.spawnBossHitFeedback(action)
@@ -4922,6 +5024,7 @@ class Gloamwood3DHunt {
       this.updateBoss(delta)
       return
     }
+    const previousPreyPhases = new Map(this.nestState.prey.map((prey) => [prey.id, prey.phase]))
     const frame = this.map.stepCreatures(this.nestState, delta, {
       x: this.playerRoot.position.x,
       z: this.playerRoot.position.z,
@@ -4940,7 +5043,13 @@ class Gloamwood3DHunt {
     // separation here without that history treated every overlap as the prey's
     // fault and put the plough behaviour straight back.
     this.nestState = frame.state
+    // Introduce an elite or boss before its first attack language lands. When
+    // both transitions happen on the same simulation frame, reversing these
+    // calls makes the warning bark arrive before the creature has audibly
+    // entered the scene, which reads like an unrelated UI error rather than a
+    // deliberately layered reveal.
     this.announceAwakenedThreats()
+    this.playNewPreyTelegraphs(previousPreyPhases)
     if (this.runPhase === 'guardian') {
       this.nestState = {
         ...this.nestState,
@@ -4953,6 +5062,7 @@ class Gloamwood3DHunt {
         continue
       }
       if (event.type === 'wave-started') {
+        if (this.map.id === 'defence') this.playSound('wave-start')
         this.lockedPreyId = nextGloamwoodLockTarget(
           this.nestState.prey,
           null,
@@ -5114,19 +5224,42 @@ class Gloamwood3DHunt {
     return this.runPhase === 'boss' && this.bossState.state !== 'dormant' && this.bossState.state !== 'dead'
   }
 
+  private playNewPreyTelegraphs(previousPhases: ReadonlyMap<string, GloamwoodPreyPhase>) {
+    for (const prey of this.nestState.prey) {
+      if (prey.phase !== 'telegraph' || previousPhases.get(prey.id) === 'telegraph') continue
+      const creature = prey as GloamwoodValleyCreature
+      const boss = gloamwoodValleyBossSpecFor(creature)
+      const pattern = boss?.patterns[creature.bossPattern ?? '']
+      if (pattern) {
+        this.playSound(`boss-warning-${pattern.shape.kind}` as GloamwoodSoundEvent)
+        continue
+      }
+      this.playSound(`enemy-telegraph-${prey.kind}` as GloamwoodSoundEvent)
+    }
+  }
+
   /** Presentation observes `awake`; it never decides detection or encounter state. */
   private announceAwakenedThreats() {
-    if (this.map.id !== 'valley') return
     for (const prey of this.nestState.prey) {
       const creature = prey as GloamwoodValleyCreature
       if (!creature.awake || creature.phase === 'dead' || this.announcedThreats.has(creature.id)) continue
       if (creature.tier !== 'elite' && creature.tier !== 'boss') continue
       this.announcedThreats.add(creature.id)
-      this.playSound(creature.tier === 'boss' ? 'boss-intro' : 'elite-intro')
+      if (creature.tier !== 'boss') {
+        this.playSound('elite-intro', { targetMaterial: prey.kind === 'fang' ? 'flesh' : prey.kind })
+        continue
+      }
+      const bodyId = gloamwoodValleyBossSpecFor(creature)?.bodyId ?? gloamwoodDefenceBossScale(creature.id)?.bodyId
+      const bossIdentity = bodyId === 'tide-cleaver' ? 'tide'
+        : bodyId === 'cliff-maw' ? 'cliff'
+          : bodyId === 'thornheart-warden' ? 'warden'
+            : 'root'
+      this.playSound('boss-intro', { bossIdentity })
     }
   }
 
   private updateBoss(delta: number) {
+    const previousState = this.bossState.state
     const frame = stepGloamwoodBoss(this.bossState, delta, {
       x: this.playerRoot.position.x,
       z: this.playerRoot.position.z,
@@ -5137,6 +5270,10 @@ class Gloamwood3DHunt {
       GLOAMWOOD_BOSS_ARENA,
       GLOAMWOOD_BOSS_ARENA_RADIUS,
     )
+    if (this.bossState.state === 'telegraph' && previousState !== 'telegraph') {
+      const shape = this.bossState.pattern === 'thorn-charge' ? 'line' : this.bossState.pattern === 'spore-ring' ? 'ring' : 'disc'
+      this.playSound(`boss-warning-${shape}` as GloamwoodSoundEvent)
+    }
     for (const event of frame.events) {
       if (event.type === 'phase-changed') {
         this.playSound('boss-phase')
@@ -6863,7 +7000,7 @@ class Gloamwood3DHunt {
         ...this.playerCombat,
         health: Math.min(this.playerCombat.maxHealth, this.playerCombat.health + frame.healed),
       }
-      this.playSound('evolution-select')
+      this.playSound('heal-pickup')
       this.combatMessage = t('hud.msg.ate', { health: frame.healed })
     }
     // Anything the authority dropped this frame - eaten or expired - leaves the
@@ -7135,6 +7272,46 @@ class Gloamwood3DHunt {
 
   private livePrey() {
     return this.nestState.prey.filter((prey) => prey.phase !== 'dead')
+  }
+
+  private updateAudioDirector() {
+    const live = this.livePrey()
+    const awakeValleyBoss = live.find((prey) => {
+      const creature = prey as GloamwoodValleyCreature
+      return creature.tier === 'boss' && creature.awake
+    }) as GloamwoodValleyCreature | undefined
+    const eliteActive = live.some((prey) => {
+      const creature = prey as GloamwoodValleyCreature
+      return creature.tier === 'elite' && creature.awake
+    })
+    const committedThreats = live.filter((prey) => {
+      const creature = prey as GloamwoodValleyCreature
+      if (creature.awake) return this.distanceToPlayer(prey) < 20
+      return prey.phase === 'telegraph' || prey.phase === 'strike' || prey.phase === 'recover'
+    }).length
+    const defenceRun = (this.map as { defenceRun?: () => GloamwoodDefenceState }).defenceRun?.()
+    const defencePulse = this.map.id === 'defence'
+      && Boolean(defenceRun && defenceRun.wave > 0 && defenceRun.phase !== 'won' && defenceRun.phase !== 'lost')
+    const pressureCount = committedThreats + (defencePulse && committedThreats === 0 ? 1 : 0)
+    const bossActive = this.bossActive() || Boolean(awakeValleyBoss)
+    const bossPhase = this.bossActive() ? this.bossState.phase : awakeValleyBoss?.bossPhase ?? 1
+    const terminal = this.runPhase === 'victory' || this.runPhase === 'defeat' ? this.runPhase : null
+    const state = resolveGloamwoodMusicState({
+      terminal,
+      bossIntro: this.frameClock < this.bossMusicIntroUntil,
+      bossActive,
+      bossPhase,
+      eliteActive,
+      committedThreats: pressureCount,
+    })
+    this.audio.setMusicState(state, terminal
+      ? `run ${terminal}`
+      : this.frameClock < this.bossMusicIntroUntil ? 'encounter reveal'
+        : bossActive ? `boss phase ${bossPhase}`
+          : eliteActive ? 'elite committed'
+            : pressureCount > 0 ? `${pressureCount} committed threat${pressureCount === 1 ? '' : 's'}`
+              : 'valley breathing room')
+    this.audio.setWeatherState(this.map.id === 'defence' ? 'defence' : this.valley?.weather.id ?? 'dawn')
   }
 
   private lockedPrey() {
@@ -8209,7 +8386,7 @@ class Gloamwood3DHunt {
     }
     this.target.copy(this.playerRoot.position)
     this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.56)
-    this.playSound('elite-intro')
+    this.playSound('elite-intro', { targetMaterial: 'shell' })
     this.combatMessage = t('hud.msg.guardianRises', { name: t('creature.guardian') })
     this.syncPreyVisuals()
   }
@@ -8232,7 +8409,7 @@ class Gloamwood3DHunt {
     this.attackState = createFormalHuntBasicAttackState()
     this.syncBossVisual()
     this.cameraTrauma = Math.min(1, this.cameraTrauma + 0.72)
-    this.playSound('boss-intro')
+    this.playSound('boss-intro', { bossIdentity: 'warden' })
     this.combatMessage = t('hud.msg.bossRises', { name: t('creature.boss') })
   }
 
@@ -8387,7 +8564,7 @@ class Gloamwood3DHunt {
           this.audio.setMuted(true)
         },
         resume: () => {
-          this.audio.setMuted(this.feedbackSettings.muted)
+          this.audio.setMuted(this.audioMix.muted)
         },
       }).then((result) => {
         if (result !== 'viewed') {
@@ -8739,7 +8916,7 @@ class Gloamwood3DHunt {
     // Already launched from a home-screen icon: there is no browser chrome to hide.
     if (this.fullscreenToggle && gloamwoodStandaloneDisplay()) this.fullscreenToggle.hidden = true
     this.fullscreenToggle?.addEventListener('click', () => {
-      this.audio.unlock()
+      this.unlockAudioFromRunGesture()
       if (document.fullscreenEnabled) void this.toggleFullscreenPresentation()
       else this.toggleHomeScreenTip()
     })
@@ -9591,7 +9768,10 @@ class Gloamwood3DHunt {
       `<button type="button" data-g3d-setting="shake">${t('settings.shakeLabel', { state: t('toggle.on') })}</button>`,
       `<button type="button" data-g3d-setting="flash">${t('settings.flashLabel', { state: t('toggle.on') })}</button>`,
       `<button type="button" data-g3d-setting="mute">${t('settings.muteLabel', { state: t('toggle.off') })}</button>`,
-      `<button type="button" data-g3d-setting="volume">${t('settings.volumeLabel', { value: 60 })}</button>`,
+      `<button type="button" data-g3d-setting="audio-master">${t('settings.masterLabel', { value: 80 })}</button>`,
+      `<button type="button" data-g3d-setting="audio-music">${t('settings.musicLabel', { value: 72 })}</button>`,
+      `<button type="button" data-g3d-setting="audio-sfx">${t('settings.sfxLabel', { value: 86 })}</button>`,
+      `<button type="button" data-g3d-setting="audio-ambience">${t('settings.ambienceLabel', { value: 62 })}</button>`,
       `<button type="button" data-g3d-setting="language">${t('settings.language')}</button>`,
       `<button type="button" data-g3d-input-open>${t('settings.openInput')}</button>`,
       `<button class="primary" type="button" data-g3d-settings-resume>${t('settings.resume')}</button>`,
@@ -9642,7 +9822,7 @@ class Gloamwood3DHunt {
     if (performanceReadout) performanceReadout.hidden = !(import.meta.env.DEV || new URLSearchParams(window.location.search).get('debug') === '1')
     this.container.append(panel)
     this.hud?.querySelector<HTMLButtonElement>('[data-g3d-settings-toggle]')?.addEventListener('click', () => {
-      this.audio.unlock()
+      this.unlockAudioFromRunGesture()
       this.toggleSettings(true)
     })
     this.hud?.querySelector<HTMLButtonElement>('[data-g3d-hud-details]')?.addEventListener('click', (event) => {
@@ -9686,12 +9866,17 @@ class Gloamwood3DHunt {
     if (setting === 'language') return this.toggleLocale()
     if (setting === 'shake') this.feedbackSettings.shake = !this.feedbackSettings.shake
     else if (setting === 'flash') this.feedbackSettings.flash = !this.feedbackSettings.flash
-    else if (setting === 'mute') this.feedbackSettings.muted = !this.feedbackSettings.muted
-    else if (setting === 'volume') this.feedbackSettings.volume = cycleFeedbackVolume(this.feedbackSettings.volume)
-    this.audio.setVolume(this.feedbackSettings.volume)
-    this.audio.setMuted(this.feedbackSettings.muted)
+    else if (setting === 'mute') {
+      this.audioMix.muted = !this.audioMix.muted
+      this.feedbackSettings.muted = this.audioMix.muted
+    } else if (setting === 'audio-master') this.audioMix.master = cycleGloamwoodAudioLevel(this.audioMix.master)
+    else if (setting === 'audio-music') this.audioMix.music = cycleGloamwoodAudioLevel(this.audioMix.music)
+    else if (setting === 'audio-sfx') this.audioMix.sfx = cycleGloamwoodAudioLevel(this.audioMix.sfx)
+    else if (setting === 'audio-ambience') this.audioMix.ambience = cycleGloamwoodAudioLevel(this.audioMix.ambience)
+    this.audio.setMix(this.audioMix)
     try {
       localStorage.setItem(PLAYER_FEEDBACK_SETTINGS_KEY, JSON.stringify(this.feedbackSettings))
+      localStorage.setItem(GLOAMWOOD_AUDIO_MIX_STORAGE_KEY, JSON.stringify(this.audioMix))
     } catch {
       // Settings remain active for this session if storage is unavailable.
     }
@@ -9703,11 +9888,17 @@ class Gloamwood3DHunt {
     const shake = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="shake"]')
     const flash = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="flash"]')
     const mute = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="mute"]')
-    const volume = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="volume"]')
+    const master = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="audio-master"]')
+    const music = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="audio-music"]')
+    const sfx = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="audio-sfx"]')
+    const ambience = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="audio-ambience"]')
     if (shake) shake.textContent = t('settings.shakeLabel', { state: this.feedbackSettings.shake ? t('toggle.on') : t('toggle.off') })
     if (flash) flash.textContent = t('settings.flashLabel', { state: this.feedbackSettings.flash ? t('toggle.on') : t('toggle.off') })
-    if (mute) mute.textContent = t('settings.muteLabel', { state: this.feedbackSettings.muted ? t('toggle.on') : t('toggle.off') })
-    if (volume) volume.textContent = t('settings.volumeLabel', { value: Math.round(this.feedbackSettings.volume * 100) })
+    if (mute) mute.textContent = t('settings.muteLabel', { state: this.audioMix.muted ? t('toggle.on') : t('toggle.off') })
+    if (master) master.textContent = t('settings.masterLabel', { value: Math.round(this.audioMix.master * 100) })
+    if (music) music.textContent = t('settings.musicLabel', { value: Math.round(this.audioMix.music * 100) })
+    if (sfx) sfx.textContent = t('settings.sfxLabel', { value: Math.round(this.audioMix.sfx * 100) })
+    if (ambience) ambience.textContent = t('settings.ambienceLabel', { value: Math.round(this.audioMix.ambience * 100) })
     // Labelled in its own language, so it reads as the language you would get.
     const language = this.settingsPanel.querySelector<HTMLButtonElement>('[data-g3d-setting="language"]')
     if (language) language.textContent = t('settings.language')
@@ -9774,12 +9965,21 @@ class Gloamwood3DHunt {
     }
   }
 
-  private playSound(event: GloamwoodSoundEvent) {
+  private audioPlayerFamily(): GloamwoodAudioBodyFamily {
+    return this.characterFamily === 'fang' || this.characterFamily === 'shell' || this.characterFamily === 'swarm'
+      ? this.characterFamily
+      : 'origin'
+  }
+
+  private playSound(event: GloamwoodSoundEvent, context: GloamwoodSoundContext = {}) {
+    if (event === 'boss-intro') this.bossMusicIntroUntil = this.frameClock + 2800
     this.lastSoundEvent = event
+    this.lastSoundContext = { ...context }
+    if (event === 'elite-intro' || event === 'boss-intro') this.lastEncounterContext = { ...context }
     this.soundEventCount += 1
     this.recentSoundEvents.push(event)
     if (this.recentSoundEvents.length > 16) this.recentSoundEvents.shift()
-    this.audio.play(event)
+    this.audio.play(event, { playerFamily: context.playerFamily ?? this.audioPlayerFamily(), ...context })
   }
 
   private runElapsedSeconds() {
@@ -9830,7 +10030,7 @@ class Gloamwood3DHunt {
     }
     joystick?.addEventListener('pointerdown', (event) => {
       event.preventDefault()
-      this.audio.unlock()
+      this.unlockAudioFromRunGesture()
       if (this.paused) return
       joystickPointerId = event.pointerId
       joystick.setPointerCapture(event.pointerId)
@@ -9841,14 +10041,14 @@ class Gloamwood3DHunt {
     joystick?.addEventListener('pointercancel', releaseJoystick)
     joystick?.addEventListener('lostpointercapture', releaseJoystick)
     controls.querySelector<HTMLButtonElement>('[data-lock]')?.addEventListener('click', () => {
-      this.audio.unlock()
+      this.unlockAudioFromRunGesture()
       if (this.paused) return
       this.toggleEnemyLock()
     })
     const attack = controls.querySelector<HTMLButtonElement>('[data-attack]')
     attack?.addEventListener('pointerdown', (event) => {
       event.preventDefault()
-      this.audio.unlock()
+      this.unlockAudioFromRunGesture()
       if (this.paused) return
       attack.setPointerCapture(event.pointerId)
       this.primaryHeld = true
@@ -9864,7 +10064,7 @@ class Gloamwood3DHunt {
     // is already moving. The attack button next to it works the same way.
     skill?.addEventListener('pointerdown', (event) => {
       event.preventDefault()
-      this.audio.unlock()
+      this.unlockAudioFromRunGesture()
       if (this.paused) return
       this.requestSkill()
     })
@@ -10249,9 +10449,12 @@ class Gloamwood3DHunt {
       audio: {
         ...this.audio.snapshot(),
         lastEvent: this.lastSoundEvent,
+        lastContext: { ...this.lastSoundContext },
+        lastEncounterContext: { ...this.lastEncounterContext },
         eventCount: this.soundEventCount,
         recentEvents: [...this.recentSoundEvents],
       },
+      audioAudit: this.audioAudit,
       visualFeedback: {
         activeSprites: this.feedbackSprites.length,
         activeParticles: this.rendingParticles.length + this.rendingSurfaces.length + this.mutationParticles.length,

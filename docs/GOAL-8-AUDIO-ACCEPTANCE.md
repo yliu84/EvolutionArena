@@ -1,6 +1,10 @@
 # Goal 8 — River Valley audio acceptance
 
-Status: implementation candidate; owner listening approval pending.
+Status: rejected by owner listening on 2026-08-29; superseded by
+[`GOAL-16-LIVING-HUNT-AUDIO-REMASTER.md`](./GOAL-16-LIVING-HUNT-AUDIO-REMASTER.md).
+
+The implementation below remains a historical record of the first bounded
+audio trial. It must not be presented as the accepted current sound direction.
 Entry: `http://127.0.0.1:<vite-port>/?maplab=5&debug=1&evolutionStage=1&evolutionRoute=fang&evolutionSeed=goal8-audio`
 
 ## Scope lock
