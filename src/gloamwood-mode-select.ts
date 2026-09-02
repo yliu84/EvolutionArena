@@ -1,4 +1,5 @@
 import { t } from './i18n'
+import { playGloamwoodInterstitial } from './y8-interstitials'
 import { playGloamwoodModeMotif } from './gloamwood-mode-audio'
 import {
   GLOAMWOOD_ACHIEVEMENTS,
@@ -164,12 +165,18 @@ export function presentGloamwoodModeSelect(
       playGloamwoodModeMotif()
       rememberGloamwoodMode(mode)
       window.removeEventListener('keydown', onKey)
-      overlay.dataset.leaving = 'true'
-      // Removed on a timer rather than on transitionend: a browser that skips
-      // the transition never fires that event, and the screen would stay up
-      // over a running game.
-      window.setTimeout(() => overlay.remove(), 220)
-      resolve(mode)
+      // The portal's "Play button" slot. Awaited before the overlay leaves, so
+      // the ad plays over this screen rather than over a world the player can
+      // half-see and cannot touch. Resolves on every path, including no SDK at
+      // all, which is every build but the Y8 one.
+      void playGloamwoodInterstitial('run-start').then(() => {
+        overlay.dataset.leaving = 'true'
+        // Removed on a timer rather than on transitionend: a browser that skips
+        // the transition never fires that event, and the screen would stay up
+        // over a running game.
+        window.setTimeout(() => overlay.remove(), 220)
+        resolve(mode)
+      })
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.code === 'Escape' && overlay.dataset.reading === 'true') {

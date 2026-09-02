@@ -186,8 +186,39 @@ export function initGloamwoodY8(config: GloamwoodY8Config = GLOAMWOOD_Y8) {
 const AD_START_TIMEOUT_MS = 8_000
 const AD_COMPLETE_TIMEOUT_MS = 60_000
 
+/**
+ * An ad break at a moment the player just clicked something.
+ *
+ * Y8's QA asked for these directly: "The ads should appear after user
+ * interactions, such as clicking the Play, Next, or Retry buttons." Without
+ * them the game can still be published but earns nothing, so this is their
+ * condition for monetization rather than a preference.
+ *
+ * Unlike the rewarded ad, nothing is owed to the player here - the break
+ * finishing is the whole outcome, and a skip is as good as a view. It resolves
+ * `viewed` on any completion for that reason.
+ */
+export function showGloamwoodY8Interstitial(options: {
+  type: 'start' | 'next' | 'pause' | 'browse'
+  name: string
+  pause: () => void
+  resume: () => void
+}): Promise<GloamwoodY8AdResult> {
+  return runGloamwoodY8Ad({ ...options, rewarded: false })
+}
+
 export function showGloamwoodY8RewardedAd(options: {
   name: string
+  pause: () => void
+  resume: () => void
+}): Promise<GloamwoodY8AdResult> {
+  return runGloamwoodY8Ad({ ...options, type: 'reward', rewarded: true })
+}
+
+function runGloamwoodY8Ad(options: {
+  type: 'reward' | 'start' | 'next' | 'pause' | 'browse'
+  name: string
+  rewarded: boolean
   pause: () => void
   resume: () => void
 }): Promise<GloamwoodY8AdResult> {
@@ -212,7 +243,7 @@ export function showGloamwoodY8RewardedAd(options: {
     arm(AD_START_TIMEOUT_MS)
     try {
       void active.showAd({
-        type: 'reward',
+        type: options.type,
         name: options.name,
         beforeAd: () => {
           // The break opened, so an ad may really be playing now. Give it room.
@@ -222,11 +253,13 @@ export function showGloamwoodY8RewardedAd(options: {
         afterAd: () => options.resume(),
         // Y8 hands over a function to open the ad. Not calling it means no ad.
         beforeReward: (showAd) => showAd(),
-        adDismissed: () => finish('dismissed'),
+        // A skipped interstitial has still done its job; a skipped rewarded ad
+        // has not, and must not pay out.
+        adDismissed: () => finish(options.rewarded ? 'dismissed' : 'viewed'),
         adViewed: () => finish('viewed'),
         // Always fires, whatever happened. Anything still unsettled by here was
         // neither watched nor explicitly skipped, and earns nothing.
-        adBreakDone: () => finish('dismissed'),
+        adBreakDone: () => finish(options.rewarded ? 'dismissed' : 'viewed'),
       }).catch(() => finish('error'))
     } catch {
       finish('error')
@@ -284,4 +317,32 @@ export async function awardGloamwoodY8Achievement(achievementId: string, title: 
     // achievement is already stored either way, so nothing is lost by failing.
     return false
   }
+}
+
+/**
+ * How long to leave between interstitials, in seconds.
+ *
+ * Y8 wants ads on Play, Next and Retry. It also reviews for excessive
+ * advertising, and those two pull against each other on exactly one pattern:
+ * dying immediately after a restart, which this game makes easy. Without a gap
+ * a player who fails twice in twenty seconds is shown two full-screen ads in
+ * twenty seconds, and stops playing.
+ */
+export const GLOAMWOOD_INTERSTITIAL_GAP_SECONDS = 75
+
+/**
+ * Whether an interstitial may run now.
+ *
+ * Pure, because the rule is the whole difference between "ads at the moments
+ * the portal asked for" and "ads until the player leaves", and it must be
+ * checkable without a portal or a clock.
+ */
+export function gloamwoodInterstitialAllowed(input: {
+  nowSeconds: number
+  lastShownSeconds: number | null
+  gapSeconds?: number
+}): boolean {
+  if (input.lastShownSeconds === null) return true
+  const gap = input.gapSeconds ?? GLOAMWOOD_INTERSTITIAL_GAP_SECONDS
+  return input.nowSeconds - input.lastShownSeconds >= gap
 }

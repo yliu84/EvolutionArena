@@ -15,6 +15,7 @@ import {
   shouldGloamwoodRenderContinuously,
 } from './gloamwood-render-quality'
 import { gloamwoodJoystickVector } from './gloamwood-touch-controls'
+import { gloamwoodInterstitialTally, playGloamwoodInterstitial } from './y8-interstitials'
 import {
   awardGloamwoodY8Achievement,
   gloamwoodExtraLifeOffer,
@@ -927,6 +928,11 @@ interface DebugState {
     /** Orbs in the air, so a cast that produced nothing is distinguishable
      *  from a cast whose effect was simply not visible. */
     sporeOrbs: number
+    /**
+     * What the portal ad slots did. An interstitial that never fired and one
+     * that fired into empty inventory are the same picture on screen.
+     */
+    interstitials: { requested: number; gated: number; notReady: number; shown: number; empty: number }
     /**
      * What each poisoned creature is carrying, and how green it currently is.
      *
@@ -8507,7 +8513,9 @@ class Gloamwood3DHunt {
       this.dismissDeathPrompt()
     }, { once: true })
     this.deathOverlay.querySelector<HTMLButtonElement>('[data-g3d-restart]')?.addEventListener('click', () => {
-      window.location.reload()
+      // The portal's "Retry" slot. Awaited: a reload started underneath an ad
+      // is an ad that never played and never counted.
+      void this.playRestartInterstitial()
     }, { once: true })
     this.deathOverlay.querySelector<HTMLButtonElement>('[data-g3d-revive]')?.focus()
   }
@@ -8580,6 +8588,26 @@ class Gloamwood3DHunt {
     })
     this.deathOverlay.querySelector<HTMLButtonElement>('[data-g3d-ad-decline]')?.addEventListener('click', decline, { once: true })
     this.deathOverlay.querySelector<HTMLButtonElement>('[data-g3d-ad-decline]')?.focus()
+  }
+
+  /**
+   * The ad break between one run and the next, then the reload.
+   *
+   * Both restart buttons go through here. The reload happens whatever the ad
+   * does - no inventory, no SDK, a timeout, a refusal - because the player
+   * pressed a button that means "again" and must never be left looking at a
+   * dead screen because an advert did not load.
+   *
+   * The world is already stopped at both call sites, so there is nothing to
+   * pause; the mute is still worth doing, since an ad talking over the game's
+   * own music is the complaint every portal hears.
+   */
+  private async playRestartInterstitial() {
+    await playGloamwoodInterstitial('run-next', {
+      pause: () => this.audio.setMuted(true),
+      resume: () => this.audio.setMuted(this.feedbackSettings.muted),
+    })
+    window.location.reload()
   }
 
   private dismissDeathPrompt() {
@@ -8799,7 +8827,10 @@ class Gloamwood3DHunt {
       '</div>',
     ].join('')
     this.resultOverlay.hidden = false
-    this.resultOverlay.querySelector<HTMLButtonElement>('[data-run-restart]')?.addEventListener('click', () => window.location.reload())
+    this.resultOverlay.querySelector<HTMLButtonElement>('[data-run-restart]')?.addEventListener('click', () => {
+      // The portal's "Next" slot: the run has ended and another is beginning.
+      void this.playRestartInterstitial()
+    })
     this.resultOverlay.querySelector<HTMLButtonElement>('[data-run-restart]')?.focus()
   }
 
@@ -10394,6 +10425,8 @@ class Gloamwood3DHunt {
         skillCooldown: round(this.skillState.cooldownRemaining),
         skillGuard: round(this.skillState.guardRemaining),
         sporeOrbs: this.sporeOrbs.length,
+        interstitials: (({ requested, gated, notReady, shown, empty }) =>
+          ({ requested, gated, notReady, shown, empty }))(gloamwoodInterstitialTally()),
         poisoned: this.poisonStacks.map((stack) => ({
           id: stack.preyId,
           remaining: round(gloamwoodPoisonRemaining(stack)),
